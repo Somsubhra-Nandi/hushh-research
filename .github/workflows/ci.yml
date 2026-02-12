@@ -216,3 +216,35 @@ jobs:
             echo "⚠ WARNING: verify-route-contracts.cjs not found, skipping"
           fi
         continue-on-error: false  # Route contracts must pass; fail CI if missing/out of sync
+
+  # ============================================================================
+  # Upstream Sync Check (one-directional: warns if upstream has unpulled commits)
+  # ============================================================================
+  subtree-sync-check:
+    name: "Upstream Sync"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if upstream consent-protocol has unpulled commits
+        run: |
+          git remote add consent-upstream https://github.com/hushh-labs/consent-protocol.git 2>/dev/null || true
+          git fetch consent-upstream main --quiet 2>/dev/null || {
+            echo "Could not fetch upstream. Skipping sync check."
+            exit 0
+          }
+          UPSTREAM_TREE=$(git rev-parse consent-upstream/main^{tree} 2>/dev/null) || {
+            echo "Could not resolve upstream tree. Skipping."
+            exit 0
+          }
+          LOCAL_TREE=$(git rev-parse HEAD:consent-protocol 2>/dev/null) || {
+            echo "Could not resolve local subtree. Skipping."
+            exit 0
+          }
+          if [ "$UPSTREAM_TREE" != "$LOCAL_TREE" ]; then
+            echo "::warning::consent-protocol/ may be behind upstream. Run: make sync-protocol"
+          else
+            echo "consent-protocol/ is in sync with upstream."
+          fi

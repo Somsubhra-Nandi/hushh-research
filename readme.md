@@ -225,21 +225,60 @@ hushh-research/
 
 The `consent-protocol/` directory is a **git subtree** linked to the upstream repository at [hushh-labs/consent-protocol](https://github.com/hushh-labs/consent-protocol). This is the single source of truth for the backend.
 
-**Bidirectional sync:**
-
-```bash
-# Pull upstream changes into monorepo
-git subtree pull --prefix=consent-protocol consent-upstream main --squash
-
-# Push monorepo backend changes to upstream
-git subtree push --prefix=consent-protocol consent-upstream main
-```
-
-**Why subtree vs submodule:**
-- Works as a normal directory (no special checkout steps)
-- All code is committed into the monorepo (no broken references)
+**Why subtree (not submodule):**
+- Works as a normal directory -- no special checkout steps
+- All code is committed into the monorepo -- no broken references
 - CI, imports, and dev workflows work seamlessly
 - Other frontends can consume the upstream repo directly
+
+---
+
+## 🔄 Developer Workflow
+
+This monorepo uses a `Makefile` for all common operations. Run `make help` to see all targets.
+
+**First-time setup:**
+
+```bash
+git clone https://github.com/hushh-labs/hushh-research.git
+cd hushh-research
+make setup              # Adds the consent-upstream remote
+make sync-protocol      # Pulls latest backend from upstream
+```
+
+### Frontend-Only Contributor
+
+```bash
+make dev-backend        # Start backend (terminal 1)
+make dev-frontend       # Start frontend (terminal 2)
+# Commit normally -- consent-protocol/ is just a directory to you
+```
+
+### Backend-Only Contributor (Community)
+
+```bash
+# Clone the standalone repo directly:
+git clone https://github.com/hushh-labs/consent-protocol.git
+cd consent-protocol
+# Work entirely here, open PRs against this repo
+# Monorepo maintainers sync via: make sync-protocol
+```
+
+### Full-Stack / Maintainer
+
+```bash
+make sync-protocol      # Pull latest backend before starting work
+# ... work on both frontend and backend ...
+git add . && git commit -m "feat: ..."
+make push-protocol      # Push backend changes to upstream
+```
+
+### Golden Rules
+
+- `make sync-protocol` before starting backend-touching work
+- `make push-protocol` after merging PRs that modify `consent-protocol/`
+- Backend community PRs go to [hushh-labs/consent-protocol](https://github.com/hushh-labs/consent-protocol) directly
+- Monorepo maintainers sync upstream into the monorepo periodically
 
 ---
 
@@ -270,13 +309,14 @@ We welcome contributions! See our [Contributing Guide](./contributing.md) and [C
 
 **Quick start:**
 1. Fork & clone the repository
-2. Run `./scripts/test-ci-local.sh` to test CI checks locally
-3. Create a feature branch
-4. Make your changes
-5. Test CI locally again before committing
-6. Submit a pull request
+2. Run `make setup` to configure the upstream remote
+3. Run `make ci-local` to test CI checks locally
+4. Create a feature branch
+5. Make your changes
+6. Test CI locally again before committing
+7. Submit a pull request
 
-**Important:** Always test CI checks locally before committing to ensure your PR will pass GitHub Actions.
+**Backend contributions:** Open PRs directly at [hushh-labs/consent-protocol](https://github.com/hushh-labs/consent-protocol). See the [Developer Workflow](#-developer-workflow) section above.
 
 ---
 

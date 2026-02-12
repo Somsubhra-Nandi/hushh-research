@@ -1,0 +1,9 @@
+#!/bin/sh
+# .githooks/pre-commit -- Subtree reminder for consent-protocol/
+#
+# Install: git config core.hooksPath .githooks
+
+if git diff --cached --name-only | grep -q "^consent-protocol/"; then
+  printf "\n\033[33m[subtree]\033[0m consent-protocol/ files staged.\n"
+  printf "         After merge, run: \033[36mmake push-protocol\033[0m to sync upstream.\n\n"
+fi
