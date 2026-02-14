@@ -62,4 +62,27 @@ else
     echo "[setup-hooks] Could not add consent-upstream remote (may already exist)."
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Set initial sync bookmark (if missing)
+#    The pre-push hook uses refs/subtree-sync/consent-protocol to track the
+#    last upstream commit we synced. On first setup, fetch upstream and set it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SYNC_REF="refs/subtree-sync/consent-protocol"
+
+if git -C "$REPO_ROOT" show-ref --verify --quiet "$SYNC_REF" 2>/dev/null; then
+  echo "[setup-hooks] Subtree sync bookmark already set. ✓"
+else
+  # Try to fetch and set bookmark to current upstream HEAD
+  if (cd "$REPO_ROOT" && git fetch consent-upstream main --quiet 2>/dev/null); then
+    UPSTREAM_SHA=$(cd "$REPO_ROOT" && git rev-parse consent-upstream/main 2>/dev/null || echo "")
+    if [ -n "$UPSTREAM_SHA" ]; then
+      (cd "$REPO_ROOT" && git update-ref "$SYNC_REF" "$UPSTREAM_SHA")
+      echo "[setup-hooks] Sync bookmark set to upstream HEAD ($(echo "$UPSTREAM_SHA" | cut -c1-8)). ✓"
+    fi
+  else
+    echo "[setup-hooks] Could not fetch upstream -- bookmark will be set on first 'make sync-protocol'."
+  fi
+fi
+
 echo "[setup-hooks] Done. Hooks are active for this repo."

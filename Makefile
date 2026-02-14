@@ -16,15 +16,27 @@ help: ## Show this help
 sync-protocol: ## Pull latest consent-protocol from upstream
 	@echo "Pulling consent-protocol from upstream..."
 	git subtree pull --prefix=consent-protocol consent-upstream main --squash
+	@echo "Updating sync bookmark..."
+	git update-ref refs/subtree-sync/consent-protocol $$(git rev-parse consent-upstream/main)
 	@echo "Done. consent-protocol/ is now in sync with upstream."
+	@echo "Bookmark: $$(git rev-parse refs/subtree-sync/consent-protocol | cut -c1-8)"
 
 check-protocol-sync: ## Check if consent-protocol is in sync with upstream (non-blocking)
 	@echo "Checking consent-protocol upstream sync status..."
 	@git fetch consent-upstream main --quiet 2>/dev/null || { echo "⚠  Could not fetch consent-upstream. Is the remote configured? Run: make setup"; exit 1; }
-	@AHEAD=$$(git rev-list HEAD..consent-upstream/main --count 2>/dev/null || echo "0"); \
-	if [ "$$AHEAD" -gt 0 ]; then \
+	@CURRENT=$$(git rev-parse consent-upstream/main 2>/dev/null || echo ""); \
+	BOOKMARK=$$(git rev-parse refs/subtree-sync/consent-protocol 2>/dev/null || echo ""); \
+	if [ -z "$$BOOKMARK" ]; then \
 		echo ""; \
-		echo "❌ consent-upstream/main is $$AHEAD commit(s) ahead of your subtree."; \
+		echo "⚠  No sync bookmark found. Run: make sync-protocol"; \
+		echo ""; \
+		exit 1; \
+	elif [ "$$BOOKMARK" != "$$CURRENT" ]; then \
+		AHEAD=$$(git rev-list "$$BOOKMARK".."$$CURRENT" --count 2>/dev/null || echo "?"); \
+		echo ""; \
+		echo "❌ consent-upstream/main is $$AHEAD commit(s) ahead of last sync."; \
+		echo "   Last synced:      $$(echo $$BOOKMARK | cut -c1-8)"; \
+		echo "   Current upstream: $$(echo $$CURRENT | cut -c1-8)"; \
 		echo "   Run: make sync-protocol"; \
 		echo ""; \
 		exit 1; \

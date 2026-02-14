@@ -3,6 +3,11 @@
 #
 # Ensures consent-protocol subtree is in sync with upstream before pushing.
 # Install automatically via: make setup  (or: git config core.hooksPath .githooks)
+#
+# SYNC TRACKING: Uses a local git ref (refs/subtree-sync/consent-protocol) as a
+# bookmark of the last upstream commit we synced. This works correctly with
+# --squash subtree pulls (unlike git rev-list which breaks with squash merges
+# because squash doesn't link commit ancestry).
 
 # Do NOT use set -e; we handle errors explicitly with exit codes.
 # set -e causes false failures with `grep -q` and `|| true` patterns.
@@ -13,6 +18,10 @@ URL="$2"
 # Track whether consent-protocol files are in this push (top-level scope
 # so both section 1 and section 2 can see it).
 CP_FILES=""
+
+# Local ref used to bookmark the last-synced upstream commit.
+# Updated by `make sync-protocol` after each successful subtree pull.
+SYNC_REF="refs/subtree-sync/consent-protocol"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Subtree drift detection
@@ -27,7 +36,7 @@ case "$URL" in
     PUSH_RANGE=""
     while read local_ref local_sha remote_ref remote_sha; do
       if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-        # New branch — check all commits
+        # New branch -- check all commits
         PUSH_RANGE="$local_sha"
       else
         PUSH_RANGE="$remote_sha..$local_sha"
@@ -45,14 +54,26 @@ case "$URL" in
       if git remote | grep -q "consent-upstream"; then
         # Fetch upstream to compare (quick, metadata only)
         if git fetch consent-upstream main --quiet 2>/dev/null; then
-          # Check if upstream has commits we haven't merged
-          UPSTREAM_AHEAD=$(git rev-list HEAD..consent-upstream/main --count 2>/dev/null || echo "0")
+          # Compare current upstream HEAD against our last-synced bookmark.
+          # This correctly handles --squash subtree pulls where git rev-list
+          # would falsely report upstream as "ahead" even after syncing.
+          CURRENT_UPSTREAM=$(git rev-parse consent-upstream/main 2>/dev/null || echo "")
+          LAST_SYNC=""
+          if git show-ref --verify --quiet "$SYNC_REF" 2>/dev/null; then
+            LAST_SYNC=$(git rev-parse "$SYNC_REF" 2>/dev/null || echo "")
+          fi
 
-          if [ "$UPSTREAM_AHEAD" -gt 0 ]; then
-            printf "\n\033[31m[pre-push] BLOCKED\033[0m consent-upstream/main is %s commit(s) ahead.\n" "$UPSTREAM_AHEAD"
-            printf "         You must sync before pushing consent-protocol changes.\n\n"
+          if [ -z "$LAST_SYNC" ]; then
+            printf "\033[33m[pre-push]\033[0m No sync bookmark found (first time?).\n"
+            printf "         Run: \033[36mmake sync-protocol\033[0m to set initial bookmark.\n\n"
+            # Don't block on first use -- just warn so existing devs can bootstrap
+          elif [ "$LAST_SYNC" != "$CURRENT_UPSTREAM" ]; then
+            UPSTREAM_AHEAD=$(git rev-list "$LAST_SYNC".."$CURRENT_UPSTREAM" --count 2>/dev/null || echo "?")
+            printf "\n\033[31m[pre-push] BLOCKED\033[0m consent-upstream/main is %s commit(s) ahead of last sync.\n" "$UPSTREAM_AHEAD"
+            printf "         Last synced:      %s\n" "$(echo "$LAST_SYNC" | cut -c1-8)"
+            printf "         Current upstream:  %s\n\n" "$(echo "$CURRENT_UPSTREAM" | cut -c1-8)"
             printf "  Run:\n"
-            printf "    \033[36mmake sync-protocol\033[0m    # pull upstream changes\n"
+            printf "    \033[36mmake sync-protocol\033[0m    # pull upstream + update bookmark\n"
             printf "    \033[36m# resolve conflicts if any\033[0m\n"
             printf "    \033[36mgit push\033[0m              # try again\n\n"
             exit 1
