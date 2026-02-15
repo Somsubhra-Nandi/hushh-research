@@ -15,8 +15,7 @@ gcloud builds submit --config=deploy/backend.cloudbuild.yaml
 ### Frontend Deployment
 
 ```bash
-gcloud builds submit --config=deploy/frontend.cloudbuild.yaml \
-  --substitutions=_BACKEND_URL=https://consent-protocol-1006304528804.us-central1.run.app,_FRONTEND_URL=https://hushh-webapp-rpphvsc3tq-uc.a.run.app
+gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 ```
 
 ---
@@ -48,7 +47,7 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml \
    .\verify-secrets.ps1
    ```
 
-   Required backend secrets (7):
+   Required backend secrets (10):
 
    - `SECRET_KEY`
    - `VAULT_ENCRYPTION_KEY`
@@ -57,6 +56,9 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml \
    - `FRONTEND_URL`
    - `DB_USER`
    - `DB_PASSWORD`
+   - `APP_REVIEW_MODE`
+   - `REVIEWER_EMAIL`
+   - `REVIEWER_PASSWORD`
 
    **Note:** `DB_HOST`, `DB_PORT`, `DB_NAME` are set as Cloud Run env vars (not secrets). **Do not use `DATABASE_URL`** — migrations and scripts use DB_* only (strict parity). Delete `DATABASE_URL` from Secret Manager if present.
 
@@ -93,10 +95,17 @@ Deploys Next.js frontend to Cloud Run:
 
 The repo includes [.github/workflows/deploy-production.yml](../.github/workflows/deploy-production.yml), which runs on **push to the `deploy` branch** (and on manual dispatch). It does not run on `main`.
 
+Manual dispatch now supports `scope`:
+
+- `all` (default): deploy backend then frontend in one run/approval
+- `backend`: deploy backend only
+- `frontend`: deploy frontend only
+
 **For seamless deployment:**
 
 1. **GitHub secret:** In the repo settings, add a secret **`GCP_SA_KEY`** containing the JSON key of a Google Cloud service account that has permissions for Cloud Build, Secret Manager, and Cloud Run.
 2. **Branch flow:** After merging to `main`, update the `deploy` branch (e.g. merge `main` into `deploy` or push to `deploy`) so the workflow builds from an up-to-date state. Then push to `deploy` to trigger the workflow, or run it manually from the Actions tab.
+3. **Approval policy:** reviewer exclusions (for repo owner or specific users) are configured in GitHub Environment settings, not in repo code. Use Settings -> Environments -> `production` -> Required reviewers.
 
 ### Option 1: Cloud Build Triggers (Recommended)
 
@@ -118,8 +127,7 @@ The repo includes [.github/workflows/deploy-production.yml](../.github/workflows
      --repo-name=hushh-research \
      --repo-owner=YOUR_ORG \
      --branch-pattern=^main$ \
-     --build-config=deploy/frontend.cloudbuild.yaml \
-     --substitutions=_BACKEND_URL=https://consent-protocol-1006304528804.us-central1.run.app
+     --build-config=deploy/frontend.cloudbuild.yaml
    ```
 
 ### Option 2: Manual Deployment
@@ -128,9 +136,8 @@ The repo includes [.github/workflows/deploy-production.yml](../.github/workflows
 # Deploy backend
 gcloud builds submit --config=deploy/backend.cloudbuild.yaml
 
-# Deploy frontend (update backend URL if needed)
-gcloud builds submit --config=deploy/frontend.cloudbuild.yaml \
-  --substitutions=_BACKEND_URL=https://consent-protocol-1006304528804.us-central1.run.app,_FRONTEND_URL=https://hushh-webapp-rpphvsc3tq-uc.a.run.app
+# Deploy frontend (uses BACKEND_URL secret)
+gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 ```
 
 ---
@@ -139,7 +146,7 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml \
 
 All required secrets must exist in Google Cloud Secret Manager before deployment. Run `verify-secrets.ps1` if available, or create any missing secrets manually.
 
-**Backend (7 secrets):** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`
+**Backend (10 secrets):** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`, `APP_REVIEW_MODE`, `REVIEWER_EMAIL`, `REVIEWER_PASSWORD`
 
 **Note:** 
 - `DB_HOST`, `DB_PORT`, `DB_NAME` are set as Cloud Run env vars (not secrets) in `backend.cloudbuild.yaml`
@@ -150,7 +157,7 @@ All required secrets must exist in Google Cloud Secret Manager before deployment
   echo "your-db-password" | gcloud secrets create DB_PASSWORD --data-file=-
   ```
 
-**Frontend build-time (4 secrets):** `BACKEND_URL`, `APP_REVIEW_MODE`, `REVIEWER_EMAIL`, `REVIEWER_PASSWORD`
+**Frontend build-time (1 secret):** `BACKEND_URL`
 
 See [docs/reference/env_and_secrets.md](../docs/reference/env_and_secrets.md) for full reference.
 

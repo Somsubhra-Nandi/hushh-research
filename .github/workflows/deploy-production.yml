@@ -5,6 +5,16 @@ on:
     branches:
       - deploy
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "Deploy backend only, frontend only, or both"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - backend
+          - frontend
 
 env:
   GCP_PROJECT_ID: hushh-pda
@@ -13,8 +23,8 @@ env:
   FRONTEND_SERVICE: hushh-webapp
 
 jobs:
-  deploy-backend:
-    name: Deploy Backend to Production
+  deploy:
+    name: Deploy Production Scope
     runs-on: ubuntu-latest
     environment: production
 
@@ -30,12 +40,44 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Resolve deployment scope
+        id: scope
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            SCOPE="${{ github.event.inputs.scope }}"
+          else
+            SCOPE="all"
+          fi
+
+          case "$SCOPE" in
+            backend)
+              DEPLOY_BACKEND=true
+              DEPLOY_FRONTEND=false
+              ;;
+            frontend)
+              DEPLOY_BACKEND=false
+              DEPLOY_FRONTEND=true
+              ;;
+            *)
+              SCOPE="all"
+              DEPLOY_BACKEND=true
+              DEPLOY_FRONTEND=true
+              ;;
+          esac
+
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "deploy_backend=$DEPLOY_BACKEND" >> "$GITHUB_OUTPUT"
+          echo "deploy_frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
+
       - name: Deploy backend using Cloud Build
+        if: steps.scope.outputs.deploy_backend == 'true'
         run: |
           gcloud builds submit \
             --config=deploy/backend.cloudbuild.yaml
 
       - name: Get backend URL
+        if: steps.scope.outputs.deploy_backend == 'true'
         id: backend-url
         run: |
           BACKEND_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
@@ -44,33 +86,14 @@ jobs:
           echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
           echo "Backend URL: $BACKEND_URL"
 
-    outputs:
-      backend_url: ${{ steps.backend-url.outputs.url }}
-
-  deploy-frontend:
-    name: Deploy Frontend to Production
-    runs-on: ubuntu-latest
-    needs: deploy-backend
-    environment: production
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
       - name: Deploy frontend using Cloud Build
+        if: steps.scope.outputs.deploy_frontend == 'true'
         run: |
           gcloud builds submit \
             --config=deploy/frontend.cloudbuild.yaml
 
       - name: Get frontend URL
+        if: steps.scope.outputs.deploy_frontend == 'true'
         id: frontend-url
         run: |
           FRONTEND_URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} \
@@ -80,7 +103,18 @@ jobs:
           echo "Frontend URL: $FRONTEND_URL"
 
       - name: Deployment Summary
+        if: always()
+        shell: bash
         run: |
           echo "✅ Production Deployment Complete"
-          echo "Backend: ${{ needs.deploy-backend.outputs.backend_url }}"
-          echo "Frontend: ${{ steps.frontend-url.outputs.url }}"
+          echo "Scope: ${{ steps.scope.outputs.scope }}"
+          if [ "${{ steps.scope.outputs.deploy_backend }}" = "true" ]; then
+            echo "Backend: ${{ steps.backend-url.outputs.url }}"
+          else
+            echo "Backend: skipped"
+          fi
+          if [ "${{ steps.scope.outputs.deploy_frontend }}" = "true" ]; then
+            echo "Frontend: ${{ steps.frontend-url.outputs.url }}"
+          else
+            echo "Frontend: skipped"
+          fi

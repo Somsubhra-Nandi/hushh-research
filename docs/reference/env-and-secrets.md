@@ -38,6 +38,9 @@ See also: [deploy/README.md](../../deploy/README.md), [consent-protocol/.env.exa
 | `CONSENT_TIMEOUT_SECONDS` | `api/routes/sse.py`, `developer.py` | No | |
 | `ROOT_PATH` | `server.py` | No | |
 | `GOOGLE_GENAI_USE_VERTEXAI` | Cloud Run env (Gemini SDK) | No | Set in deploy, not in .env |
+| `APP_REVIEW_MODE` / `HUSHH_APP_REVIEW_MODE` | `api/routes/health.py` (`/api/app-config/review-mode`) | No | Backend runtime toggle for app review login |
+| `REVIEWER_EMAIL` | `api/routes/health.py` | Required when app review is enabled | |
+| `REVIEWER_PASSWORD` | `api/routes/health.py` | Required when app review is enabled | |
 
 **Migrations/scripts:** Use **DB_*** only (same as runtime). `db/migrate.py` uses `db.connection.get_database_url()` and `get_database_ssl()`. No `DATABASE_URL` anywhere.
 
@@ -48,9 +51,6 @@ See also: [deploy/README.md](../../deploy/README.md), [consent-protocol/.env.exa
 | `NEXT_PUBLIC_BACKEND_URL` | `lib/api/consent.ts`, `lib/config.ts`, api routes, etc. | Yes | Prod build: from Secret Manager `BACKEND_URL` |
 | `NEXT_PUBLIC_FIREBASE_*` (6 keys) | `lib/firebase/config.ts` | Yes | API key, auth domain, project ID, storage bucket, messaging sender ID, app ID |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | `lib/notifications/fcm-service.ts` | No (for push) | Web FCM token registration; from Firebase Console. See [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md). |
-| `NEXT_PUBLIC_APP_REVIEW_MODE` | `lib/config.ts` | No | |
-| `NEXT_PUBLIC_REVIEWER_EMAIL` | `lib/config.ts` | If app review | |
-| `NEXT_PUBLIC_REVIEWER_PASSWORD` | `lib/config.ts` | If app review | |
 | `NEXT_PUBLIC_CONSENT_TIMEOUT_SECONDS` | `lib/constants.ts` | No | |
 | `NEXT_PUBLIC_FRONTEND_URL` | `lib/config.ts` | No | |
 | `CAPACITOR_BUILD` | `next.config.ts` | Build script | |
@@ -83,6 +83,10 @@ See also: [deploy/README.md](../../deploy/README.md), [consent-protocol/.env.exa
 | `CONSENT_TIMEOUT_SECONDS` | No | No | `.env` / MCP config | |
 | `PORT` | No | No | Optional (uvicorn/runner) | |
 | `ROOT_PATH` | No | No | Optional (Swagger) | |
+| `APP_REVIEW_MODE` | No | Yes (prod) | Local: `.env`; Prod: Secret Manager | Backend app-review toggle |
+| `HUSHH_APP_REVIEW_MODE` | No | No | Optional alternative key | Alias toggle for app review |
+| `REVIEWER_EMAIL` | If app review | Yes (prod) | Local: `.env`; Prod: Secret Manager | |
+| `REVIEWER_PASSWORD` | If app review | Yes (prod) | Local: `.env`; Prod: Secret Manager | |
 
 **CI (GitHub Actions):** Backend tests use `TESTING=true`, dummy `SECRET_KEY`, and dummy `VAULT_ENCRYPTION_KEY`; no `.env` file required.
 
@@ -111,9 +115,6 @@ These are used by MCP modules (`mcp_modules/`) for MCP server functionality, not
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | No (recommended) | No | Same | Optional but recommended for full Firebase features |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | No (recommended) | No | Same | Optional but recommended for full Firebase features |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | No (for push) | No | Same | **Web push (FCM)**: VAPID key from Firebase Console -> Cloud Messaging -> Web configuration -> Key pair. Required for consent push on web. See [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md). |
-| `NEXT_PUBLIC_APP_REVIEW_MODE` | No | No | Prod build: Secret Manager | true/false |
-| `NEXT_PUBLIC_REVIEWER_EMAIL` | If app review | Yes (prod) | Prod build: Secret Manager | |
-| `NEXT_PUBLIC_REVIEWER_PASSWORD` | If app review | Yes (prod) | Prod build: Secret Manager | |
 | `CAPACITOR_BUILD` | For native build | No | Set by npm script | true for cap:build |
 | `ENVIRONMENT_MODE` | No | No | development / production | |
 | `NODE_ENV` | No | No | Set by Next.js / CI | |
@@ -125,7 +126,7 @@ These are used by MCP modules (`mcp_modules/`) for MCP server functionality, not
 
 **CI:** Frontend build uses dummy Firebase vars and `NEXT_PUBLIC_BACKEND_URL=https://api.example.com`; no `.env.local` required.
 
-**Prod build (Cloud Build):** Secrets `BACKEND_URL`, `APP_REVIEW_MODE`, `REVIEWER_EMAIL`, `REVIEWER_PASSWORD` are passed as build-args from Secret Manager.
+**Prod build (Cloud Build):** Secret `BACKEND_URL` is passed as build-arg from Secret Manager.
 
 ### Legacy/Deprecated vars
 
@@ -137,7 +138,7 @@ These are used by MCP modules (`mcp_modules/`) for MCP server functionality, not
 
 Secret Manager must hold **exactly** the keys the code uses. No extra secrets; no missing secrets. Cloud Build injects only these.
 
-### Backend (7 secrets) — all injected by `deploy/backend.cloudbuild.yaml`
+### Backend (10 secrets) — all injected by `deploy/backend.cloudbuild.yaml`
 
 | Secret name | Env var / usage in code |
 |-------------|-------------------------|
@@ -148,19 +149,19 @@ Secret Manager must hold **exactly** the keys the code uses. No extra secrets; n
 | `FRONTEND_URL` | `FRONTEND_URL` (server.py CORS) |
 | `DB_USER` | `DB_USER` (db/connection.py, db/db_client.py) |
 | `DB_PASSWORD` | `DB_PASSWORD` (same) |
+| `APP_REVIEW_MODE` | `APP_REVIEW_MODE` (api/routes/health.py) |
+| `REVIEWER_EMAIL` | `REVIEWER_EMAIL` (api/routes/health.py) |
+| `REVIEWER_PASSWORD` | `REVIEWER_PASSWORD` (api/routes/health.py) |
 
 **Not in Secret Manager (set as Cloud Run env vars in cloudbuild):** `DB_HOST`, `DB_PORT`, `DB_NAME`, `ENVIRONMENT`, `GOOGLE_GENAI_USE_VERTEXAI`.
 
 **Strict parity:** `DATABASE_URL` is not used anywhere. Migrations (`db/migrate.py`) use **DB_*** only, via `db.connection.get_database_url()`. Do **not** create or keep `DATABASE_URL` in Secret Manager; delete it if present.
 
-### Frontend (4 secrets, build-time only) — all used by `deploy/frontend.cloudbuild.yaml`
+### Frontend (1 secret, build-time only) — all used by `deploy/frontend.cloudbuild.yaml`
 
 | Secret name | Build-arg / usage in code |
 |-------------|---------------------------|
 | `BACKEND_URL` | `NEXT_PUBLIC_BACKEND_URL` (baked into client) |
-| `APP_REVIEW_MODE` | `NEXT_PUBLIC_APP_REVIEW_MODE` (lib/config.ts) |
-| `REVIEWER_EMAIL` | `NEXT_PUBLIC_REVIEWER_EMAIL` (lib/config.ts) |
-| `REVIEWER_PASSWORD` | `NEXT_PUBLIC_REVIEWER_PASSWORD` (lib/config.ts) |
 
 ### gcloud CLI: list and create only these secrets
 
@@ -168,17 +169,17 @@ Secret Manager must hold **exactly** the keys the code uses. No extra secrets; n
 # List existing secrets (ensure only the 11 above exist for this project)
 gcloud secrets list --project=YOUR_PROJECT_ID
 
-# Create a missing backend secret (repeat for each of the 7 names)
+# Create a missing backend secret (repeat for each of the 10 names)
 gcloud secrets create SECRET_KEY --replication-policy=automatic --project=YOUR_PROJECT_ID
 echo -n "your-value" | gcloud secrets versions add SECRET_KEY --data-file=- --project=YOUR_PROJECT_ID
 
-# Create a missing frontend secret (repeat for each of the 4 names)
+# Create a missing frontend secret (repeat for each of the 1 names)
 gcloud secrets create BACKEND_URL --replication-policy=automatic --project=YOUR_PROJECT_ID
 echo -n "https://your-backend.run.app" | gcloud secrets versions add BACKEND_URL --data-file=- --project=YOUR_PROJECT_ID
 ```
 
-**Required backend 7:** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`.  
-**Required frontend 4:** `BACKEND_URL`, `APP_REVIEW_MODE`, `REVIEWER_EMAIL`, `REVIEWER_PASSWORD`.  
+**Required backend 10:** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`, `APP_REVIEW_MODE`, `REVIEWER_EMAIL`, `REVIEWER_PASSWORD`.
+**Required frontend 1:** `BACKEND_URL`.
 
 **Note:** Consent push on web uses FCM and requires `NEXT_PUBLIC_FIREBASE_VAPID_KEY` (from Firebase Console, not Secret Manager). See [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md).
 

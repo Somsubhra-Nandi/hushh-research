@@ -20,12 +20,9 @@ steps:
           --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1006304528804 \
           --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=1:1006304528804:web:default \
           --build-arg NEXT_PUBLIC_BACKEND_URL=$$BACKEND_URL_VAL \
-          --build-arg NEXT_PUBLIC_APP_REVIEW_MODE=$$APP_REVIEW_MODE_VAL \
-          --build-arg NEXT_PUBLIC_REVIEWER_EMAIL=$$REVIEWER_EMAIL_VAL \
-          --build-arg NEXT_PUBLIC_REVIEWER_PASSWORD=$$REVIEWER_PASSWORD_VAL \
           -f hushh-webapp/Dockerfile \
           hushh-webapp
-    secretEnv: ["BACKEND_URL_VAL", "APP_REVIEW_MODE_VAL", "REVIEWER_EMAIL_VAL", "REVIEWER_PASSWORD_VAL"]
+    secretEnv: ["BACKEND_URL_VAL"]
     id: "build-frontend-image"
 
   # Step 2: Push Docker image to Container Registry
@@ -79,12 +76,6 @@ availableSecrets:
   secretManager:
     - versionName: projects/$PROJECT_ID/secrets/BACKEND_URL/versions/latest
       env: "BACKEND_URL_VAL"
-    - versionName: projects/$PROJECT_ID/secrets/APP_REVIEW_MODE/versions/latest
-      env: "APP_REVIEW_MODE_VAL"
-    - versionName: projects/$PROJECT_ID/secrets/REVIEWER_EMAIL/versions/latest
-      env: "REVIEWER_EMAIL_VAL"
-    - versionName: projects/$PROJECT_ID/secrets/REVIEWER_PASSWORD/versions/latest
-      env: "REVIEWER_PASSWORD_VAL"
 
 # Options
 options:
