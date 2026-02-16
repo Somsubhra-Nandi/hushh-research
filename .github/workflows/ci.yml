@@ -38,7 +38,7 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
       - name: Run gitleaks (no license required)
-        run: gitleaks git --redact --no-banner --exit-code 1
+        run: gitleaks git --redact --no-banner --exit-code 1 --log-opts="$GITHUB_SHA"
 
   # ============================================================================
   # Path filters: run frontend/backend jobs only when their paths change (or manual scope)
