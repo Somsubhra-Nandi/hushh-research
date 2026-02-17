@@ -2,8 +2,10 @@ name: "Tri-Flow CI"
 
 on:
   pull_request:
-    branches: [main]
+    branches: ["**"]
   push:
+    branches: ["**"]
+  merge_group:
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -17,28 +19,57 @@ on:
           - backend
           - all
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: "20"
   PYTHON_VERSION: "3.13"
   WEB_LINT_WARNING_BUDGET: "150"
+  GITLEAKS_VERSION: "8.24.2"
 
 jobs:
   secret-scan:
     name: "Secret Scan"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install gitleaks (OSS CLI)
+      - name: Install gitleaks OSS CLI (license-free)
         run: |
-          GITLEAKS_VERSION="8.24.2"
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+          # Keep CI independent from licensed action wrappers by using the OSS binary directly.
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${{ env.GITLEAKS_VERSION }}/gitleaks_${{ env.GITLEAKS_VERSION }}_linux_x64.tar.gz" \
             | tar -xz
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
-      - name: Run gitleaks (no license required)
-        run: gitleaks git --redact --no-banner --exit-code 1 --log-opts="$GITHUB_SHA"
+      - name: Resolve scan commit range
+        id: scan-range
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            LOG_OPTS="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            LOG_OPTS="${{ github.event.before }}..${{ github.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+            git fetch origin "$DEFAULT_BRANCH" --quiet || true
+            if git rev-parse "origin/$DEFAULT_BRANCH" >/dev/null 2>&1; then
+              LOG_OPTS="origin/$DEFAULT_BRANCH..${{ github.sha }}"
+            else
+              LOG_OPTS="${{ github.sha }}"
+            fi
+          else
+            LOG_OPTS="${{ github.sha }}"
+          fi
+          echo "log_opts=$LOG_OPTS" >> "$GITHUB_OUTPUT"
+      - name: Run gitleaks scan (no license secret required)
+        run: gitleaks git --redact --no-banner --exit-code 1 --log-opts="${{ steps.scan-range.outputs.log_opts }}"
 
   # ============================================================================
   # Path filters: run frontend/backend jobs only when their paths change (or manual scope)
@@ -46,15 +77,16 @@ jobs:
   paths:
     name: "Path filters"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      frontend: ${{ steps.outputs.frontend }}
-      backend: ${{ steps.outputs.backend }}
+      frontend: ${{ steps.resolve.outputs.frontend }}
+      backend: ${{ steps.resolve.outputs.backend }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
         id: filter
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
           filters: |
             frontend:
@@ -64,26 +96,31 @@ jobs:
               - 'consent-protocol/**'
               - '.github/workflows/ci.yml'
 
-      - id: manual
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          scope="${{ github.event.inputs.scope }}"
-          case "$scope" in
-            frontend) echo "frontend=true" >> $GITHUB_OUTPUT; echo "backend=false" >> $GITHUB_OUTPUT ;;
-            backend) echo "frontend=false" >> $GITHUB_OUTPUT; echo "backend=true" >> $GITHUB_OUTPUT ;;
-            *) echo "frontend=true" >> $GITHUB_OUTPUT; echo "backend=true" >> $GITHUB_OUTPUT ;;
-          esac
-
-      - id: outputs
+      - id: override
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group'
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "frontend=${{ steps.manual.outputs.frontend }}" >> $GITHUB_OUTPUT
-            echo "backend=${{ steps.manual.outputs.backend }}" >> $GITHUB_OUTPUT
+            scope="${{ github.event.inputs.scope }}"
+            case "$scope" in
+              frontend) echo "frontend=true" >> "$GITHUB_OUTPUT"; echo "backend=false" >> "$GITHUB_OUTPUT" ;;
+              backend) echo "frontend=false" >> "$GITHUB_OUTPUT"; echo "backend=true" >> "$GITHUB_OUTPUT" ;;
+              *) echo "frontend=true" >> "$GITHUB_OUTPUT"; echo "backend=true" >> "$GITHUB_OUTPUT" ;;
+            esac
           else
-            echo "frontend=${{ steps.filter.outputs.frontend }}" >> $GITHUB_OUTPUT
-            echo "backend=${{ steps.filter.outputs.backend }}" >> $GITHUB_OUTPUT
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "backend=true" >> "$GITHUB_OUTPUT"
           fi
-        if: always() && (github.event_name == 'workflow_dispatch' && steps.manual.outcome == 'success') || (github.event_name != 'workflow_dispatch' && steps.filter.outcome == 'success')
+
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "frontend=${{ steps.override.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+            echo "backend=${{ steps.override.outputs.backend }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+            echo "backend=${{ steps.filter.outputs.backend }}" >> "$GITHUB_OUTPUT"
+          fi
+        if: always()
 
   # ============================================================================
   # Frontend (Next.js + Capacitor)
@@ -93,6 +130,7 @@ jobs:
     needs: [paths]
     if: needs.paths.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: ./hushh-webapp
@@ -183,6 +221,7 @@ jobs:
     needs: [paths]
     if: needs.paths.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: ./consent-protocol
@@ -229,6 +268,7 @@ jobs:
     needs: [paths]
     if: needs.paths.outputs.frontend == 'true' || needs.paths.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -259,6 +299,7 @@ jobs:
   subtree-sync-check:
     name: "Upstream Sync"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -298,3 +339,46 @@ jobs:
           else
             echo "✅ consent-protocol/ is in sync with upstream."
           fi
+
+  ci-status:
+    name: "CI Status Gate"
+    needs:
+      - secret-scan
+      - paths
+      - web-check
+      - protocol-check
+      - integration-check
+      - subtree-sync-check
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate job outcomes
+        shell: bash
+        run: |
+          SECRET_SCAN="${{ needs['secret-scan'].result }}"
+          PATHS="${{ needs.paths.result }}"
+          WEB="${{ needs['web-check'].result }}"
+          PROTOCOL="${{ needs['protocol-check'].result }}"
+          INTEGRATION="${{ needs['integration-check'].result }}"
+          SUBTREE="${{ needs['subtree-sync-check'].result }}"
+
+          printf 'secret-scan=%s\n' "$SECRET_SCAN"
+          printf 'paths=%s\n' "$PATHS"
+          printf 'web-check=%s\n' "$WEB"
+          printf 'protocol-check=%s\n' "$PROTOCOL"
+          printf 'integration-check=%s\n' "$INTEGRATION"
+          printf 'subtree-sync-check=%s\n' "$SUBTREE"
+
+          fail=0
+          for result in "$SECRET_SCAN" "$PATHS" "$WEB" "$PROTOCOL" "$INTEGRATION" "$SUBTREE"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ] || [ "$result" = "timed_out" ]; then
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "All required CI jobs passed or were intentionally skipped."

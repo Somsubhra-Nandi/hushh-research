@@ -12,15 +12,26 @@ This document describes the **Tri-Flow CI** workflow and how to stay aligned wit
 
 | Trigger | Branches | Behavior |
 |--------|-----------|----------|
-| Pull request | `main` | Full CI (path-filtered) |
-| Push | `main` | Full CI (path-filtered) |
+| Pull request | All branches (`**`) | Full CI (path-filtered) |
+| Push | All branches (`**`) | Full CI (path-filtered) |
+| Merge queue | `main` | Full CI (frontend + backend forced on) |
 | Manual | Any | **workflow_dispatch** with scope: `frontend` \| `backend` \| `all` |
 
-**Path filters:** Jobs run only when relevant paths change (or when run manually with a scope).
+**Path filters:** Jobs run only when relevant paths change for `push`/`pull_request` (or when run manually with a scope). Merge queue runs both stacks for deterministic gating.
 
 - **Frontend job** runs when `hushh-webapp/**` changes.
 - **Backend job** runs when `consent-protocol/**` changes.
 - **Integration job** runs when either frontend or backend paths change.
+
+---
+
+## Global Gates (Always Run)
+
+| Gate | Purpose | Behavior |
+|------|---------|----------|
+| Secret Scan | Detect leaked credentials/tokens early | `gitleaks` OSS CLI (license-free) scans commit range for each event |
+| Upstream Sync | Detect monorepo/subtree drift | Warns when `consent-protocol/` tree differs from upstream `main` |
+| CI Status Gate | Single required check for branch protection | Fails if any required job fails/cancels/times out; allows intentional `skipped` jobs |
 
 ---
 
@@ -168,6 +179,6 @@ If it exits 0, CI should pass. If it fails, fix the reported step before committ
 
 ## Upstream CI (consent-protocol standalone)
 
-The consent-protocol has its own full CI pipeline at [hushh-labs/consent-protocol](https://github.com/hushh-labs/consent-protocol/actions). It runs 5 jobs: lint, typecheck, test, security scan, and Docker build verification.
+The consent-protocol has its own full CI pipeline at [hushh-labs/consent-protocol](https://github.com/hushh-labs/consent-protocol/actions). It now runs on all branches plus merge queue and includes: secret scan, lint, typecheck, test, security scan, Docker build verification, and a final status gate.
 
 The monorepo `protocol-check` job is a lightweight mirror. For full coverage, PRs to the upstream repo are the authoritative gate.

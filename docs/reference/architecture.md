@@ -282,10 +282,15 @@ GitHub Actions workflow (`.github/workflows/ci.yml`) with path-filtered jobs:
 
 | Job              | Trigger                        | Checks                                   |
 | ---------------- | ------------------------------ | ---------------------------------------- |
+| `secret-scan`    | Every push/PR/merge queue      | `gitleaks` OSS CLI on event commit range |
 | `web-check`      | `hushh-webapp/**` changes      | ESLint, TypeScript, Vitest               |
 | `protocol-check` | `consent-protocol/**` changes  | Ruff, mypy, pytest                       |
+| `integration-check` | Frontend or backend changes | Route contract verification               |
+| `subtree-sync-check` | Every push/PR/merge queue   | Upstream subtree drift warning            |
+| `ci-status`      | Always (final gate)            | Fails if any required job failed          |
 
-Manual trigger: Actions > Tri-Flow CI > scope: `frontend` / `backend` / `all`.
+Manual trigger: Actions > Tri-Flow CI > scope: `frontend` / `backend` / `all`.  
+Coverage: push and PR on all branches, plus merge queue (`main`).
 
 ### GCP Secrets
 

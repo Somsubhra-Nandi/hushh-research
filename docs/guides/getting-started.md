@@ -144,13 +144,15 @@ pytest                          # Tests
 
 The backend deploys to Google Cloud Run via GitHub Actions.
 
-**Workflow**: `.github/workflows/ci.yml`
+**CI workflow**: `.github/workflows/ci.yml`  
+**Production deploy workflow**: `.github/workflows/deploy-production.yml`
 
-| Branch              | Action                                      |
-| ------------------- | ------------------------------------------- |
-| `main`              | Auto-deploy to production                   |
-| `feat/*`            | CI checks only (no deploy)                  |
-| Manual trigger       | Actions > Tri-Flow CI > scope: `backend`   |
+| Trigger | Action |
+| ------- | ------ |
+| Push / PR on any branch | Runs CI checks only |
+| Push to `deploy` branch | Runs production deployment |
+| Manual deploy trigger | Actions > Deploy to Production > scope: `backend` / `frontend` / `all` |
+| Manual CI trigger | Actions > Tri-Flow CI > scope: `backend` / `frontend` / `all` |
 
 **Manual deploy**:
 
