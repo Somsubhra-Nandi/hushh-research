@@ -20,6 +20,12 @@ vi.mock("@/components/consent/notification-provider", () => ({
   usePendingConsentCount: () => 0,
 }));
 
+vi.mock("@/lib/services/vault-service", () => ({
+  VaultService: {
+    checkVault: vi.fn(async () => false),
+  },
+}));
+
 // Polyfill ResizeObserver for jsdom.
 class MockResizeObserver {
   private cb: ResizeObserverCallback;
@@ -74,4 +80,3 @@ describe("Navbar bottom fixed UI offset", () => {
     expect(v.trim()).toBe("74px");
   });
 });
-

@@ -8,11 +8,22 @@
 - **Motion:** Use GSAP via Morphy hooks/helpers (`lib/morphy-ux/gsap-init.ts`, `lib/morphy-ux/hooks/*`). Avoid bespoke `ease-[cubic-bezier(...)]` / long Tailwind transitions in feature code.
 - **shadcn:** Keep `components/ui/*` stock; add/update via shadcn CLI. Extend via `lib/morphy-ux/ui/*`.
 - **Radius:** Use token-backed `rounded-*` classes (`rounded-xl/2xl/3xl` map to CSS vars).
+- **Typography:** Body text is `Geist Sans` (`font-sans`), titles/headings are `Inter` (`font-heading`), code text is `Geist Mono` (`font-mono`). Do not use inline `fontFamily` in feature components. Global swaps happen from `hushh-webapp/app/layout.tsx` via `--font-app-*` vars.
 - **Onboarding Intro:** Use `BrandMark` + `OnboardingFeatureList` (feature rail + tri-tone icon chips) from `lib/morphy-ux/ui/*`; do not recreate this pattern in route components.
+- **Kai Route Split:** Keep route intent clean:
+  - `/` marketing
+  - `/login` auth
+  - `/kai/onboarding` questionnaire
+  - `/kai/import` import/vault intro
+  - `/kai` info home + first-time nav tour
+  - `/kai/dashboard` portfolio analytics
+- **Vault Methods:** Method switching must go through `VaultMethodService` (single active KEK model). Do not add ad-hoc setup calls in UI components.
+- **Bottom Nav Tour:** Use `components/kai/onboarding/kai-nav-tour.tsx` + nav-tour services for first-time `/kai` guidance and sync.
 
 See:
 - `docs/reference/design-system.md`
 - `docs/reference/frontend-pattern-catalog.md`
+- `docs/reference/architecture.md`
 
 ## 1. Tri-Flow Architecture (Data Access)
 

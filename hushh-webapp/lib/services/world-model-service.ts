@@ -176,6 +176,19 @@ export class WorldModelService {
         lastUpdated: raw.last_updated || raw.lastUpdated || null,
       };
     } else {
+      // Without a VAULT_OWNER token, metadata endpoint is expected to reject with 401.
+      // Return empty metadata so first-time / locked-vault screens can render gracefully.
+      if (!vaultOwnerToken) {
+        return {
+          userId,
+          domains: [],
+          totalAttributes: 0,
+          modelCompleteness: 0,
+          suggestedDomains: [],
+          lastUpdated: null,
+        };
+      }
+
       // Web: Use ApiService.apiFetch() for tri-flow compliance
       const response = await ApiService.apiFetch(`/api/world-model/metadata/${userId}`, {
         headers: this.getAuthHeaders(vaultOwnerToken),
@@ -184,6 +197,20 @@ export class WorldModelService {
       // Handle 404 as valid "no data" response for new users
       if (response.status === 404) {
         result = {
+          userId,
+          domains: [],
+          totalAttributes: 0,
+          modelCompleteness: 0,
+          suggestedDomains: [],
+          lastUpdated: null,
+        };
+      } else if (response.status === 401 || response.status === 403) {
+        // Token may be missing/expired/revoked during startup transitions.
+        // Return empty metadata instead of throwing noisy runtime errors.
+        console.warn(
+          `[WorldModelService] Metadata unauthorized for ${userId}; returning empty state (${response.status})`
+        );
+        return {
           userId,
           domains: [],
           totalAttributes: 0,

@@ -18,9 +18,20 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["Quicksand", "system-ui", "sans-serif"],
-        heading: ["Economica", "system-ui", "sans-serif"],
-        display: ["Economica", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        heading: [
+          "var(--font-heading)",
+          "var(--font-sans)",
+          "system-ui",
+          "sans-serif",
+        ],
+        display: [
+          "var(--font-heading)",
+          "var(--font-sans)",
+          "system-ui",
+          "sans-serif",
+        ],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       fontSize: {
         // University typography scale

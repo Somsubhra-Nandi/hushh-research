@@ -33,7 +33,7 @@ export function KycPreviewCompact() {
       showRipple={false}
       className="h-full w-full"
     >
-      <div className="relative overflow-hidden p-7">
+      <div className="morphy-theme-content relative overflow-hidden p-7">
         <div className="relative space-y-6">
           <h3 className="text-center text-xl font-extrabold tracking-tight">
             Status: KYC completed

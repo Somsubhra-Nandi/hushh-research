@@ -93,14 +93,14 @@ export function PreviewCarouselStep({ onContinue }: { onContinue: () => void }) 
       await ensureMorphyGsapReady();
       const gsap = await getGsap();
       if (!gsap || cancelled) return;
-      const { durationsMs } = getMotionCssVars();
+      const { pageEnterDurationMs } = getMotionCssVars();
       gsap.fromTo(
         el,
         { opacity: 0, y: 10 },
         {
           opacity: 1,
           y: 0,
-          duration: durationsMs.sm / 1000,
+          duration: pageEnterDurationMs / 1000,
           ease: getMorphyEaseName("emphasized"),
           overwrite: "auto",
           clearProps: "opacity,transform",
@@ -130,25 +130,22 @@ export function PreviewCarouselStep({ onContinue }: { onContinue: () => void }) 
       const gsap = await getGsap();
       if (!gsap || cancelled) return;
       const { durationsMs } = getMotionCssVars();
-
-      // Fade out quickly
       gsap.to(el, {
         opacity: 0,
         y: -4,
-        duration: durationsMs.xs / 1000,
-        ease: getMorphyEaseName("standard"),
+        duration: durationsMs.sm / 1000,
+        ease: getMorphyEaseName("decelerate"),
         overwrite: "auto",
         onComplete: () => {
           if (cancelled) return;
           setDisplayIndex(selectedIndex);
-          // Fade in new
           gsap.fromTo(
             el,
-            { opacity: 0, y: 6 },
+            { opacity: 0, y: 8 },
             {
               opacity: 1,
               y: 0,
-              duration: durationsMs.sm / 1000,
+              duration: durationsMs.lg / 1000,
               ease: getMorphyEaseName("emphasized"),
               overwrite: "auto",
               clearProps: "opacity,transform",
@@ -185,10 +182,10 @@ export function PreviewCarouselStep({ onContinue }: { onContinue: () => void }) 
       <header className="relative flex-none px-6 pt-6 pb-2">
         <div className="absolute right-6 top-3 z-10">
           <Button
-            variant="link"
-            effect="fill"
-            size="sm"
-            showRipple={false}
+            variant="blue-gradient"
+            effect="fade"
+            size="default"
+            showRipple
             onClick={completeAndContinue}
           >
             Skip

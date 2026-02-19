@@ -72,8 +72,8 @@ export type { CardProps } from "./card";
 // ============================================================================
 // UNIVERSITY TYPOGRAPHY SYSTEM (CENTRALIZED)
 // All typography classes must be referenced via this object.
-// Headings: Exo 2 (.font-heading-exo2) - Light weight (300)
-// Body: Quicksand (.font-body-quicksand) - Normal weight (400)
+// Headings: Inter (.font-heading)
+// Body: Geist Sans (.font-sans)
 // Font families are defined in globals.css, classes are referenced here.
 // ============================================================================
 
@@ -107,9 +107,9 @@ export const typography = {
   },
   // Typography classes
   classes: {
-    heading: "font-heading-exo2",
-    body: "font-body-quicksand",
-    display: "font-heading-exo2",
+    heading: "font-heading",
+    body: "font-sans",
+    display: "font-heading",
   },
 } as const;
 

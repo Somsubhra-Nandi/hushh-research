@@ -27,6 +27,10 @@ function ThemeTransitionController() {
     }
 
     const root = document.documentElement;
+    // If a control pre-started the transition (before setTheme), avoid double-triggering.
+    if (root.classList.contains("theme-switching")) {
+      return;
+    }
     root.classList.add("theme-switching");
 
     const timeout = window.setTimeout(() => {

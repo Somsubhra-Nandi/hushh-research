@@ -97,7 +97,7 @@ export function OnboardingFeatureList({
   return (
     <div ref={listRef} data-feature-rail-list="true" className="relative">
       <FeatureRail
-        className="left-0"
+        className="left-2 sm:left-3"
         style={{
           top: `${railOffsets.top}px`,
           bottom: `${railOffsets.bottom}px`,
@@ -107,7 +107,7 @@ export function OnboardingFeatureList({
         bottomDotRef={bottomDotEl}
       />
 
-      <div className="relative z-10 space-y-8 sm:space-y-10">
+      <div className="relative z-10 space-y-8 px-2 sm:space-y-10 sm:px-3">
         {features.map((feature, index) => (
           <div
             key={feature.title}

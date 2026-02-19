@@ -89,8 +89,17 @@ import { VaultFlow } from "@/components/vault/vault-flow";
   user={currentUser}
   onSuccess={handleSuccess}
   onStepChange={(step) => handleHeaderVisibility(step)}
+  enableGeneratedDefault // Enables "Not now (use secure default key)"
 />;
 ```
+
+Vault security policy (locked):
+- Never allow plaintext-at-rest paths.
+- If users skip custom passphrase creation, use generated default key flow.
+- Generated default key is allowed only on secure mechanisms:
+  - Native: biometric-protected `HushhKeychain.setBiometric/getBiometric`
+  - Web: passkey/WebAuthn PRF
+- If secure mechanism is unavailable (web no PRF), require passphrase.
 
 ---
 
@@ -179,15 +188,27 @@ import { VaultFlow } from "@/components/vault/vault-flow";
 
 ## 6. Typography
 
-**Fonts:** `Figtree` (Primary), `Quicksand` (Body fallback)
+**Global font contract (centralized):**
+- Body/UI text: `Geist Sans` (`font-sans`)
+- Headings/titles: `Inter` (`font-heading`)
+- Code/technical tokens: `Geist Mono` (`font-mono`)
 
-| Class            | Usage                 |
-| ---------------- | --------------------- |
-| `.text-headline` | 2.5rem/700 - H1       |
-| `.text-title`    | 1.375rem/600 - H2     |
-| `.text-body`     | 1rem - Body           |
-| `.text-caption`  | 0.8125rem - Secondary |
-| `.text-small`    | 0.75rem - Tertiary    |
+Implementation source of truth:
+- `hushh-webapp/app/layout.tsx` (font registration via `next/font/google`)
+- `hushh-webapp/app/layout.tsx` runtime font vars: `--font-app-body`, `--font-app-heading`, `--font-app-mono`
+- `hushh-webapp/app/globals.css` semantic mapping (`--font-sans`, `--font-heading`, `--font-mono`)
+- `hushh-webapp/tailwind.config.ts` (`fontFamily.sans|heading|display|mono`)
+- `hushh-webapp/lib/morphy-ux/morphy.tsx` (`typography.classes`)
+
+Rules:
+- Semantic headings (`h1`–`h6`) automatically use `Inter`.
+- Non-semantic title text should use `font-heading`.
+- Do not set inline `fontFamily` in feature components.
+- To swap fonts globally, change only `hushh-webapp/app/layout.tsx` (keep semantic variable names unchanged).
+
+Migration map:
+- `font-heading-exo2` -> `font-heading`
+- `font-body-quicksand` -> `font-sans`
 
 ---
 
@@ -331,6 +352,65 @@ Do:
 Don't:
 - Import `toast` from `sonner` in new feature code unless you are inside infrastructure/wrapper layers.
 - Hardcode one-off toast colors per screen.
+
+---
+
+## Kai Dashboard Pattern (v2)
+
+The production dashboard composition is centralized in:
+- `hushh-webapp/components/kai/views/dashboard-master-view.tsx`
+
+Sub-components:
+- `hushh-webapp/components/kai/cards/dashboard-summary-hero.tsx`
+- `hushh-webapp/components/kai/cards/allocation-strip.tsx`
+- `hushh-webapp/components/kai/cards/holding-position-card.tsx`
+- `hushh-webapp/components/kai/cards/new-holding-cta-card.tsx`
+- `hushh-webapp/components/kai/cards/profile-based-picks-list.tsx`
+
+Rules:
+- Keep data source as `PortfolioData` from `KaiFlow`.
+- Map actions to existing handlers (`onManagePortfolio`, `onAnalyzeStock`, `onAnalyzeLosers`) rather than adding inline CRUD APIs.
+- Keep rollback option by preserving legacy dashboard branch behind internal flag during rollout.
+
+---
+
+## Vault Method UX Pattern
+
+Single active KEK model is authoritative:
+- `passphrase`
+- `generated_default_native_biometric`
+- `generated_default_web_prf`
+
+Implementation anchors:
+- `hushh-webapp/lib/services/vault-method-service.ts`
+- `hushh-webapp/lib/vault/rewrap-vault-key.ts`
+- `hushh-webapp/components/vault/vault-flow.tsx`
+- `hushh-webapp/components/vault/vault-method-prompt.tsx`
+- `hushh-webapp/app/profile/page.tsx`
+
+Rules:
+- Switching methods re-wraps the same vault key; do not rotate vault key material just for method changes.
+- Keep prompts skippable, but never bypass encryption-at-rest.
+- Reuse shared service methods in both prompt and profile settings.
+
+---
+
+## Bottom Nav Tour Pattern
+
+First-time `/kai` guided tour is implemented by:
+- `hushh-webapp/components/kai/onboarding/kai-nav-tour.tsx`
+
+Persistence layers:
+- Local (pre-vault or fallback): `hushh-webapp/lib/services/kai-nav-tour-local-service.ts`
+- Vault-backed canonical sync: `hushh-webapp/lib/services/kai-nav-tour-sync-service.ts`
+- Domain fields in `kai_profile`:
+  - `onboarding.nav_tour_completed_at`
+  - `onboarding.nav_tour_skipped_at`
+
+Rules:
+- Tour must not render during onboarding/import routes.
+- Tour completion/skip should sync cross-device when vault context is available.
+- Avoid overlapping modal prompts; quick-unlock prompt should defer when nav tour is active.
 
 ---
 

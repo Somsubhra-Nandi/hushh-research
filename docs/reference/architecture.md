@@ -178,6 +178,42 @@ consent-protocol/
 
 **Runtime**: Next.js 16, React 19, TailwindCSS, Capacitor 8
 
+### Route Architecture (Kai v4)
+
+Current route contract:
+
+- `/` -> public marketing onboarding (intro + preview)
+- `/login` -> auth only
+- `/kai/onboarding` -> questionnaire + persona (first-time and vault-backed continuity)
+- `/kai/import` -> portfolio connect/import flow
+- `/kai` -> signed-in market/info home
+- `/kai/dashboard` -> portfolio analytics view
+
+Flow orchestration:
+
+1. Auth success resolves via `PostAuthRouteService`.
+2. `KaiOnboardingGuard` enforces onboarding completion before non-onboarding `/kai/*`.
+3. `VaultLockGuard` enforces unlock only when a vault exists.
+4. `KaiFlow` route mode controls import vs dashboard behavior.
+
+### Vault Security UX Architecture
+
+- `VaultFlow` is the unified create/unlock/recovery surface.
+- Generated-default key mode is first-class, never plaintext.
+- `VaultMethodService` is the single method-switch API for frontend flows.
+- `VaultMethodPrompt` is a post-login, skippable upsell for passphrase users when quick methods are available.
+- Profile route exposes method management through the same service path.
+
+### Bottom Nav Tour Architecture
+
+- `/kai` can show first-time guided tour for bottom nav tabs.
+- Local temporary state:
+  - `kai_nav_tour_v1:${userId}` (Capacitor Preferences)
+- Canonical cross-device state:
+  - `kai_profile.onboarding.nav_tour_completed_at`
+  - `kai_profile.onboarding.nav_tour_skipped_at`
+- Sync occurs through onboarding sync bridge once vault context is available.
+
 ### Stack
 
 | Layer            | Technology                          | Purpose                         |

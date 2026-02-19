@@ -1,30 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Quicksand, Exo_2, Figtree } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { RootLayoutClient } from "./layout-client";
 
-const inter = Inter({
+const geistSans = Geist({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-app-body",
 });
 
-const quicksand = Quicksand({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-quicksand",
+  variable: "--font-app-mono",
 });
 
-const exo2 = Exo_2({
+const headingSans = Inter({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-exo2",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-figtree",
+  variable: "--font-app-heading",
 });
 
 export const metadata: Metadata = {
@@ -68,7 +62,7 @@ export default function RootLayout({
         />
       </head>
       <RootLayoutClient
-        fontClasses={`${inter.variable} ${quicksand.variable} ${exo2.variable} ${figtree.variable}`}
+        fontClasses={`${geistSans.variable} ${geistMono.variable} ${headingSans.variable}`}
       >
         {children}
       </RootLayoutClient>

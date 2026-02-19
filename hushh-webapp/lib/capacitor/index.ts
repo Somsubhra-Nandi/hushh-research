@@ -286,12 +286,15 @@ export interface HushhVaultPlugin {
    */
   getVault(options: { userId: string; authToken?: string }): Promise<{
     authMethod: string;
+    keyMode?: string;
     encryptedVaultKey: string;
     salt: string;
     iv: string;
     recoveryEncryptedVaultKey: string;
     recoverySalt: string;
     recoveryIv: string;
+    passkeyCredentialId?: string;
+    passkeyPrfSalt?: string;
   }>;
 
   /**
@@ -301,12 +304,15 @@ export interface HushhVaultPlugin {
   setupVault(options: {
     userId: string;
     authMethod?: string;
+    keyMode?: string;
     encryptedVaultKey: string;
     salt: string;
     iv: string;
     recoveryEncryptedVaultKey: string;
     recoverySalt: string;
     recoveryIv: string;
+    passkeyCredentialId?: string;
+    passkeyPrfSalt?: string;
     authToken?: string;
   }): Promise<{ success: boolean }>;
 

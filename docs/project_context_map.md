@@ -40,6 +40,33 @@ These are invariants. If a change violates one, it is the wrong change.
 - `deploy/`: Cloud Build/Cloud Run + App Store deployment docs
 - `scripts/`: local CI and repo tooling
 
+## Current Kai Route Map (v4.x)
+
+The frontend route split is intentional and must remain stable unless route contracts are updated.
+
+- `/`: public marketing onboarding surface (intro + preview, no auth controls)
+- `/login`: auth-only surface (Google/Apple + disabled phone)
+- `/kai/onboarding`: canonical onboarding questionnaire + persona
+- `/kai/import`: portfolio connection/import flow and vault introduction moment
+- `/kai`: signed-in info home (no vault required, first-time bottom-nav tour)
+- `/kai/dashboard`: portfolio analytics/dashboard (requires data, redirects to `/kai/import` when empty)
+
+Guard invariants:
+- Incomplete onboarding cannot navigate to non-onboarding `/kai` routes.
+- Vault unlock is required only when vault exists and protected operations need it.
+- First-time no-vault users are not forced into vault unlock directly after login.
+
+## Vault Security Model (Current)
+
+- Encryption at rest is mandatory. There is no plaintext fallback.
+- If custom passphrase is skipped, generated-default secure key mode is used.
+- Single active KEK mode is authoritative:
+  - `passphrase`
+  - `generated_default_native_biometric`
+  - `generated_default_web_prf`
+- Method switching re-wraps the same vault key and updates metadata in `vault_keys`.
+- Recovery key remains mandatory fallback.
+
 ## How Data Access Works (Mental Model)
 
 - Web: React component -> service -> Next.js `/app/api/...` proxy -> FastAPI
@@ -60,6 +87,10 @@ Primary references:
 - `consent-protocol/docs/reference/world-model.md`
 - `consent-protocol/docs/reference/consent-protocol.md`
 
+Current onboarding/tour domain usage:
+- `kai_profile` (encrypted) is canonical for onboarding completion and nav-tour completion/skips.
+- Local pending stores are temporary per-user+device and sync after vault unlock.
+
 Documentation work-in-progress is tracked in `consent-protocol/COMPLIANCE_PROGRESS.md`.
 
 ## When Adding A Feature
@@ -69,7 +100,7 @@ Use `docs/guides/new-feature.md` and treat it as a required checklist.
 Minimum definition of done:
 - Tri-flow implemented (or explicitly N/A) and tested on all platforms
 - Consent token validated at entry points
-- BYOK preserved (no keys to backend)
+- BYOK preserved (no plaintext-at-rest; if custom key is skipped, generate a secure default key)
 - API documented (`docs/reference/api-contracts.md`)
 - Route contracts updated (`hushh-webapp/route-contracts.json` + `cd hushh-webapp && npm run verify:routes`)
 - Tests updated (`TESTING.md`)
@@ -80,4 +111,3 @@ This repo includes a regulatory readiness audit:
 - `docs/audits/2026-02-16-regulatory-readiness-audit.md`
 
 If you're shipping anything investor-facing, read it and close critical findings first.
-

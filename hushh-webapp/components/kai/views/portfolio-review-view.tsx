@@ -271,6 +271,7 @@ export function PortfolioReviewView({
   const [pendingVaultSave, setPendingVaultSave] = useState(false);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const createdVaultCopyRef = useRef(false);
+  const createdVaultModeRef = useRef<string | null>(null);
   const [editingHoldingIndex, setEditingHoldingIndex] = useState<number | null>(
     null
   );
@@ -418,6 +419,7 @@ export function PortfolioReviewView({
 
     if (!effectiveVaultKey || !effectiveVaultOwnerToken) {
       createdVaultCopyRef.current = resolvedHasVault === false;
+      createdVaultModeRef.current = null;
       setPendingVaultSave(true);
       setVaultDialogOpen(true);
       toast.info(
@@ -617,7 +619,11 @@ export function PortfolioReviewView({
       }
 
       if (createdVaultCopyRef.current) {
-        toast.success("Vault created. Portfolio saved securely.");
+        if (createdVaultModeRef.current === "generated_default_native_biometric" || createdVaultModeRef.current === "generated_default_web_prf") {
+          toast.success("Vault created with secure default key. Portfolio saved securely.");
+        } else {
+          toast.success("Vault created. Portfolio saved securely.");
+        }
       } else {
         toast.success("Portfolio saved securely.");
       }
@@ -628,6 +634,7 @@ export function PortfolioReviewView({
     } finally {
       setIsSaving(false);
       createdVaultCopyRef.current = false;
+      createdVaultModeRef.current = null;
     }
   };
 
@@ -1203,28 +1210,13 @@ export function PortfolioReviewView({
               <div className="p-4">
                 <VaultFlow
                   user={user}
-                  onSuccess={() => {
+                  enableGeneratedDefault={hasVault === false}
+                  onSuccess={(meta) => {
+                    createdVaultModeRef.current = meta?.mode ?? null;
                     setVaultDialogOpen(false);
                     setPendingVaultSave(true);
                   }}
                 />
-
-                <div className="pt-4">
-                  <MorphyButton
-                    variant="none"
-                    effect="fade"
-                    size="sm"
-                    fullWidth
-                    showRipple={false}
-                    onClick={() => {
-                      setVaultDialogOpen(false);
-                      setPendingVaultSave(false);
-                    }}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    Skip for now
-                  </MorphyButton>
-                </div>
               </div>
             </div>
           </DialogContent>

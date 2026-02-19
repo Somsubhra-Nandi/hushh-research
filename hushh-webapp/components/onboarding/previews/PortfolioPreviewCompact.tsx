@@ -13,7 +13,7 @@ export function PortfolioPreviewCompact() {
       showRipple={false}
       className="h-full w-full"
     >
-      <div className="p-7">
+      <div className="morphy-theme-content p-7">
         <div className="space-y-5">
           <div className="space-y-1 text-center">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">

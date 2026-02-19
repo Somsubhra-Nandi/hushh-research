@@ -138,6 +138,30 @@ Frontend path: first entry auto-opens optional intro modal on `/kai/dashboard`; 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | DELETE | `/api/account/delete` | Delete user account and all data |
+
+#### Vault Key Metadata (Setup/Get)
+
+Vault creation and retrieval continue to require encrypted key fields:
+- `encryptedVaultKey`
+- `salt`
+- `iv`
+- `recoveryEncryptedVaultKey`
+- `recoverySalt`
+- `recoveryIv`
+
+Optional metadata now supported for generated-default key flows:
+- `keyMode` (`generated_default_native_biometric` | `generated_default_web_prf` | `null`)
+- `passkeyCredentialId` (nullable)
+- `passkeyPrfSalt` (nullable)
+
+Method-management semantics:
+- Switching unlock method keeps the same vault key material and re-wraps it with the target method KEK.
+- `authMethod` + `keyMode` represent the currently active method (single active KEK model).
+- Frontend method switch path uses existing setup/get contracts (no extra endpoint required).
+
+Security invariant:
+- No plaintext-at-rest path is allowed.
+- If custom key setup is skipped, vault setup must still use generated-default secure key mode.
 | POST | `/api/sync/vault` | Disabled in regulated cutover (`501`, `SYNC_DISABLED`) |
 | POST | `/api/sync/batch` | Disabled in regulated cutover (`501`, `SYNC_DISABLED`) |
 | GET | `/api/sync/pull` | Disabled in regulated cutover (`501`, `SYNC_DISABLED`) |

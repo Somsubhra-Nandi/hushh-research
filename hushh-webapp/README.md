@@ -1,226 +1,91 @@
-# 🤫 Hushh WebApp
+# Hushh WebApp
 
-> **🤫 Your Data. Your Business.**
-> Personal AI Agent Platform — consent-first, privacy-native
+Next.js + React + Capacitor client for Kai and consent-first personal data flows.
 
----
+## Scope
 
-## 🎯 What is Hushh?
+`hushh-webapp` is the frontend subtree in the monorepo. It serves:
+- Web (`next dev` / production Next.js runtime)
+- iOS and Android shells via Capacitor plugins
 
-Hushh is a **personal AI agent platform** that puts users in control of their data. Unlike traditional AI that works for the algorithm, Hushh agents work **exclusively for the user** with full consent and transparency.
+Core invariants:
+- No direct `fetch()` in feature components (service layer only).
+- Vault/world-model operations require consent token + vault context.
+- Encrypted-at-rest only (no plaintext fallback mode).
 
-### The Five Pillars
+## Current Route Architecture
 
-| Pillar          | Purpose                                         |
-| --------------- | ----------------------------------------------- |
-| **Hushh Agent** | AI companion that acts with context and consent |
-| **Hushh Vault** | Encrypted personal data storage                 |
-| **Hushh Link**  | Identity and permissions layer                  |
-| **Hushh Flow**  | APIs and monetization for brands                |
-| **Hushh Grid**  | Compute engine for agentic AI                   |
+- `/` -> public marketing onboarding (intro + preview)
+- `/login` -> auth-only surface (Google/Apple + disabled phone)
+- `/kai/onboarding` -> onboarding questionnaire + persona
+- `/kai/import` -> import/connect flow + vault introduction
+- `/kai` -> signed-in info home + first-time bottom-nav tour
+- `/kai/dashboard` -> portfolio analytics/dashboard
 
----
+Guard flow:
+- `KaiOnboardingGuard` blocks non-onboarding `/kai/*` when onboarding is incomplete.
+- `VaultLockGuard` enforces unlock only when vault exists and protected access is needed.
 
-## 🏗️ Project Structure
+## Vault Security Model
 
-```
-hushh-experimental/
-├── app/                    # Next.js App Router
-│   ├── page.tsx            # Landing page
-│   ├── jarvis/page.tsx     # Chat interface (connected to ADK)
-│   ├── consent/page.tsx    # Data consent dashboard
-│   ├── personas/page.tsx   # Agent persona gallery
-│   ├── docs/page.tsx       # Documentation
-│   ├── api/chat/route.ts   # ADK API endpoint
-│   ├── layout.tsx          # Root layout + JarvisBackground
-│   └── globals.css         # Design system (Liquid Glass + Iron Man)
-├── components/
-│   └── ui/                 # 45 reusable UI components
-├── lib/
-│   └── morphy-ux/          # Ripple effects, colors, variants
-├── hushhrules.md           # Design guidelines
-├── iwebrules.md            # Original design system rules
-└── README.md               # This file
-```
+Supported active methods:
+- `passphrase`
+- `generated_default_native_biometric`
+- `generated_default_web_prf`
 
----
+Rules:
+- Single active KEK model.
+- Switching method re-wraps the same vault key.
+- Recovery key fallback stays mandatory.
+- If custom passphrase is skipped, generated secure default path is used (still encrypted).
 
-## 🎨 Design System
+## Dashboard and Onboarding Composition
 
-### Theme: iOS Liquid Glass + Iron Man Accents
+- Dashboard v2 composition:
+  - `components/kai/views/dashboard-master-view.tsx`
+  - `components/kai/cards/*`
+- First-time nav tour on `/kai`:
+  - `components/kai/onboarding/kai-nav-tour.tsx`
+  - `lib/services/kai-nav-tour-local-service.ts`
+  - `lib/services/kai-nav-tour-sync-service.ts`
+- Canonical cross-device onboarding/tour state:
+  - encrypted `kai_profile` domain
 
-| Token                 | Value                   |
-| --------------------- | ----------------------- |
-| `--color-accent-red`  | `#DC143C` (Primary CTA) |
-| `--color-accent-gold` | `#C7A035` (Secondary)   |
-| `--color-background`  | `#FAFAFA`               |
-| `--color-success`     | `#30D158`               |
-| `--color-info`        | `#007AFF`               |
+## Design System
 
-### CSS Classes
+Use fused stack:
+- Morphy UX for brand surfaces/CTA physics
+- shadcn/ui as stock primitives (`components/ui/*`)
+- Lucide through `Icon` wrapper (`lib/morphy-ux/ui/icon.tsx`)
 
-```css
-.glass              /* Standard frosted glass */
-/* Standard frosted glass */
-/* Standard frosted glass */
-/* Standard frosted glass */
-.glass-prominent    /* Heavy glass for sidebars */
-.glass-interactive  /* With hover effects */
-.card-glass         /* Glass card */
-.nav-glass; /* Navigation bar glass */
-```
+References:
+- `docs/reference/design-system.md`
+- `docs/reference/frontend-pattern-catalog.md`
+- `hushh-webapp/components/README.md`
 
-### Typography
-
-```css
-.text-headline      /* 2.5rem/700 - Page titles */
-/* 2.5rem/700 - Page titles */
-/* 2.5rem/700 - Page titles */
-/* 2.5rem/700 - Page titles */
-.text-title         /* 1.375rem/600 - Section headers */
-.text-body          /* 1rem - Body text */
-.text-caption       /* 0.8125rem - Secondary */
-.text-small; /* 0.75rem - Tertiary */
-```
-
----
-
-## 🧩 Component Usage
-
-### Button (Primary)
-
-```tsx
-import { Button } from "@/components/ui/button";
-
-<Button
-  variant="gradient" // ColorVariant
-  effect="glass" // "fill" | "glass" | "fade"
-  showRipple // Click ripple (NOT hover)
-  size="lg" // "sm" | "default" | "lg" | "xl"
->
-  Click Me
-</Button>;
-```
-
-### Card
-
-```tsx
-import { Card, CardTitle, CardDescription } from "@/components/ui/card";
-
-<Card variant="none" effect="glass" showRipple onClick={handler}>
-  <CardTitle>Title</CardTitle>
-  <CardDescription>Description</CardDescription>
-</Card>;
-```
-
-> ⚠️ **Note:** `RippleButton` exists but is redundant. Use `Button showRipple` instead.
-
----
-
-## 🤖 Agent Modes
-
-| Mode         | Icon | Purpose                  | Endpoint  |
-| ------------ | ---- | ------------------------ | --------- |
-| Optimizer    | 📈   | Time/money optimization  | `/kai`    |
-| Curator      | 🎯   | Data organization        | `/nav`    |
-| Professional | 💼   | Career context           | `/kushal` |
-| Orchestrator | 🔗   | Multi-agent coordination | `/`       |
-
----
-
-## 📊 Data Categories
-
-| Category     | Icon | Examples                       |
-| ------------ | ---- | ------------------------------ |
-| Financial    | 💰   | Spending, budgets, investments |
-| Calendar     | 📅   | Events, meetings, reminders    |
-| Professional | 💼   | Skills, projects, resume       |
-| Health       | ❤️   | Fitness, wellness              |
-| Preferences  | ⚙️   | Likes, style, settings         |
-| Network      | 👥   | Contacts, relationships        |
-
----
-
-## 🔌 API
-
-### Chat Endpoint
+## Local Development
 
 ```bash
-POST /api/chat
-Content-Type: application/json
-
-{
-  "message": "Check my spending",
-  "mode": "curator",
-  "sessionId": "user-123"
-}
-```
-
-**Response:**
-
-```json
-{
-  "response": "Based on your data...",
-  "mode": "curator",
-  "dataUsed": ["Financial"],
-  "sessionId": "user-123"
-}
-```
-
-### Backend (ADK)
-
-- **Base URL:** `https://hushh-kai-demo-832747646411.us-central1.run.app`
-- **Protocol:** A2A (Agent-to-Agent)
-- **Model:** Gemini 3 Flash
-
----
-
-## 🎬 Background
-
-The app uses `JarvisBackground` - an animated SVG with:
-
-- Arc reactor concentric circles
-- Hexagon grid overlay
-- Radiating lines
-- Pulsing data points
-
-```tsx
-import { JarvisBackground } from "@/components/ui/jarvis-background";
-
-<JarvisBackground intensity="subtle" />; // "subtle" | "medium" | "bold"
-```
-
----
-
-## 📋 Key Rules
-
-1. **Ripple on CLICK only** — via `showRipple` prop, never on hover
-2. **NO hover scale effects** — use opacity/background transitions
-3. **Use existing components** — Button, Card from `components/ui`
-4. **Use CSS classes** — `.glass`, `.text-headline`, etc.
-5. **Phosphor Icons** — Always with `Icon` suffix
-
----
-
-## 🚀 Getting Started
-
-```bash
+cd hushh-webapp
 npm install
 npm run dev
-# Open http://localhost:3000
 ```
 
----
+## Verification Commands
 
-## 📁 Related Files
+```bash
+cd hushh-webapp
+npm run typecheck
+npm test
+npm run build
+npm run verify:routes
+npm run verify:parity
+npm run verify:design-system
+```
 
-| File                | Purpose                          |
-| ------------------- | -------------------------------- |
-| `hushhrules.md`     | Hushh-specific design guidelines |
-| `iwebrules.md`      | Full design system documentation |
-| `lib/morphy-ux/`    | Ripple effects, color variants   |
-| `.agent/workflows/` | AI agent workflows               |
+Backend tests (monorepo sibling):
 
----
-
-_Built with Next.js 16, Tailwind CSS, Framer Motion, Google ADK_
+```bash
+cd consent-protocol
+.venv/bin/python -m pytest -q
+```

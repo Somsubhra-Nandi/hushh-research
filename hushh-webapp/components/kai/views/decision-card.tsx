@@ -571,7 +571,7 @@ export function DecisionCard({ result }: { result: DecisionResult }) {
             
             {/* Renaissance Badge - Positioned prominently if exists */}
             {rawCard?.renaissance_tier && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-700 delay-100">
+                <div className="animate-in fade-in slide-in-from-top-2  delay-100">
                     <RenaissanceBadge tier={rawCard.renaissance_tier} score={rawCard.renaissance_score} />
                 </div>
             )}

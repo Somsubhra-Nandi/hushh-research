@@ -32,6 +32,8 @@ export type KaiOnboardingState = {
   completed: boolean;
   completed_at: string | null;
   skipped_preferences: boolean;
+  nav_tour_completed_at: string | null;
+  nav_tour_skipped_at: string | null;
   version: 2;
 };
 
@@ -151,6 +153,8 @@ function createDefaultProfile(now?: Date): KaiProfileV2 {
       completed: false,
       completed_at: null,
       skipped_preferences: false,
+      nav_tour_completed_at: null,
+      nav_tour_skipped_at: null,
       version: 2,
     },
     preferences: {
@@ -205,6 +209,8 @@ function normalizeProfileV2(raw: Record<string, unknown>): KaiProfileV2 {
       completed,
       completed_at: normalizeOptionalIso(onboardingRaw.completed_at),
       skipped_preferences: skipped,
+      nav_tour_completed_at: normalizeOptionalIso(onboardingRaw.nav_tour_completed_at),
+      nav_tour_skipped_at: normalizeOptionalIso(onboardingRaw.nav_tour_skipped_at),
       version: 2,
     },
     preferences: {
@@ -245,6 +251,8 @@ function normalizeProfileLegacy(raw: Record<string, unknown>): KaiProfileV2 {
       completed_at: null,
       // Legacy users did not answer the world-model questionnaire.
       skipped_preferences: introSeen,
+      nav_tour_completed_at: null,
+      nav_tour_skipped_at: null,
       version: 2,
     },
     preferences: {
@@ -456,6 +464,7 @@ export class KaiProfileService {
       ...current,
       schema_version: SCHEMA_VERSION,
       onboarding: {
+        ...current.onboarding,
         completed: true,
         completed_at: iso,
         skipped_preferences: params.skippedPreferences,
@@ -488,5 +497,60 @@ export class KaiProfileService {
 
     return next;
   }
-}
 
+  static async setNavTourState(params: {
+    userId: string;
+    vaultKey: string;
+    vaultOwnerToken?: string;
+    completedAt?: string | null;
+    skippedAt?: string | null;
+    now?: Date;
+  }): Promise<KaiProfileV2> {
+    const iso = nowIso(params.now);
+    const fullBlob: Record<string, unknown> = await getFullBlob(params).catch(() => ({}));
+    const current = selectProfile(fullBlob);
+
+    const next: KaiProfileV2 = {
+      ...current,
+      schema_version: SCHEMA_VERSION,
+      onboarding: {
+        ...current.onboarding,
+        nav_tour_completed_at:
+          params.completedAt !== undefined
+            ? params.completedAt
+            : current.onboarding.nav_tour_completed_at,
+        nav_tour_skipped_at:
+          params.skippedAt !== undefined
+            ? params.skippedAt
+            : current.onboarding.nav_tour_skipped_at,
+        version: 2,
+      },
+      updated_at: iso,
+    };
+
+    const result = await WorldModelService.storeMergedDomain({
+      userId: params.userId,
+      vaultKey: params.vaultKey,
+      domain: DOMAIN,
+      domainData: next as unknown as Record<string, unknown>,
+      summary: {
+        domain_intent: "kai_profile",
+        onboarding_completed: next.onboarding.completed,
+        nav_tour_completed: Boolean(next.onboarding.nav_tour_completed_at),
+        risk_profile: next.preferences.risk_profile,
+        risk_score: next.preferences.risk_score,
+        has_investment_horizon: Boolean(next.preferences.investment_horizon),
+        has_drawdown_response: Boolean(next.preferences.drawdown_response),
+        has_volatility_preference: Boolean(next.preferences.volatility_preference),
+        last_updated: next.updated_at,
+      },
+      vaultOwnerToken: params.vaultOwnerToken,
+    });
+
+    if (!result.success) {
+      throw new Error("Failed to persist kai_profile nav tour state");
+    }
+
+    return next;
+  }
+}

@@ -16,7 +16,7 @@ export function TrinityCards({ bullCase, bearCase, renaissanceVerdict }: Trinity
   if (!bullCase && !bearCase && !renaissanceVerdict) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-4 ">
       
       {/* 1. THE PERSONALIZED BULL */}
       <Card className={cn("border-emerald-500/20 bg-emerald-500/5", !bullCase && "opacity-50")}>

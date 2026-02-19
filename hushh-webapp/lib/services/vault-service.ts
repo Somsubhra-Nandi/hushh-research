@@ -9,17 +9,26 @@ import {
 } from "@/lib/vault/passphrase-key";
 import { auth } from "@/lib/firebase/config";
 import { apiJson } from "@/lib/services/api-client";
+import type {
+  GeneratedVaultProvisionResult,
+  GeneratedVaultSupport,
+  GeneratedVaultUnlockInput,
+} from "@/lib/services/vault-bootstrap-service";
 
 // Web must call same-origin Next.js API routes (/api/*) to avoid CORS issues when
 // accessed via different Cloud Run hostnames. (Native uses plugins / backend URL.)
 
 export interface VaultData {
+  authMethod?: string;
+  keyMode?: string;
   encryptedVaultKey: string;
   salt: string;
   iv: string;
   recoveryEncryptedVaultKey: string;
   recoverySalt: string;
   recoveryIv: string;
+  passkeyCredentialId?: string;
+  passkeyPrfSalt?: string;
 }
 
 export class VaultService {
@@ -290,12 +299,16 @@ export class VaultService {
         const result = await HushhVault.getVault({ userId, authToken });
         console.log("🔐 [VaultService] HushhVault.getVault returned success.");
         return {
+          authMethod: result.authMethod,
+          keyMode: (result as { keyMode?: string }).keyMode,
           encryptedVaultKey: result.encryptedVaultKey,
           salt: result.salt,
           iv: result.iv,
           recoveryEncryptedVaultKey: result.recoveryEncryptedVaultKey,
           recoverySalt: result.recoverySalt,
           recoveryIv: result.recoveryIv,
+          passkeyCredentialId: (result as { passkeyCredentialId?: string }).passkeyCredentialId,
+          passkeyPrfSalt: (result as { passkeyPrfSalt?: string }).passkeyPrfSalt,
         };
       } catch (error) {
         console.error("❌ [VaultService] Native getVault error:", error);
@@ -346,6 +359,9 @@ export class VaultService {
           recoveryEncryptedVaultKey: vaultData.recoveryEncryptedVaultKey,
           recoverySalt: vaultData.recoverySalt,
           recoveryIv: vaultData.recoveryIv,
+          keyMode: vaultData.keyMode,
+          passkeyCredentialId: vaultData.passkeyCredentialId,
+          passkeyPrfSalt: vaultData.passkeyPrfSalt,
           authToken,
         });
         console.log("🔐 [VaultService] setupVault completed");
@@ -434,6 +450,32 @@ export class VaultService {
     iv: string
   ): Promise<string> {
     return webUnlockRecall(key, encryptedKey, salt, iv);
+  }
+
+  static async canUseGeneratedDefaultVault(): Promise<GeneratedVaultSupport> {
+    const { VaultBootstrapService } = await import(
+      "@/lib/services/vault-bootstrap-service"
+    );
+    return VaultBootstrapService.canUseGeneratedDefaultVault();
+  }
+
+  static async provisionGeneratedDefaultVault(params: {
+    userId: string;
+    displayName: string;
+  }): Promise<GeneratedVaultProvisionResult> {
+    const { VaultBootstrapService } = await import(
+      "@/lib/services/vault-bootstrap-service"
+    );
+    return VaultBootstrapService.provisionGeneratedDefaultVault(params);
+  }
+
+  static async unlockGeneratedDefaultVault(
+    input: GeneratedVaultUnlockInput
+  ): Promise<string | null> {
+    const { VaultBootstrapService } = await import(
+      "@/lib/services/vault-bootstrap-service"
+    );
+    return VaultBootstrapService.unlockGeneratedDefaultVault(input);
   }
 
   // ============================================================================

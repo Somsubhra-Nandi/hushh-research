@@ -70,10 +70,38 @@ function main() {
     if (text.includes("rounded-ios")) {
       failFindings.push(`${rel}: contains legacy class prefix 'rounded-ios'`);
     }
+    if (text.includes("font-heading-exo2")) {
+      failFindings.push(`${rel}: contains legacy typography class 'font-heading-exo2'`);
+    }
+    if (text.includes("font-body-quicksand")) {
+      failFindings.push(`${rel}: contains legacy typography class 'font-body-quicksand'`);
+    }
+    if (
+      text.includes("--font-geist-sans") ||
+      text.includes("--font-geist-mono") ||
+      text.includes("--font-heading-sans")
+    ) {
+      failFindings.push(
+        `${rel}: contains legacy font variable name (use semantic --font-app-body/--font-app-heading/--font-app-mono)`
+      );
+    }
 
     // Warn: shadcn button import outside vendor. Morphy Button is preferred for user-facing CTAs.
     if (text.includes('from "@/components/ui/button"')) {
       warnFindings.push(`${rel}: imports shadcn Button (@/components/ui/button)`);
+    }
+
+    // Fail: inline font family should only exist in infrastructure/style wrappers.
+    const hasInlineStyleFontFamily =
+      /style\s*=\s*\{\{[\s\S]*?fontFamily\s*:/m.test(text);
+    if (
+      hasInlineStyleFontFamily &&
+      rel !== "app/layout-client.tsx" &&
+      rel !== "app/layout.tsx"
+    ) {
+      failFindings.push(
+        `${rel}: contains inline style.fontFamily (prefer centralized typography tokens/utilities)`
+      );
     }
 
     // Warn: best-effort Lucide sizing detection

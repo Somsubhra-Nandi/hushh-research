@@ -15,10 +15,12 @@ import { BrandMark, Icon } from "@/lib/morphy-ux/ui";
 import { morphyToast } from "@/lib/morphy-ux/morphy";
 import { AuthProviderButton } from "@/components/onboarding/AuthProviderButton";
 import { PostAuthRouteService } from "@/lib/services/post-auth-route-service";
+import { AuthLegalDialog } from "@/components/onboarding/AuthLegalDialog";
 import {
   setOnboardingFlowActiveCookie,
   setOnboardingRequiredCookie,
 } from "@/lib/services/onboarding-route-cookie";
+import { type KaiLegalDocumentType } from "@/lib/legal/kai-legal-content";
 
 export function AuthStep({
   redirectPath,
@@ -33,6 +35,9 @@ export function AuthStep({
 
   const [reviewModeConfig, setReviewModeConfig] = useState<{ enabled: boolean }>(
     { enabled: false }
+  );
+  const [activeLegalDoc, setActiveLegalDoc] = useState<KaiLegalDocumentType | null>(
+    null
   );
 
   const resolveAndNavigate = useCallback(
@@ -282,10 +287,32 @@ export function AuthStep({
 
         <footer className={compact ? "flex-none pt-4" : "flex-none pt-3"}>
           <p className="mx-auto max-w-[18.75rem] text-center text-[11px] leading-normal text-muted-foreground/80">
-            By continuing, you agree to Kai&apos;s Terms and Privacy Policy.
+            By continuing, you agree to Kai&apos;s{" "}
+            <button
+              type="button"
+              onClick={() => setActiveLegalDoc("terms")}
+              className="font-semibold text-foreground underline underline-offset-2 transition-opacity hover:opacity-70"
+            >
+              Terms
+            </button>{" "}
+            and{" "}
+            <button
+              type="button"
+              onClick={() => setActiveLegalDoc("privacy")}
+              className="font-semibold text-foreground underline underline-offset-2 transition-opacity hover:opacity-70"
+            >
+              Privacy Policy
+            </button>
+            .
           </p>
         </footer>
       </div>
+      <AuthLegalDialog
+        docType={activeLegalDoc}
+        onOpenChange={(open) => {
+          if (!open) setActiveLegalDoc(null);
+        }}
+      />
     </main>
   );
 }

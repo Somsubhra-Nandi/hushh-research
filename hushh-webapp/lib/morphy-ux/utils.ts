@@ -65,7 +65,7 @@ export const getVariantStyles = (
 
     case "blue-gradient":
       if (effect === "fill") {
-        return `bg-gradient-to-r ${gradientPresets.primary} text-white shadow-[0_18px_60px_var(--morphy-cta-shadow)] transition-shadow,transition-colors duration-200`;
+        return `bg-gradient-to-r ${gradientPresets.primary} text-white dark:text-black shadow-[0_18px_60px_var(--morphy-cta-shadow)] transition-shadow,transition-colors duration-200`;
       } else if (effect === "fade") {
         return "bg-gradient-to-r from-[var(--morphy-primary-start)]/10 to-[var(--morphy-primary-end)]/10 border border-[var(--morphy-primary-start)]/20 text-[var(--morphy-primary-start)] transition-colors duration-200";
       } else {
@@ -250,7 +250,7 @@ export const getVariantStylesNoHover = (
 
     case "blue-gradient":
       if (effect === "fill") {
-        return `bg-gradient-to-r ${gradientPresets.primary} text-white shadow-md transition-all duration-200`;
+        return `bg-gradient-to-r ${gradientPresets.primary} text-white dark:text-black shadow-md transition-all duration-200`;
       } else if (effect === "fade") {
         return "bg-gradient-to-r from-[var(--morphy-primary-start)]/10 to-[var(--morphy-primary-end)]/10 border border-[var(--morphy-primary-start)]/20 text-[var(--morphy-primary-start)] transition-all duration-200";
       } else {

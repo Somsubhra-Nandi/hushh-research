@@ -60,7 +60,11 @@ vi.mock("sonner", () => {
 
 vi.mock("@/components/vault/vault-flow", () => {
   return {
-    VaultFlow: () => <div data-testid="vault-flow">VaultFlow</div>,
+    VaultFlow: ({ enableGeneratedDefault }: { enableGeneratedDefault?: boolean }) => (
+      <div data-testid="vault-flow">
+        {enableGeneratedDefault ? "generated-default-enabled" : "generated-default-disabled"}
+      </div>
+    ),
   };
 });
 
@@ -104,5 +108,7 @@ describe("PortfolioReviewView (create vault copy)", () => {
     const title = await screen.findByText(/create vault to save portfolio/i);
     expect(title).toBeTruthy();
     expect(screen.getByTestId("vault-flow")).toBeTruthy();
+    expect(screen.getByText(/generated-default-enabled/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /skip for now/i })).toBeNull();
   });
 });

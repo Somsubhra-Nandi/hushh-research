@@ -1,0 +1,259 @@
+"use client";
+
+import { Capacitor } from "@capacitor/core";
+
+import { HushhKeychain } from "@/lib/capacitor";
+import {
+  checkBrowserSupport,
+  checkPrfSupport,
+  registerWithPrf,
+  authenticateWithPrf,
+} from "@/lib/vault/prf-auth";
+import {
+  createVaultWithPassphrase,
+  unlockVaultWithPassphrase,
+} from "@/lib/vault/passphrase-key";
+
+export type GeneratedVaultKeyMode =
+  | "generated_default_native_biometric"
+  | "generated_default_web_prf";
+
+export type GeneratedVaultSupport =
+  | {
+      supported: true;
+      mode: GeneratedVaultKeyMode;
+    }
+  | {
+      supported: false;
+      reason: string;
+    };
+
+export type GeneratedVaultProvisionResult = {
+  mode: GeneratedVaultKeyMode;
+  authMethod: GeneratedVaultKeyMode;
+  encryptedVaultKey: string;
+  salt: string;
+  iv: string;
+  recoveryEncryptedVaultKey: string;
+  recoverySalt: string;
+  recoveryIv: string;
+  recoveryKey: string;
+  passkeyCredentialId?: string;
+  passkeyPrfSalt?: string;
+};
+
+export type GeneratedVaultMethodMaterial = {
+  mode: GeneratedVaultKeyMode;
+  authMethod: GeneratedVaultKeyMode;
+  wrappingSecret: string;
+  passkeyCredentialId?: string;
+  passkeyPrfSalt?: string;
+};
+
+export type GeneratedVaultUnlockInput = {
+  userId: string;
+  encryptedVaultKey: string;
+  salt: string;
+  iv: string;
+  keyMode?: string | null;
+  authMethod?: string | null;
+  passkeyCredentialId?: string | null;
+  passkeyPrfSalt?: string | null;
+};
+
+const DEFAULT_VAULT_SECRET_PREFIX = "vault_default_secret";
+const BIOMETRIC_PROMPT_SET = "Authenticate to enable secure default vault";
+const BIOMETRIC_PROMPT_GET = "Authenticate to unlock your secure vault";
+
+function keychainSecretKey(userId: string): string {
+  return `${DEFAULT_VAULT_SECRET_PREFIX}:${userId}`;
+}
+
+function normalizeKeyMode(input: {
+  keyMode?: string | null;
+  authMethod?: string | null;
+}): GeneratedVaultKeyMode | null {
+  const value = input.keyMode ?? input.authMethod ?? null;
+  if (value === "generated_default_native_biometric") {
+    return value;
+  }
+  if (value === "generated_default_web_prf") {
+    return value;
+  }
+  return null;
+}
+
+function randomSecretHex(bytes = 32): string {
+  const random = crypto.getRandomValues(new Uint8Array(bytes));
+  return Array.from(random)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function canUseNativeBiometricVault(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const result = await HushhKeychain.isBiometricAvailable();
+    return result.available;
+  } catch (error) {
+    console.warn("[VaultBootstrapService] Native biometric availability check failed:", error);
+    return false;
+  }
+}
+
+async function canUseWebPrfVault(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) return false;
+  if (typeof window === "undefined") return false;
+
+  const browser = checkBrowserSupport();
+  if (!browser.supported) {
+    return false;
+  }
+  return checkPrfSupport();
+}
+
+export class VaultBootstrapService {
+  static async canUseGeneratedDefaultVault(): Promise<GeneratedVaultSupport> {
+    if (await canUseNativeBiometricVault()) {
+      return {
+        supported: true,
+        mode: "generated_default_native_biometric",
+      };
+    }
+
+    if (await canUseWebPrfVault()) {
+      return {
+        supported: true,
+        mode: "generated_default_web_prf",
+      };
+    }
+
+    if (!Capacitor.isNativePlatform()) {
+      return {
+        supported: false,
+        reason:
+          "Passkey/PRF is unavailable on this browser. Use a passphrase to keep data encrypted.",
+      };
+    }
+
+    return {
+      supported: false,
+      reason:
+        "Biometric protection is unavailable on this device. Use a passphrase to keep data encrypted.",
+    };
+  }
+
+  static async provisionGeneratedDefaultVault(params: {
+    userId: string;
+    displayName: string;
+  }): Promise<GeneratedVaultProvisionResult> {
+    const material = await this.provisionGeneratedMethodMaterial(params);
+    const vaultData = await createVaultWithPassphrase(material.wrappingSecret);
+
+    return {
+      mode: material.mode,
+      authMethod: material.authMethod,
+      encryptedVaultKey: vaultData.encryptedVaultKey,
+      salt: vaultData.salt,
+      iv: vaultData.iv,
+      recoveryEncryptedVaultKey: vaultData.recoveryEncryptedVaultKey,
+      recoverySalt: vaultData.recoverySalt,
+      recoveryIv: vaultData.recoveryIv,
+      recoveryKey: vaultData.recoveryKey,
+      passkeyCredentialId: material.passkeyCredentialId,
+      passkeyPrfSalt: material.passkeyPrfSalt,
+    };
+  }
+
+  static async provisionGeneratedMethodMaterial(params: {
+    userId: string;
+    displayName: string;
+  }): Promise<GeneratedVaultMethodMaterial> {
+    const support = await this.canUseGeneratedDefaultVault();
+    if (!support.supported) {
+      throw new Error(support.reason);
+    }
+
+    if (support.mode === "generated_default_native_biometric") {
+      const generatedSecret = randomSecretHex(32);
+      await HushhKeychain.setBiometric({
+        key: keychainSecretKey(params.userId),
+        value: generatedSecret,
+        promptMessage: BIOMETRIC_PROMPT_SET,
+      });
+
+      return {
+        mode: support.mode,
+        authMethod: support.mode,
+        wrappingSecret: generatedSecret,
+      };
+    }
+
+    const prfRegistration = await registerWithPrf(params.userId, params.displayName);
+
+    return {
+      mode: support.mode,
+      authMethod: support.mode,
+      wrappingSecret: prfRegistration.vaultKeyHex,
+      passkeyCredentialId: prfRegistration.credentialId,
+      passkeyPrfSalt: prfRegistration.prfSalt,
+    };
+  }
+
+  static async clearGeneratedDefaultMaterial(
+    userId: string,
+    mode?: GeneratedVaultKeyMode | null
+  ): Promise<void> {
+    if (mode !== "generated_default_native_biometric") return;
+
+    try {
+      await HushhKeychain.delete({
+        key: keychainSecretKey(userId),
+      });
+    } catch (error) {
+      console.warn("[VaultBootstrapService] Failed to clear native biometric secret:", error);
+    }
+  }
+
+  static async unlockGeneratedDefaultVault(
+    input: GeneratedVaultUnlockInput
+  ): Promise<string | null> {
+    const mode = normalizeKeyMode(input);
+    if (!mode) return null;
+
+    if (mode === "generated_default_native_biometric") {
+      const secret = await HushhKeychain.getBiometric({
+        key: keychainSecretKey(input.userId),
+        promptMessage: BIOMETRIC_PROMPT_GET,
+      });
+
+      if (!secret.value) {
+        throw new Error("Biometric vault secret not available.");
+      }
+
+      return unlockVaultWithPassphrase(
+        secret.value,
+        input.encryptedVaultKey,
+        input.salt,
+        input.iv
+      );
+    }
+
+    if (!input.passkeyPrfSalt) {
+      throw new Error("Passkey metadata missing for generated default vault.");
+    }
+
+    const auth = await authenticateWithPrf(
+      input.userId,
+      input.passkeyPrfSalt,
+      input.passkeyCredentialId ?? undefined
+    );
+
+    return unlockVaultWithPassphrase(
+      auth.vaultKeyHex,
+      input.encryptedVaultKey,
+      input.salt,
+      input.iv
+    );
+  }
+}

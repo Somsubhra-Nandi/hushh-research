@@ -89,7 +89,7 @@ export default function KaiFinancialCharts({ quantMetrics, keyMetrics }: KaiFina
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 ">
       
       {/* Top Row: Revenue & Net Income */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

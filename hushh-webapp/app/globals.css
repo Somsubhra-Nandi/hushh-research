@@ -20,8 +20,9 @@ html body[data-scroll-locked] {
   --transition-duration-normal: 600ms;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-app-body);
+  --font-heading: var(--font-app-heading);
+  --font-mono: var(--font-app-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -58,6 +59,30 @@ html body[data-scroll-locked] {
 }
 
 :root {
+  /* Centralized app typography variables.
+   * Next/font sets these variables at runtime from app/layout.tsx.
+   * Keep names semantic so future font swaps only need layout.tsx changes. */
+  --font-app-body: system-ui, sans-serif;
+  --font-app-heading: system-ui, sans-serif;
+  --font-app-mono: ui-monospace, monospace;
+
+  /* Runtime CSS variable fallbacks for dynamic primitives/charts. */
+  --anchor-width: 16rem;
+  --available-height: 100dvh;
+  --available-width: 100vw;
+  --radix-select-trigger-height: 2.5rem;
+  --radix-select-trigger-width: 12rem;
+  --sidebar-width: 16rem;
+  --sidebar-width-icon: 3rem;
+  --color-current: hsl(var(--muted-foreground));
+  --color-optimized: hsl(var(--primary));
+  --color-scenario: hsl(var(--chart-1));
+  --color-value: hsl(var(--chart-1));
+  --color-negative: hsl(var(--destructive));
+  --color-voteBullish: hsl(var(--chart-2));
+  --color-voteNeutral: hsl(var(--chart-3));
+  --color-voteBearish: hsl(var(--chart-5));
+
   --radius: 1.25rem;
   /* Lucide defaults (see docs/reference/design-system.md): change once to update all icons. */
   --lucide-stroke-width: 1;
@@ -104,6 +129,7 @@ html body[data-scroll-locked] {
   --accent: oklch(0.6 0.2 260);
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.92 0.004 264);
   --input: oklch(0.87 0.006 264);
   --ring: oklch(0.55 0.18 250);
@@ -136,15 +162,15 @@ html body[data-scroll-locked] {
   --brand-900: #00192d;
 
   /* Onboarding tri-tone chips / rail */
-  --tone-blue: #0071e3;
-  --tone-green: #34c759;
-  --tone-orange: #ff9500;
-  --tone-blue-bg: #eaf2ff;
-  --tone-green-bg: #e9f8ef;
-  --tone-orange-bg: #fff4e8;
-  --tone-blue-glow: rgba(0, 113, 227, 0.18);
-  --tone-green-glow: rgba(52, 199, 89, 0.18);
-  --tone-orange-glow: rgba(255, 149, 0, 0.2);
+  --tone-blue: #0063f7;
+  --tone-green: #16a34a;
+  --tone-orange: #f97316;
+  --tone-blue-bg: #dbeafe;
+  --tone-green-bg: #dcfce7;
+  --tone-orange-bg: #ffedd5;
+  --tone-blue-glow: rgba(0, 99, 247, 0.3);
+  --tone-green-glow: rgba(22, 163, 74, 0.26);
+  --tone-orange-glow: rgba(249, 115, 22, 0.28);
 
   /* Sonner semantic tones */
   --toast-info-bg: #eaf2ff;
@@ -265,6 +291,7 @@ html body[data-scroll-locked] {
   --accent: oklch(0.7 0.2 260);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.7 0.19 22);
+  --destructive-foreground: oklch(0.15 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.7 0.18 250);
@@ -373,42 +400,18 @@ html body[data-scroll-locked] {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
 
-/* Remove Barlow Condensed font-face and utility */
-/* Remove Inter and Poppins font-face and utility if present */
-/* Remove Gruppo and Michroma font-face and utility if present */
-/* Remove Economica font-face and utility if present */
-
-@font-face {
-  font-family: "Quicksand";
-  src: url("/fonts/Quicksand/Quicksand-VariableFont_wght.ttf")
-    format("truetype");
-  font-weight: 300 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-.font-body-quicksand {
-  font-family: "Quicksand", Arial, sans-serif;
-  font-weight: 500;
-}
-
-@font-face {
-  font-family: "Exo 2";
-  src: url("/fonts/Exo_2/Exo2-VariableFont_wght.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-.font-heading-exo2 {
-  font-family: "Exo 2", Arial, sans-serif;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading), var(--font-sans), system-ui, sans-serif;
   }
 
   /* Global Lucide icon stroke thickness (lucide-react adds `.lucide` on the SVG). */
@@ -599,6 +602,21 @@ md-ripple.morphy-md-ripple {
 .theme-switching *,
 .theme-switching *::before,
 .theme-switching *::after {
+  transition:
+    color var(--motion-duration-md) var(--motion-ease-standard) 0ms,
+    background-color var(--motion-duration-md) var(--motion-ease-standard) 0ms,
+    border-color var(--motion-duration-md) var(--motion-ease-standard) 0ms,
+    fill var(--motion-duration-md) var(--motion-ease-standard) 0ms,
+    stroke var(--motion-duration-md) var(--motion-ease-standard) 0ms,
+    box-shadow var(--motion-duration-md) var(--motion-ease-standard) 0ms !important;
+  transition-delay: 0ms !important;
+}
+
+/* Centralized theme transition utility for nested content surfaces (cards/preview bodies). */
+.morphy-theme-content,
+.morphy-theme-content *,
+.morphy-theme-content *::before,
+.morphy-theme-content *::after {
   transition-property:
     color,
     background-color,
@@ -606,8 +624,8 @@ md-ripple.morphy-md-ripple {
     fill,
     stroke,
     box-shadow;
-  transition-duration: 240ms !important;
-  transition-timing-function: ease-in-out !important;
+  transition-duration: var(--motion-duration-md);
+  transition-timing-function: var(--motion-ease-standard);
 }
 
 /* Standard interaction transitions for buttons, cards, links */

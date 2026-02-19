@@ -27,12 +27,15 @@ export async function POST(request: NextRequest) {
     const {
       userId,
       authMethod,
+      keyMode,
       encryptedVaultKey,
       salt,
       iv,
       recoveryEncryptedVaultKey,
       recoverySalt,
       recoveryIv,
+      passkeyCredentialId,
+      passkeyPrfSalt,
     } = body;
 
     if (
@@ -78,12 +81,15 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         userId,
         authMethod,
+        keyMode,
         encryptedVaultKey,
         salt,
         iv,
         recoveryEncryptedVaultKey,
         recoverySalt,
         recoveryIv,
+        passkeyCredentialId,
+        passkeyPrfSalt,
       }),
     });
 

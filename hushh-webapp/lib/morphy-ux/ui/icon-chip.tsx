@@ -37,7 +37,8 @@ export const IconChip = React.forwardRef<HTMLDivElement, IconChipProps>(
           "text-muted-foreground bg-[color-mix(in_oklch,var(--background)_92%,var(--muted)_8%)]",
           "transition-[background-color,color,transform,opacity] duration-300",
           "data-[state=active]:bg-[var(--chip-bg)] data-[state=active]:text-[var(--chip-fg)]",
-          "data-[state=active]:ring-1 data-[state=active]:ring-[var(--chip-fg)]/18",
+          "data-[state=active]:ring-1 data-[state=active]:ring-[var(--chip-fg)]/28",
+          "data-[state=active]:shadow-[0_0_18px_var(--chip-glow)]",
           TONE_VARIABLE_CLASSES[tone],
           className
         )}

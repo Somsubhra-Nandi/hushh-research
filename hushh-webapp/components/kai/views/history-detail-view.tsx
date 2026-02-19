@@ -156,7 +156,7 @@ export function HistoryDetailView({
         <CardContent className="p-3 sm:p-4">
           <div className="flex items-center gap-2 text-xs text-zinc-400">
             <Icon icon={Clock} size="xs" className="text-blue-400" />
-            <span className="font-body-quicksand">
+            <span className="font-sans">
               Stored result from {formatTimestamp(entry.timestamp)} — not a live analysis
             </span>
           </div>
@@ -168,7 +168,7 @@ export function HistoryDetailView({
 
       {/* Debate Transcript (Static Replay) */}
       {entry.debate_transcript && (
-        <div className="pt-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+        <div className="pt-6 space-y-4 animate-in fade-in slide-in-from-bottom-4  delay-200">
            <div className="flex items-center gap-2 px-1">
               <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">Debate Transcript</h3>
               <div className="h-px bg-border/50 flex-1" />

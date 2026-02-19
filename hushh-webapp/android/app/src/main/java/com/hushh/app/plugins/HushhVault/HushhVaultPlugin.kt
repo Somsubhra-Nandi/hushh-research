@@ -307,12 +307,15 @@ class HushhVaultPlugin : Plugin() {
                     Log.d(TAG, "⚡ [getVault] Parsing success response...")
                     val result = JSObject().apply {
                         put("authMethod", json.optString("authMethod", "passphrase"))
+                        put("keyMode", json.optString("keyMode", null))
                         put("encryptedVaultKey", json.optString("encryptedVaultKey", ""))
                         put("salt", json.optString("salt", ""))
                         put("iv", json.optString("iv", ""))
                         put("recoveryEncryptedVaultKey", json.optString("recoveryEncryptedVaultKey", ""))
                         put("recoverySalt", json.optString("recoverySalt", ""))
                         put("recoveryIv", json.optString("recoveryIv", ""))
+                        put("passkeyCredentialId", json.optString("passkeyCredentialId", null))
+                        put("passkeyPrfSalt", json.optString("passkeyPrfSalt", null))
                     }
                     
                     activity.runOnUiThread {
@@ -352,6 +355,9 @@ class HushhVaultPlugin : Plugin() {
         val authToken = call.getString("authToken")
         val backendUrl = getBackendUrl(call)
         val authMethod = call.getString("authMethod") ?: "passphrase"
+        val keyMode = call.getString("keyMode")
+        val passkeyCredentialId = call.getString("passkeyCredentialId")
+        val passkeyPrfSalt = call.getString("passkeyPrfSalt")
 
         Thread {
             try {
@@ -364,6 +370,9 @@ class HushhVaultPlugin : Plugin() {
                     put("recoveryEncryptedVaultKey", recoveryEncryptedVaultKey ?: "")
                     put("recoverySalt", recoverySalt ?: "")
                     put("recoveryIv", recoveryIv ?: "")
+                    if (keyMode != null) put("keyMode", keyMode)
+                    if (passkeyCredentialId != null) put("passkeyCredentialId", passkeyCredentialId)
+                    if (passkeyPrfSalt != null) put("passkeyPrfSalt", passkeyPrfSalt)
                 }
 
                 val requestBody = json.toString().toRequestBody("application/json".toMediaType())

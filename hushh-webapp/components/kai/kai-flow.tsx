@@ -26,6 +26,7 @@ import { PortfolioImportView } from "./views/portfolio-import-view";
 import { ImportProgressView, ImportStage } from "./views/import-progress-view";
 import { PortfolioReviewView, PortfolioData as ReviewPortfolioData } from "./views/portfolio-review-view";
 import { DashboardView, PortfolioData } from "./views/dashboard-view";
+import { DashboardMasterView } from "./views/dashboard-master-view";
 import { AnalysisView } from "./views/analysis-view";
 import { useVault } from "@/lib/vault/vault-context";
 import { toast } from "sonner";
@@ -100,6 +101,8 @@ interface LiveHoldingPreview {
   quantity?: number | null;
   asset_type?: string;
 }
+
+const USE_DASHBOARD_MASTER_VIEW = true;
 
 // Streaming state
 interface StreamingState {
@@ -1446,16 +1449,27 @@ export function KaiFlow({
       )}
 
       {isDashboardMode && state === "dashboard" && flowData.portfolioData && (
-        <DashboardView
-          portfolioData={flowData.portfolioData}
-          onManagePortfolio={handleManagePortfolio}
-          onAnalyzeStock={handleAnalyzeStock}
-          onAnalyzeLosers={handleAnalyzeLosers}
-          onPersonalizeKai={handleOpenPersonalizeKai}
-          onReupload={handleReimport}
-          onClearData={handleClearData}
-          onViewHistory={handleViewHistory}
-        />
+        USE_DASHBOARD_MASTER_VIEW ? (
+          <DashboardMasterView
+            portfolioData={flowData.portfolioData}
+            onManagePortfolio={handleManagePortfolio}
+            onAnalyzeStock={handleAnalyzeStock}
+            onAnalyzeLosers={handleAnalyzeLosers}
+            onReupload={handleReimport}
+            onViewHistory={handleViewHistory}
+          />
+        ) : (
+          <DashboardView
+            portfolioData={flowData.portfolioData}
+            onManagePortfolio={handleManagePortfolio}
+            onAnalyzeStock={handleAnalyzeStock}
+            onAnalyzeLosers={handleAnalyzeLosers}
+            onPersonalizeKai={handleOpenPersonalizeKai}
+            onReupload={handleReimport}
+            onClearData={handleClearData}
+            onViewHistory={handleViewHistory}
+          />
+        )
       )}
 
       {isDashboardMode && state === "dashboard" && !flowData.portfolioData && (
@@ -1543,6 +1557,7 @@ export function KaiFlow({
               <div className="p-4">
                 <VaultFlow
                   user={user}
+                  enableGeneratedDefault
                   onSuccess={() => {
                     setVaultResolvedForUpload(true);
                     setVaultDialogOpen(false);

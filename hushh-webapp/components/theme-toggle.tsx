@@ -27,6 +27,18 @@ export function ThemeToggle({ className }: { className?: string }) {
     return null;
   }
 
+  const applyTheme = (value: ThemeOption) => {
+    if (theme === value) return;
+    if (typeof document !== "undefined") {
+      const root = document.documentElement;
+      root.classList.add("theme-switching");
+      window.setTimeout(() => {
+        root.classList.remove("theme-switching");
+      }, 320);
+    }
+    setTheme(value);
+  };
+
   const themeOptions: {
     value: ThemeOption;
     icon: LucideIcon;
@@ -50,7 +62,7 @@ export function ThemeToggle({ className }: { className?: string }) {
           <Tooltip key={value}>
             <TooltipTrigger asChild>
               <button
-                onClick={() => setTheme(value)}
+                onClick={() => applyTheme(value)}
                 className={cn(
                   "relative flex items-center justify-center gap-2 px-3 py-2 rounded-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]",
                   isActive

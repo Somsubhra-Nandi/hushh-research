@@ -53,13 +53,9 @@ export function KaiPersonaScreen(props: {
 
   return (
     <main className="h-full w-full bg-transparent flex flex-col overflow-hidden px-8 pt-[calc(12px+env(safe-area-inset-top))] pb-[var(--app-screen-footer-pad)]">
-      <div className="w-full max-w-md mx-auto flex-1 flex flex-col min-h-0">
-        <section className="relative flex-1 flex flex-col justify-center pb-4">
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-b from-[var(--brand-50)]/25 via-transparent to-transparent" />
-          </div>
-
-          <div className="relative z-10 space-y-7">
+      <div className="w-full max-w-md mx-auto flex-1 min-h-0 flex items-center">
+        <section className="relative w-full py-4">
+          <div className="relative z-10 space-y-6 text-left">
             <div className="h-20 w-20 rounded-[24px] border border-border/60 bg-background/70 backdrop-blur-sm grid place-items-center shadow-sm">
               <Icon icon={icon} size={40} className="text-[var(--brand-600)]" />
             </div>
@@ -72,42 +68,40 @@ export function KaiPersonaScreen(props: {
                 {cfg.title}
               </h1>
             </div>
-            <p className="text-[16px] font-medium leading-relaxed text-muted-foreground text-center">
+
+            <p className="text-[16px] font-medium leading-relaxed text-muted-foreground">
               {cfg.support}
             </p>
+
+            <p className="text-[21px] font-semibold leading-relaxed text-foreground">
+              {cfg.headline}
+            </p>
+
+            <p className="text-[16px] font-medium leading-relaxed text-muted-foreground">
+              {cfg.footerTagline}
+            </p>
+
+            <Button size="lg" fullWidth onClick={props.onLaunchDashboard} showRipple>
+              Launch Dashboard
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+
+            {props.onEditAnswers && (
+              <div className="pt-1">
+                <Button
+                  variant="blue-gradient"
+                  effect="fade"
+                  size="lg"
+                  fullWidth
+                  onClick={props.onEditAnswers}
+                  showRipple={false}
+                >
+                  Edit answers
+                </Button>
+              </div>
+            )}
           </div>
         </section>
-
-        <section className="flex-none pb-4">
-          <p className="text-[21px] font-semibold leading-relaxed text-foreground">
-            {cfg.headline}
-          </p>
-        </section>
-
-        <footer className="flex-none pt-0 shrink-0">
-          <p className="text-[16px] font-medium leading-relaxed text-muted-foreground text-center mb-6">
-            {cfg.footerTagline}
-          </p>
-
-          <Button size="lg" fullWidth onClick={props.onLaunchDashboard} showRipple>
-            Launch Dashboard
-            <ArrowRight className="ml-2 h-5 w-5" />
-          </Button>
-
-          {props.onEditAnswers && (
-            <div className="pt-4 text-center">
-              <Button
-                variant="link"
-                effect="fill"
-                size="sm"
-                onClick={props.onEditAnswers}
-                showRipple={false}
-              >
-                Edit answers
-              </Button>
-            </div>
-          )}
-        </footer>
       </div>
     </main>
   );

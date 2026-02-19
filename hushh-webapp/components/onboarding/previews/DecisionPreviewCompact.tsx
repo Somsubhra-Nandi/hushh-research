@@ -32,7 +32,7 @@ export function DecisionPreviewCompact() {
       showRipple={false}
       className="h-full w-full"
     >
-      <div className="p-5">
+      <div className="morphy-theme-content p-5">
         <div className="rounded-2xl border border-background/70 bg-background/55 p-5">
           <div className="mb-5 flex items-center justify-between border-b border-border/70 pb-4">
             <div className="flex items-center gap-3">

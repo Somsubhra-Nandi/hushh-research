@@ -315,6 +315,57 @@ import { OnboardingFeatureList } from "@/lib/morphy-ux/ui";
 
 ---
 
+## Pattern: Kai Dashboard Master Composition
+
+Keywords: kai, dashboard, portfolio, cards, master-view
+
+Use when: Building or extending `/kai/dashboard`.
+
+Do:
+- Compose dashboard through `DashboardMasterView`.
+- Keep totals/allocation/holding rows in dedicated card components.
+- Reuse existing handler props from `KaiFlow` (`onManagePortfolio`, `onAnalyzeStock`, `onAnalyzeLosers`).
+
+Don't:
+- Add direct API mutation logic inside dashboard cards.
+- Fork another dashboard surface without route-gated rollout reason.
+
+---
+
+## Pattern: Vault Method Prompt + Profile Settings
+
+Keywords: vault, passphrase, biometric, passkey, rewrap, single-kek
+
+Use when: Offering unlock method upgrades or method switching.
+
+Do:
+- Use `VaultMethodService.switchMethod(...)` as the single method-switch entrypoint.
+- Keep single-active-KEK semantics (rewrap same vault key, do not generate a new vault key).
+- Reuse same capability and method state model in both modal prompt and profile page.
+
+Don't:
+- Add alternative direct `setupVault` calls in UI layers for method switching.
+- Add plaintext fallback branches.
+
+---
+
+## Pattern: `/kai` Bottom Nav Guided Tour
+
+Keywords: kai, nav-tour, onboarding, cross-device, kai-profile
+
+Use when: First-time education for bottom navigation tabs on `/kai`.
+
+Do:
+- Render tour only on `/kai`.
+- Persist local pending state via `KaiNavTourLocalService`.
+- Sync to `kai_profile` (`nav_tour_completed_at`, `nav_tour_skipped_at`) when vault context is available.
+
+Don't:
+- Show tour on onboarding/import routes.
+- Compete with other first-time prompts on the same route and frame.
+
+---
+
 ## Pattern: Radius Tokens (Globally Tunable)
 
 Keywords: radius, rounded, tokens

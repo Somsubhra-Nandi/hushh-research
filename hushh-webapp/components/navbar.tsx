@@ -30,8 +30,7 @@ export const Navbar = () => {
   const pillRef = React.useRef<HTMLDivElement | null>(null);
   const [onboardingFlowActive, setOnboardingFlowActive] = useState(false);
   const isKaiOnboarding = Boolean(pathname?.startsWith("/kai/onboarding"));
-  const isKaiImport = Boolean(pathname?.startsWith("/kai/import"));
-  const useOnboardingChrome = isKaiOnboarding || (isKaiImport && onboardingFlowActive);
+  const useOnboardingChrome = isKaiOnboarding || onboardingFlowActive;
 
   // Sticky Kai path (last visited /kai or /kai/dashboard/*)
   const lastKaiPath = useKaiSession((s) => s.lastKaiPath);

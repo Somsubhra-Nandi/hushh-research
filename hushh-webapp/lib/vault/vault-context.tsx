@@ -144,7 +144,7 @@ export function VaultProvider({ children }: VaultProviderProps) {
           pendingResult,
           auditResult,
         ] = await Promise.allSettled([
-          WorldModelService.getMetadata(userId),
+          WorldModelService.getMetadata(userId, false, token),
           ApiService.getVaultStatus(userId, token),
           ApiService.getActiveConsents(userId, token),
           ApiService.getPendingConsents(userId, token),

@@ -22,11 +22,14 @@ import { useTheme } from "next-themes";
 import { useVault } from "@/lib/vault/vault-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useStepProgress } from "@/lib/progress/step-progress-context";
-import { 
+import {
   User, 
   Mail, 
   LogOut, 
+  Fingerprint,
+  KeyRound,
   Shield, 
   Wallet, 
   CreditCard, 
@@ -52,6 +55,11 @@ import {
 } from "@/components/ui/dialog";
 import { AccountService } from "@/lib/services/account-service";
 import { VaultService } from "@/lib/services/vault-service";
+import {
+  VaultMethodService,
+  type VaultCapabilityMatrix,
+  type VaultMethod,
+} from "@/lib/services/vault-method-service";
 import { resolveDeleteAccountAuth } from "@/lib/flows/delete-account";
 import { toast } from "sonner";
 import { PreVaultOnboardingService } from "@/lib/services/pre-vault-onboarding-service";
@@ -94,7 +102,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const { user, loading: authLoading, signOut } = useAuth();
   const { theme: _theme, setTheme: _setTheme } = useTheme();
-  const { vaultOwnerToken, isVaultUnlocked } = useVault();
+  const { vaultKey, vaultOwnerToken, isVaultUnlocked } = useVault();
   const { registerSteps, completeStep, reset } = useStepProgress();
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -104,6 +112,14 @@ export default function ProfilePage() {
   const [totalAttributes, setTotalAttributes] = useState(0);
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [vaultMethod, setVaultMethod] = useState<VaultMethod | null>(null);
+  const [capabilityMatrix, setCapabilityMatrix] =
+    useState<VaultCapabilityMatrix | null>(null);
+  const [loadingVaultMethod, setLoadingVaultMethod] = useState(false);
+  const [switchingVaultMethod, setSwitchingVaultMethod] = useState(false);
+  const [passphraseDialogOpen, setPassphraseDialogOpen] = useState(false);
+  const [newPassphrase, setNewPassphrase] = useState("");
+  const [confirmPassphrase, setConfirmPassphrase] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +142,33 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [authLoading, user?.uid]);
+
+  async function refreshVaultMethodState(targetUserId: string) {
+    try {
+      setLoadingVaultMethod(true);
+      const [capability, currentMethod] = await Promise.all([
+        VaultMethodService.getCapabilityMatrix(),
+        VaultMethodService.getCurrentMethod(targetUserId),
+      ]);
+      setCapabilityMatrix(capability);
+      setVaultMethod(currentMethod);
+    } catch (error) {
+      console.warn("[ProfilePage] Failed to resolve vault method:", error);
+      setVaultMethod(null);
+    } finally {
+      setLoadingVaultMethod(false);
+    }
+  }
+
+  useEffect(() => {
+    if (authLoading || !user?.uid) return;
+    if (hasVault !== true) {
+      setVaultMethod(null);
+      return;
+    }
+
+    void refreshVaultMethodState(user.uid);
+  }, [authLoading, hasVault, user?.uid]);
 
   // Load world model data - auth is handled by VaultLockGuard in layout
   useEffect(() => {
@@ -311,6 +354,63 @@ export default function ProfilePage() {
     hasVault === true && !isVaultUnlocked
       ? "Unlock to Delete Account"
       : "Delete Account";
+
+  const recommendedQuickMethod =
+    capabilityMatrix?.recommendedMethod &&
+    capabilityMatrix.recommendedMethod !== "passphrase"
+      ? capabilityMatrix.recommendedMethod
+      : null;
+
+  const readableMethod = (method: VaultMethod | null): string => {
+    if (method === "generated_default_native_biometric") return "Device biometric";
+    if (method === "generated_default_web_prf") return "Passkey (PRF)";
+    if (method === "passphrase") return "Passphrase";
+    return "Unknown";
+  };
+
+  const readableQuickMethod = (method: VaultMethod | null): string => {
+    if (method === "generated_default_native_biometric") return "device biometric";
+    if (method === "generated_default_web_prf") return "passkey";
+    return "quick unlock";
+  };
+
+  async function switchVaultMethod(targetMethod: VaultMethod, passphrase?: string) {
+    if (!user?.uid) return;
+
+    if (!isVaultUnlocked || !vaultKey) {
+      toast.info("Unlock your vault to change security method.");
+      setShowVaultUnlock(true);
+      return;
+    }
+
+    setSwitchingVaultMethod(true);
+    try {
+      const result = await VaultMethodService.switchMethod({
+        userId: user.uid,
+        currentVaultKey: vaultKey,
+        displayName: user.displayName || user.email || "Hushh User",
+        targetMethod,
+        passphrase,
+      });
+
+      setVaultMethod(result.method);
+      toast.success(`Vault method updated to ${readableMethod(result.method)}.`);
+      await refreshVaultMethodState(user.uid);
+
+      setPassphraseDialogOpen(false);
+      setNewPassphrase("");
+      setConfirmPassphrase("");
+    } catch (error) {
+      console.error("[ProfilePage] Failed to switch vault method:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to switch vault security method."
+      );
+    } finally {
+      setSwitchingVaultMethod(false);
+    }
+  }
 
   return (
     <div className="w-full mx-auto px-4 sm:px-6 py-6 md:py-8 md:max-w-2xl space-y-6">
@@ -507,6 +607,110 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      {/* Vault Security Methods */}
+      <Card variant="none" effect="glass">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Icon icon={Fingerprint} size="md" className="text-primary" />
+            </div>
+            <span>Vault Security Methods</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          {hasVault === false && (
+            <p className="text-sm text-muted-foreground">
+              Create your vault first from import to enable biometric or passkey unlock.
+            </p>
+          )}
+
+          {hasVault === true && loadingVaultMethod && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Icon icon={Loader2} size="sm" className="animate-spin" />
+              Loading vault method...
+            </div>
+          )}
+
+          {hasVault === true && !loadingVaultMethod && (
+            <>
+              <div className="rounded-xl border border-border/60 bg-muted/40 p-3 space-y-2">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
+                  Current Method
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{readableMethod(vaultMethod)}</p>
+                  <Badge variant="secondary">
+                    {vaultMethod === "passphrase" ? "Manual unlock" : "Quick unlock"}
+                  </Badge>
+                </div>
+                {!isVaultUnlocked && (
+                  <p className="text-xs text-muted-foreground">
+                    Unlock your vault to update security methods.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
+                  Device Capability
+                </p>
+                <div className="space-y-1 text-sm">
+                  <p>
+                    Native biometric:{" "}
+                    <span className="font-semibold">
+                      {capabilityMatrix?.generatedNativeBiometric ? "Available" : "Unavailable"}
+                    </span>
+                  </p>
+                  <p>
+                    Web passkey (PRF):{" "}
+                    <span className="font-semibold">
+                      {capabilityMatrix?.generatedWebPrf ? "Available" : "Unavailable"}
+                    </span>
+                  </p>
+                </div>
+                {capabilityMatrix?.reason && (
+                  <p className="text-xs text-muted-foreground">{capabilityMatrix.reason}</p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {vaultMethod === "passphrase" && recommendedQuickMethod && (
+                  <Button
+                    size="default"
+                    disabled={switchingVaultMethod}
+                    onClick={() => void switchVaultMethod(recommendedQuickMethod)}
+                  >
+                    {switchingVaultMethod ? (
+                      <>
+                        <Icon icon={Loader2} size="sm" className="mr-2 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Icon icon={KeyRound} size="sm" className="mr-2" />
+                        Enable {readableQuickMethod(recommendedQuickMethod)}
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {vaultMethod && vaultMethod !== "passphrase" && (
+                  <Button
+                    variant="blue-gradient"
+                    effect="fade"
+                    size="default"
+                    disabled={switchingVaultMethod}
+                    onClick={() => setPassphraseDialogOpen(true)}
+                  >
+                    Switch to passphrase
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Danger Zone */}
       <Card variant="none" className="border-destructive/20 bg-destructive/5 dark:bg-destructive/10">
         <CardHeader className="pb-2">
@@ -576,6 +780,51 @@ export default function ProfilePage() {
         </Dialog>
       )}
 
+      <Dialog open={passphraseDialogOpen} onOpenChange={setPassphraseDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Switch to passphrase unlock</DialogTitle>
+          <DialogDescription>
+            Set a new passphrase for vault unlock. Recovery key fallback remains active.
+          </DialogDescription>
+          <div className="space-y-3 pt-2">
+            <Input
+              type="password"
+              placeholder="New passphrase (min 8 characters)"
+              value={newPassphrase}
+              onChange={(event) => setNewPassphrase(event.target.value)}
+            />
+            <Input
+              type="password"
+              placeholder="Confirm passphrase"
+              value={confirmPassphrase}
+              onChange={(event) => setConfirmPassphrase(event.target.value)}
+            />
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button
+                variant="none"
+                effect="fade"
+                size="default"
+                onClick={() => setPassphraseDialogOpen(false)}
+                disabled={switchingVaultMethod}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="default"
+                disabled={
+                  switchingVaultMethod ||
+                  newPassphrase.length < 8 ||
+                  newPassphrase !== confirmPassphrase
+                }
+                onClick={() => void switchVaultMethod("passphrase", newPassphrase)}
+              >
+                {switchingVaultMethod ? "Saving..." : "Save passphrase"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
@@ -619,8 +868,8 @@ export default function ProfilePage() {
 
       {/* Security Footer */}
       <p className="text-center text-xs text-muted-foreground">
-        Your data is encrypted end-to-end and never leaves your device
-        unencrypted.
+        Your data is encrypted before storage and access is controlled by your
+        vault credentials.
       </p>
       
     </div>

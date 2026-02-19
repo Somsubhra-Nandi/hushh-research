@@ -15,7 +15,7 @@ import { useState, useCallback, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/lib/morphy-ux/card";
 import { Button as MorphyButton } from "@/lib/morphy-ux/button";
 
-import { Upload, FileText, CheckCircle, AlertCircle, Link2, Headphones } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertCircle, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/lib/morphy-ux/ui";
@@ -102,9 +102,15 @@ export function PortfolioImportView({
         </p>
       </div>
 
-      {/* Plaid Integration - Coming Soon (moved above upload by request) */}
+      <div className="px-2 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          Choose import method
+        </p>
+      </div>
+
+      {/* Plaid integration */}
       <Card variant="none" effect="glass" showRipple={false}>
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
@@ -117,23 +123,49 @@ export function PortfolioImportView({
                 </p>
               </div>
             </div>
-            <Badge variant="outline" className="shrink-0">
-              Coming Soon
-            </Badge>
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              <Badge className="border border-[var(--brand-200)] bg-[var(--brand-50)] text-[var(--brand-700)]">
+                Best results
+              </Badge>
+              <Badge variant="outline">Coming soon</Badge>
+            </div>
           </div>
+          <p className="text-[12px] text-muted-foreground">
+            Best for richer context and cleaner portfolio normalization.
+          </p>
         </CardContent>
       </Card>
 
-      {/* Main Import Card */}
+      <div className="flex items-center gap-3 px-2">
+        <div className="h-px flex-1 bg-border/60" />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          or
+        </span>
+        <div className="h-px flex-1 bg-border/60" />
+      </div>
+
+      {/* Statement upload */}
       <Card variant="none" effect="glass" showRipple={false}>
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
+              <Icon icon={Upload} size="md" className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-[17px] font-semibold text-foreground">Upload statement</h3>
+              <p className="text-[13px] font-medium text-muted-foreground">
+                Import official brokerage PDF or CSV manually
+              </p>
+            </div>
+          </div>
+
           {/* Drag & Drop Zone */}
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             className={cn(
-              "relative border border-dashed rounded-3xl p-8 transition-all duration-200 text-center cursor-pointer min-h-48 flex flex-col items-center justify-center",
+              "relative border border-dashed rounded-3xl p-7 transition-all duration-200 text-center cursor-pointer min-h-44 flex flex-col items-center justify-center",
               isDragging
                 ? "border-primary bg-primary/8 scale-[1.01]"
                 : "border-border/70 hover:border-primary/50 hover:bg-muted/25",
@@ -151,10 +183,10 @@ export function PortfolioImportView({
               <h3 className="text-[17px] font-semibold text-primary">
                 {isDragging
                   ? "Drop your file here"
-                  : "Tap to upload statement"}
+                  : "Tap to upload official statement"}
               </h3>
               <p className="text-[14px] font-medium text-muted-foreground">
-                CSV or PDF
+                PDF or CSV
               </p>
             </div>
 
@@ -180,43 +212,12 @@ export function PortfolioImportView({
         </CardContent>
       </Card>
 
-      {/* Supported Brokerages */}
-      <Card variant="none" effect="glass" showRipple={false}>
-        <CardHeader>
-          <CardTitle className="text-[17px]">Supported Brokerages</CardTitle>
-          <CardDescription className="text-[13px] font-medium">
-            We support statements from these brokerages
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              "Fidelity",
-              "Schwab",
-              "Vanguard",
-              "E*TRADE",
-              "Robinhood",
-              "Ameritrade",
-            ].map((brokerage) => (
-              <div
-                key={brokerage}
-                className="flex items-center gap-2 p-2 rounded-xl bg-muted/45 text-sm"
-              >
-                <Icon icon={CheckCircle} size="sm" className="text-green-500 shrink-0" />
-                <span className="font-medium">{brokerage}</span>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-border/60 pt-3">
-            <p className="text-[13px] text-muted-foreground font-medium text-center">
-              Don&apos;t see yours?{" "}
-              <span className="underline underline-offset-2 decoration-muted-foreground/40">
-                Contact support
-              </span>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5">
+        <Icon icon={AlertCircle} size="sm" className="mt-0.5 text-muted-foreground shrink-0" />
+        <p className="text-[12px] leading-relaxed text-muted-foreground">
+          We support official brokerage statements from all major systems.
+        </p>
+      </div>
 
       {/* Skip Option */}
       <div className="text-center pt-1">

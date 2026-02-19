@@ -106,9 +106,7 @@ export function TopAppBar({ className }: TopAppBarProps) {
   const [onboardingFlowActive, setOnboardingFlowActive] = useState(false);
   const pathname = usePathname();
   const onKaiOnboarding = pathname.startsWith("/kai/onboarding");
-  const onKaiImport = pathname.startsWith("/kai/import");
-  const showOnboardingActions =
-    onKaiOnboarding || (onKaiImport && onboardingFlowActive);
+  const showOnboardingActions = onKaiOnboarding || onboardingFlowActive;
   const hideChrome = pathname === "/" || pathname.startsWith("/login");
 
   useEffect(() => {
@@ -192,7 +190,7 @@ function OnboardingRouteActions() {
       setOnboardingRequiredCookie(false);
       setOnboardingFlowActiveCookie(false);
       await signOut();
-      router.push("/login");
+      router.push("/");
     } catch (error) {
       console.error("[TopAppBar] Failed to sign out:", error);
       toast.error("Couldn't sign out. Please retry.");
@@ -222,7 +220,7 @@ function OnboardingRouteActions() {
 
       toast.success("Account deleted.");
       await signOut();
-      router.push("/login");
+      router.push("/");
     } catch (error) {
       console.error("[TopAppBar] Failed to delete account:", error);
       toast.error("Failed to delete account. Please retry.");

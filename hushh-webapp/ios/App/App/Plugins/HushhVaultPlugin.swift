@@ -273,9 +273,12 @@ public class HushhVaultPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         let authMethod = call.getString("authMethod") ?? "passphrase"
+        let keyMode = call.getString("keyMode")
         let recoveryEncryptedVaultKey = call.getString("recoveryEncryptedVaultKey") ?? ""
         let recoverySalt = call.getString("recoverySalt") ?? ""
         let recoveryIv = call.getString("recoveryIv") ?? ""
+        let passkeyCredentialId = call.getString("passkeyCredentialId")
+        let passkeyPrfSalt = call.getString("passkeyPrfSalt")
         let authToken = call.getString("authToken")
         let backendUrl = call.getString("backendUrl") ?? defaultBackendUrl
         let urlStr = "\(backendUrl)/db/vault/setup"
@@ -283,7 +286,7 @@ public class HushhVaultPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[\(TAG)] 🌐 URL: \(urlStr)")
         print("[\(TAG)] userId: \(userId), authMethod: \(authMethod)")
         
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "userId": userId,
             "authMethod": authMethod,
             "encryptedVaultKey": encryptedVaultKey,
@@ -293,6 +296,16 @@ public class HushhVaultPlugin: CAPPlugin, CAPBridgedPlugin {
             "recoverySalt": recoverySalt,
             "recoveryIv": recoveryIv
         ]
+
+        if let keyMode, !keyMode.isEmpty {
+            body["keyMode"] = keyMode
+        }
+        if let passkeyCredentialId, !passkeyCredentialId.isEmpty {
+            body["passkeyCredentialId"] = passkeyCredentialId
+        }
+        if let passkeyPrfSalt, !passkeyPrfSalt.isEmpty {
+            body["passkeyPrfSalt"] = passkeyPrfSalt
+        }
         
         performRequest(urlStr: urlStr, body: body, authToken: authToken) { json, error in
             if json != nil {

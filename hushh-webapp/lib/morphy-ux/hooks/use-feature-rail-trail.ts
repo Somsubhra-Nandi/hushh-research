@@ -46,7 +46,7 @@ function setFinalActiveState(
   chips.forEach((chip) => {
     chip.dataset.state = "active";
     chip.style.opacity = "1";
-    chip.style.transform = "translate3d(0,0,0) scale(1)";
+    chip.style.transform = "translate3d(0,0,0)";
   });
 }
 
@@ -82,7 +82,7 @@ export async function runFeatureRailTrailAnimation({
   const { durationsMs } = getMotionCssVars();
   const ease = getMorphyEaseName("emphasized");
   const settleEase = getMorphyEaseName("decelerate");
-  const chipBounceEase = "back.out(1.35)";
+  const chipEase = getMorphyEaseName("emphasized");
   const scope = lineEl.closest("[data-feature-rail-list='true']") ?? lineEl;
 
   if ((gsap as any).killTweensOf) {
@@ -100,7 +100,7 @@ export async function runFeatureRailTrailAnimation({
     chips.forEach((chip) => {
       chip.dataset.state = "muted";
     });
-    setNow(chips, { opacity: 0.72, y: 6, scale: 0.96 });
+    setNow(chips, { opacity: 0.72, y: 6 });
 
     const startDelay = Math.max(durationsMs.lg / 1000, 0.45);
     const lineDelay = startDelay + durationsMs.sm / 1000;
@@ -145,9 +145,8 @@ export async function runFeatureRailTrailAnimation({
         {
           opacity: 1,
           y: 0,
-          scale: 1,
           duration: chipDuration,
-          ease: chipBounceEase,
+          ease: chipEase,
           onStart: () => {
             chip.dataset.state = "active";
           },

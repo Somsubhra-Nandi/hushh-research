@@ -10,6 +10,8 @@
 import { VaultLockGuard } from "@/components/vault/vault-lock-guard";
 import { KaiSearchBar } from "@/components/kai/kai-search-bar";
 import { KaiOnboardingGuard } from "@/components/kai/onboarding/kai-onboarding-guard";
+import { KaiNavTour } from "@/components/kai/onboarding/kai-nav-tour";
+import { VaultMethodPrompt } from "@/components/vault/vault-method-prompt";
 import { usePathname, useRouter } from "next/navigation";
 import { useKaiSession } from "@/lib/stores/kai-session-store";
 
@@ -42,12 +44,15 @@ export default function KaiLayout({
     onOnboardingRoute ||
     onKaiHomeRoute ||
     onImportRoute;
+  const shouldEnableMethodPrompt = !onOnboardingRoute && !onImportRoute;
 
   return (
     <VaultLockGuard>
       <KaiOnboardingGuard>
         <div className="flex flex-col min-h-screen">
           <main className="flex-1 pb-32">{children}</main>
+          <VaultMethodPrompt enabled={shouldEnableMethodPrompt} />
+          <KaiNavTour />
 
           {/* Bottom-fixed search bar across all /kai routes (hidden on review/manage/onboarding screens to avoid overlap) */}
           {!hideSearchBar && (

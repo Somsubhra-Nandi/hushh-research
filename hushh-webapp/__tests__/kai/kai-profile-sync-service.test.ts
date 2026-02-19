@@ -49,6 +49,15 @@ vi.mock("@/lib/services/kai-profile-service", () => {
   };
 });
 
+vi.mock("@/lib/services/kai-nav-tour-sync-service", () => ({
+  KaiNavTourSyncService: {
+    syncPendingToVault: vi.fn().mockResolvedValue({
+      synced: false,
+      reason: "no_pending_state",
+    }),
+  },
+}));
+
 import { PreVaultOnboardingService } from "@/lib/services/pre-vault-onboarding-service";
 import { KaiProfileService } from "@/lib/services/kai-profile-service";
 import { KaiProfileSyncService } from "@/lib/services/kai-profile-sync-service";

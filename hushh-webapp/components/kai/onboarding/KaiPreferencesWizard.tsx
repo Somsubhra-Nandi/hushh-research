@@ -158,6 +158,7 @@ export function KaiPreferencesWizard(props: {
       ? "Continue"
       : "Next";
 
+  const reserveBackSlot = props.mode === "onboarding";
   const showBack = props.mode === "onboarding" && step > 0;
   const canGoPrevious = step > 0;
 
@@ -186,15 +187,20 @@ export function KaiPreferencesWizard(props: {
         )}
       >
         <div className="pt-1 space-y-2">
-          {showBack && (
+          {reserveBackSlot && (
             <div className="flex justify-start">
               <Button
                 variant="link"
-                effect="fill"
+                effect="fade"
                 size="sm"
                 onClick={handleBack}
-                className="h-auto p-0"
+                className={cn(
+                  "h-auto p-0",
+                  !showBack && "invisible pointer-events-none"
+                )}
                 showRipple={false}
+                aria-hidden={!showBack}
+                tabIndex={showBack ? 0 : -1}
               >
                 <ArrowLeft className="mr-1 h-4 w-4" />
                 Back
@@ -245,9 +251,9 @@ export function KaiPreferencesWizard(props: {
 
           {props.mode === "onboarding" && props.onSkip && (
             <Button
-              variant="link"
-              effect="fill"
-              size="sm"
+              variant="blue-gradient"
+              effect="fade"
+              size="lg"
               fullWidth
               onClick={props.onSkip}
               showRipple={false}

@@ -18,6 +18,20 @@ import { ApiService } from "@/lib/services/api-service";
 // Event name for FCM messages (both web and native dispatch this)
 export const FCM_MESSAGE_EVENT = "fcm-message";
 
+function hasValidWebMessagingConfig(app: {
+  options?: {
+    appId?: string;
+    apiKey?: string;
+    messagingSenderId?: string;
+  };
+}): boolean {
+  return Boolean(
+    app.options?.appId &&
+      app.options?.apiKey &&
+      app.options?.messagingSenderId
+  );
+}
+
 /**
  * Initialize FCM for current platform (web or native)
  * 
@@ -130,9 +144,10 @@ async function initializeWebFCM(
 
     // Check for required Firebase config values before initializing messaging
     // The Firebase Web SDK requires appId for the Installations service (used by getToken)
-    if (!app.options.appId || !app.options.apiKey) {
-      console.warn("[FCM] Missing 'appId' or 'apiKey' in Firebase config. Skipping FCM initialization to prevent crash.");
-      console.warn("[FCM] Please add NEXT_PUBLIC_FIREBASE_APP_ID to your .env.local if you wish to use Push Notifications.");
+    if (!hasValidWebMessagingConfig(app)) {
+      console.warn(
+        "[FCM] Missing required Firebase Messaging config (appId/apiKey/messagingSenderId). Skipping web FCM init."
+      );
       return;
     }
 
@@ -270,6 +285,10 @@ export async function getFCMToken(): Promise<string | null> {
 
       const { getMessaging, getToken } = await import("firebase/messaging");
       const { app } = await import("@/lib/firebase/config");
+      if (!hasValidWebMessagingConfig(app)) {
+        console.warn("[FCM] Missing Firebase Messaging config. Skipping token retrieval.");
+        return null;
+      }
 
       const messaging = getMessaging(app);
       const token = await getToken(messaging, { vapidKey });
@@ -312,6 +331,10 @@ export async function deleteFCMToken(
     } else {
       const { getMessaging, deleteToken } = await import("firebase/messaging");
       const { app } = await import("@/lib/firebase/config");
+      if (!hasValidWebMessagingConfig(app)) {
+        console.warn("[FCM] Missing Firebase Messaging config. Skipping token deletion.");
+        return;
+      }
 
       const messaging = getMessaging(app);
       await deleteToken(messaging);

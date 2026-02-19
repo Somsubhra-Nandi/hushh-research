@@ -897,7 +897,7 @@ export function DebateStreamView({ ticker, userId, riskProfile: riskProfileProp,
 
           <div className="space-y-6 lg:sticky lg:top-4 h-fit">
             {decision ? (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="animate-in fade-in slide-in-from-bottom-4 ">
                 <DecisionCard result={decision} />
               </div>
             ) : (

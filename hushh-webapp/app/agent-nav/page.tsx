@@ -154,9 +154,6 @@ export default function AgentNavPage() {
 
           <span
             className="text-xl md:text-3xl text-muted-foreground"
-            style={{
-              fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-            }}
           >
             {currentWord}
           </span>
