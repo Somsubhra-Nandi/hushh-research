@@ -25,7 +25,7 @@ import { CacheSyncService } from "@/lib/cache/cache-sync-service";
 import { PortfolioImportView } from "./views/portfolio-import-view";
 import { ImportProgressView, ImportStage } from "./views/import-progress-view";
 import { PortfolioReviewView, PortfolioData as ReviewPortfolioData } from "./views/portfolio-review-view";
-import { DashboardView, PortfolioData } from "./views/dashboard-view";
+import type { PortfolioData } from "./types/portfolio";
 import { DashboardMasterView } from "./views/dashboard-master-view";
 import { AnalysisView } from "./views/analysis-view";
 import { useVault } from "@/lib/vault/vault-context";
@@ -35,7 +35,6 @@ import { getStockContext } from "@/lib/services/kai-service";
 import { useKaiSession } from "@/lib/stores/kai-session-store";
 import type { KaiStreamEnvelope } from "@/lib/streaming/kai-stream-types";
 import { consumeCanonicalKaiStream } from "@/lib/streaming/kai-stream-client";
-import { KaiPreferencesSheet } from "@/components/kai/onboarding/KaiPreferencesSheet";
 import { KaiProfileSyncService } from "@/lib/services/kai-profile-sync-service";
 import { useAuth } from "@/hooks/use-auth";
 import { VaultFlow } from "@/components/vault/vault-flow";
@@ -111,8 +110,6 @@ interface LiveHoldingPreview {
   quantity?: number | null;
   asset_type?: string;
 }
-
-const USE_DASHBOARD_MASTER_VIEW = true;
 
 // Streaming state
 interface StreamingState {
@@ -525,7 +522,6 @@ export function KaiFlow({
     hasFinancialData: false,
   });
   const [error, setError] = useState<string | null>(null);
-  const [preferencesSheetOpen, setPreferencesSheetOpen] = useState(false);
   const [vaultDialogOpen, setVaultDialogOpen] = useState(false);
   const [queuedUploadFile, setQueuedUploadFile] = useState<File | null>(null);
   const [resumeUploadAfterUnlock, setResumeUploadAfterUnlock] = useState(false);
@@ -787,14 +783,6 @@ export function KaiFlow({
       onHoldingsLoaded(flowData.holdings);
     }
   }, [flowData.holdings, onHoldingsLoaded]);
-
-  const handleOpenPersonalizeKai = useCallback(() => {
-    if (!vaultKey || !effectiveVaultOwnerToken) {
-      toast.error("Unlock your vault to edit Kai preferences.");
-      return;
-    }
-    setPreferencesSheetOpen(true);
-  }, [vaultKey, effectiveVaultOwnerToken]);
 
   // Production-grade disconnect: abort active streams on force-close, mobile swipe-away
   useEffect(() => {
@@ -1424,37 +1412,6 @@ export function KaiFlow({
     setState("import_required");
   }, [mode, router]);
 
-  // Handle clear all data with confirmation
-  const handleClearData = useCallback(async () => {
-    // Show confirmation dialog
-    const confirmed = window.confirm(
-      "Are you sure you want to clear all portfolio data? This action cannot be undone."
-    );
-    
-    if (!confirmed) {
-      return;
-    }
-    
-    try {
-      // Clear World Model financial domain
-      await WorldModelService.clearDomain(userId, "financial", effectiveVaultOwnerToken);
-      CacheSyncService.onWorldModelDomainCleared(userId, "financial");
-      
-      // Reset flow state
-      setFlowData({ hasFinancialData: false });
-      if (mode === "dashboard") {
-        router.push(ROUTES.KAI_IMPORT);
-        return;
-      }
-      setState("import_required");
-      
-      toast.success("Portfolio data cleared successfully");
-    } catch (err) {
-      console.error("[KaiFlow] Error clearing data:", err);
-      toast.error("Failed to clear data. Please try again.");
-    }
-  }, [mode, router, userId, effectiveVaultOwnerToken]);
-
   // Handle manage portfolio navigation
   const handleManagePortfolio = useCallback(() => {
     router.push(`${ROUTES.KAI_DASHBOARD}/manage`);
@@ -1616,27 +1573,14 @@ export function KaiFlow({
       )}
 
       {isDashboardMode && state === "dashboard" && flowData.portfolioData && (
-        USE_DASHBOARD_MASTER_VIEW ? (
-          <DashboardMasterView
-            portfolioData={flowData.portfolioData}
-            onManagePortfolio={handleManagePortfolio}
-            onAnalyzeStock={handleAnalyzeStock}
-            onAnalyzeLosers={handleAnalyzeLosers}
-            onReupload={handleReimport}
-            onViewHistory={handleViewHistory}
-          />
-        ) : (
-          <DashboardView
-            portfolioData={flowData.portfolioData}
-            onManagePortfolio={handleManagePortfolio}
-            onAnalyzeStock={handleAnalyzeStock}
-            onAnalyzeLosers={handleAnalyzeLosers}
-            onPersonalizeKai={handleOpenPersonalizeKai}
-            onReupload={handleReimport}
-            onClearData={handleClearData}
-            onViewHistory={handleViewHistory}
-          />
-        )
+        <DashboardMasterView
+          portfolioData={flowData.portfolioData}
+          onManagePortfolio={handleManagePortfolio}
+          onAnalyzeStock={handleAnalyzeStock}
+          onAnalyzeLosers={handleAnalyzeLosers}
+          onReupload={handleReimport}
+          onViewHistory={handleViewHistory}
+        />
       )}
 
       {isDashboardMode && state === "dashboard" && !flowData.portfolioData && (
@@ -1684,16 +1628,6 @@ export function KaiFlow({
             Running debate engine analysis...
           </p>
         </div>
-      )}
-
-      {vaultKey && effectiveVaultOwnerToken && (
-        <KaiPreferencesSheet
-          open={preferencesSheetOpen}
-          onOpenChange={setPreferencesSheetOpen}
-          userId={userId}
-          vaultKey={vaultKey}
-          vaultOwnerToken={effectiveVaultOwnerToken}
-        />
       )}
 
       {user && (

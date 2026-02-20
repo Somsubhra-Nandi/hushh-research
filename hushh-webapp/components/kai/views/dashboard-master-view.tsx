@@ -9,7 +9,7 @@ import { HoldingPositionCard, type HoldingPosition } from "@/components/kai/card
 import { NewHoldingCtaCard } from "@/components/kai/cards/new-holding-cta-card";
 import { PortfolioMetricsCard } from "@/components/kai/cards/portfolio-metrics-card";
 import { TopMoversCard } from "@/components/kai/cards/top-movers-card";
-import type { PortfolioData } from "@/components/kai/views/dashboard-view";
+import type { PortfolioData } from "@/components/kai/types/portfolio";
 import { Button as MorphyButton } from "@/lib/morphy-ux/button";
 import { Card, CardContent } from "@/lib/morphy-ux/card";
 import { Icon } from "@/lib/morphy-ux/ui";
