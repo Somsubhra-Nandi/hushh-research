@@ -534,8 +534,8 @@ The app follows a **Layered Navigation** model:
 
 | Level  | Description | Examples                      | Back Button        |
 | ------ | ----------- | ----------------------------- | ------------------ |
-| **1**  | Root Pages  | `/dashboard`, `/profile`      | Exit App Dialog    |
-| **2+** | Sub Pages   | `/dashboard/kai`, `/settings` | Navigate to Parent |
+| **1**  | Root Tabs   | `/kai`, `/consents`, `/profile`, `/agent-nav` | Exit/Lock Dialog |
+| **2+** | Sub Pages   | `/kai/onboarding`, `/kai/import`, `/kai/dashboard` | Navigate to Parent |
 
 ### Exit Dialog Security
 
@@ -559,111 +559,6 @@ When users exit from root-level pages:
 - Both use the **masked blur** style (`.top-bar-glass`): theme-aware semi-transparent background, `backdrop-filter: blur(3px) saturate(180%)`, and a faded bottom edge via `mask-image` so the bar blends into the content.
 - **No spacer in layout**: The main scroll container in `Providers` has `pt-[45px]` and extends under the fixed bar so content can scroll behind it; body already has `padding-top: env(safe-area-inset-top)` for the notch/safe area.
 - **TopAppBarSpacer** is no longer used in the root layout; the scroll container’s padding provides clearance. The component remains available if a page needs to reserve space for the bar outside the main providers layout.
-
----
-
-## Roadmap: On-Device AI Layer
-
-> **Vision**: Run AI directly on the device for maximum privacy - no cloud required.
-
-### Architecture Overview (Planned)
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│              ON-DEVICE AI LAYER (Future Implementation)         │
-├────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                 LOCAL AI INFERENCE                        │  │
-│  │  iOS: MLX Framework (Apple Silicon optimized)            │  │
-│  │  Android: MediaPipe + Gemma (LLM Inference API)          │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                          ↓ Local Processing                     │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                 LOCAL MCP SERVER                          │  │
-│  │  HushhMCPPlugin - JSON-RPC 2.0 interface                 │  │
-│  │  Exposes vault data to system AI with consent            │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                          ↓ Local SQLite                         │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │          LOCAL ENCRYPTED VAULT (SQLite + Room)            │  │
-│  │  Data NEVER leaves device unless user opts-in             │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### Implementation Roadmap
-
-| Phase       | Feature               | iOS                | Android           | Status     |
-| ----------- | --------------------- | ------------------ | ----------------- | ---------- |
-| **Phase 1** | Local SQLite Vault    | CoreData           | Room              | 🔜 Planned |
-| **Phase 2** | Local MCP Server      | HushhMCPPlugin     | HushhMCPPlugin    | 🔜 Planned |
-| **Phase 3** | On-Device LLM         | MLX Framework      | MediaPipe + Gemma | 🔜 Planned |
-| **Phase 4** | System AI Integration | Apple Intelligence | Gemini / AICore   | 🔜 Planned |
-
-### On-Device AI Options
-
-| Option                   | Platform    | Pros                                       | Cons                              |
-| ------------------------ | ----------- | ------------------------------------------ | --------------------------------- |
-| **Apple Intelligence**   | iOS 18+     | Native, no model download, optimized       | Limited to iOS 18+ devices        |
-| **MLX Swift**            | iOS         | Full control, custom models, Apple Silicon | Requires model packaging (~1.5GB) |
-| **MediaPipe + Gemma**    | Android     | Google-supported, well-documented          | Large model downloads (~1.5GB)    |
-| **Gemini Nano (AICore)** | Android 14+ | Native, optimized                          | Limited device availability       |
-| **@capgo/capacitor-llm** | Both        | Ready-made plugin, cross-platform          | Less customization                |
-
-### Why On-Device AI Matters
-
-1. **True Zero-Knowledge**: Data never leaves the device, not even encrypted
-2. **Offline Capability**: Full AI functionality without internet
-3. **System AI Integration**: "Hey Siri, what should I invest in?" with consent
-4. **Lower Latency**: No network round-trips for AI inference
-5. **Cost Efficiency**: No cloud compute costs for inference
-
-### Example: Future Siri Integration
-
-```
-User: "Hey Siri, what should I have for dinner based on my preferences?"
-
-┌──────────────────────────────────────────────────────────────────────┐
-│ 1. Siri → Apple Intelligence → Detects Hushh integration            │
-│ 2. Apple Intelligence → HushhMCP.request_consent("vault.read.food") │
-│ 3. HushhMCP → Prompt user with FaceID consent                        │
-│ 4. User approves → Consent token issued locally                      │
-│ 5. HushhMCP.get_food_preferences(token) → Local SQLite               │
-│ 6. Returns: {vegetarian: true, budget: $30}                          │
-│ 7. Apple Intelligence → Uses context for response                    │
-│ 8. Siri: "Based on your preferences, here are vegetarian options..." │
-│                                                                       │
-│ ⚠️ NO DATA EVER LEFT THE DEVICE                                      │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-### Device Requirements (Future)
-
-| Requirement                | iOS                    | Android                 |
-| -------------------------- | ---------------------- | ----------------------- |
-| **Minimum for Local AI**   | A14+ chip (iPhone 12+) | 4GB+ RAM                |
-| **For Apple Intelligence** | iOS 18+                | N/A                     |
-| **For Gemini Nano**        | N/A                    | Android 14+ with AICore |
-
-### Plugin Stub (Ready for Implementation)
-
-```typescript
-// lib/capacitor/index.ts (Interface ready, implementation pending)
-export interface HushhAIPlugin {
-  generateResponse(options: { prompt: string }): Promise<{ response: string }>;
-  isAvailable(): Promise<{ available: boolean }>;
-  downloadModel?(): Promise<{ status: string; progress?: number }>;
-}
-
-export interface HushhMCPPlugin {
-  startServer(): Promise<{ port: number }>;
-  stopServer(): Promise<void>;
-  registerWithSystemAI(): Promise<{ registered: boolean }>;
-  handleToolCall(request: MCPRequest): Promise<MCPResponse>;
-}
-```
-
----
 
 ## Authentication Token Passing
 
@@ -705,6 +600,7 @@ For Server-Sent Events (SSE) streaming on native:
 Before releasing mobile updates:
 
 - [ ] All 12 plugins registered on both platforms
+- [ ] All 10 plugins registered on both platforms
 - [ ] Firebase authentication works (Google Sign-In)
 - [ ] Apple Sign-In works on iOS
 - [ ] Vault operations work end-to-end
@@ -719,19 +615,12 @@ Before releasing mobile updates:
 
 ## Static Export Redirect Limitations
 
-For `CAPACITOR_BUILD=true` (`output: "export"`), Next.js server redirects in `next.config.ts` are not authoritative on-device.
+For `CAPACITOR_BUILD=true` (`output: "export"`), treat App Router files as the only canonical route surface.
 
 Required rule:
-- Every mobile-critical legacy route alias must also have an App Router page-level client fallback using `router.replace(...)`.
-
-Current mandatory fallback pages:
-- `hushh-webapp/app/onboarding/preferences/page.tsx` -> `/kai/onboarding`
-- `hushh-webapp/app/dashboard/kai/page.tsx` -> `/kai/dashboard`
-- `hushh-webapp/app/dashboard/kai/[...path]/page.tsx` -> `/kai/dashboard/[...path]`
-- `hushh-webapp/app/dashboard/domain/[...path]/page.tsx` -> `/kai`
-- `hushh-webapp/app/dashboard/agent-nav/page.tsx` -> `/agent-nav`
-
-Do not use server `redirect()` for those compatibility pages.
+- Do not depend on legacy alias redirects for mobile navigation.
+- Keep only canonical pages: `/`, `/login`, `/kai`, `/kai/onboarding`, `/kai/import`, `/kai/dashboard`.
+- Any removed alias route must stay removed from both `app/` and `next.config.ts`.
 
 ---
 

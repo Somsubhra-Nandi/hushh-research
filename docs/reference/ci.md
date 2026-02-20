@@ -112,7 +112,7 @@ Using a different Node or Python locally can cause â€œpass locally, fail in CIâ€
 | Step | Command / behavior | Fails CI? |
 |------|--------------------|-----------|
 | Install | `npm ci` in `hushh-webapp/` | Yes |
-| Verify | `npm run verify:routes` (script: `scripts/verify-route-contracts.cjs`) | Yes |
+| Verify | `npm run verify:routes` (script: `hushh-webapp/scripts/verify-route-contracts.cjs`) | Yes |
 
 Route contracts must stay in sync between frontend expectations and backend (or proxy) routes. See [API Contracts](api-contracts.md). If you add or change API routes, update the contract and run `npm run verify:routes` (or full local CI).
 

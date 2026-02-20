@@ -25,17 +25,16 @@ import { BreadcrumbLink } from "@/components/ui/breadcrumb";
 
 // ✅ CORRECT - Use asChild pattern
 <BreadcrumbLink asChild>
-  <Link href="/dashboard">Dashboard</Link>
+  <Link href="/kai/dashboard">Dashboard</Link>
 </BreadcrumbLink>
 
 // ❌ WRONG - Direct href (causes full reload)
-<BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+<BreadcrumbLink href="/kai/dashboard">Dashboard</BreadcrumbLink>
 ```
 
 Route/chrome constraints:
 - Public no-chrome routes: `ROUTES.HOME`, `ROUTES.LOGIN`
 - Kai chrome routes: `ROUTES.KAI_HOME`, `ROUTES.KAI_ONBOARDING`, `ROUTES.KAI_IMPORT`, `ROUTES.KAI_DASHBOARD`
-- Legacy aliases must include client fallback pages for Capacitor export compatibility (do not rely only on `next.config.ts` redirects).
 
 ### Button (PRIMARY INTERACTIVE ELEMENT)
 
@@ -393,16 +392,19 @@ Sub-components:
 Rules:
 - Keep data source as `PortfolioData` from `KaiFlow`.
 - Map actions to existing handlers (`onManagePortfolio`, `onAnalyzeStock`, `onAnalyzeLosers`) rather than adding inline CRUD APIs.
-- Keep rollback option by preserving legacy dashboard branch behind internal flag during rollout.
+- Keep a single canonical dashboard renderer (`DashboardMasterView`).
 
 ---
 
 ## Vault Method UX Pattern
 
-Single active KEK model is authoritative:
-- `passphrase`
-- `generated_default_native_biometric`
-- `generated_default_web_prf`
+Multi-wrapper DEK model is authoritative:
+- `passphrase` wrapper (required)
+- `recovery` wrapper (required)
+- Optional quick unlock wrappers:
+  - `generated_default_native_biometric`
+  - `generated_default_web_prf`
+- `primaryMethod` controls default unlock UX only.
 
 Implementation anchors:
 - `hushh-webapp/lib/services/vault-method-service.ts`
@@ -412,7 +414,7 @@ Implementation anchors:
 - `hushh-webapp/app/profile/page.tsx`
 
 Rules:
-- Switching methods re-wraps the same vault key; do not rotate vault key material just for method changes.
+- Switching methods updates wrappers for the same vault DEK; do not rotate vault key material just for method changes.
 - Keep prompts skippable, but never bypass encryption-at-rest.
 - Reuse shared service methods in both prompt and profile settings.
 
@@ -847,7 +849,7 @@ export default function MyPage() {
 ### 15.4 When to Use `HushhLoader` Directly
 
 - **`variant="inline"` or `variant="compact"`**: For inline loading states within a component
-- **Redirect pages**: For pages that immediately redirect (e.g., `/chat` redirecting to `/dashboard/kai`)
+- **Redirect pages**: For pages that immediately redirect (e.g., `/chat` redirecting to `/kai/dashboard`)
 
 ---
 

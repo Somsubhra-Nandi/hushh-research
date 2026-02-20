@@ -48,7 +48,7 @@ The frontend route split is intentional and must remain stable unless route cont
 - `/login`: auth-only surface (Google/Apple + disabled phone)
 - `/kai/onboarding`: canonical onboarding questionnaire + persona
 - `/kai/import`: portfolio connection/import flow and vault introduction moment
-- `/kai`: signed-in info home (no vault required, first-time bottom-nav tour)
+- `/kai`: signed-in exploratory mock home (no vault required, first-time bottom-nav tour)
 - `/kai/dashboard`: portfolio analytics/dashboard (requires data, redirects to `/kai/import` when empty)
 
 Guard invariants:
@@ -59,12 +59,9 @@ Guard invariants:
 ## Vault Security Model (Current)
 
 - Encryption at rest is mandatory. There is no plaintext fallback.
-- Passphrase enrollment is mandatory. Optional quick-unlock methods (biometric/passkey) add additional wrappers for the same DEK.
-- Single active KEK mode is authoritative:
-  - `passphrase`
-  - `generated_default_native_biometric`
-  - `generated_default_web_prf`
-- Method switching re-wraps the same vault key and updates metadata in `vault_keys`.
+- Passphrase and recovery wrappers are mandatory. Optional quick-unlock methods (biometric/passkey) add wrappers for the same DEK.
+- Primary method controls default UX only; all enrolled wrappers remain valid fallback unlock methods.
+- Method switching updates wrappers for the same vault key and updates metadata in `vault_keys`.
 - Recovery key remains mandatory fallback.
 
 ## How Data Access Works (Mental Model)

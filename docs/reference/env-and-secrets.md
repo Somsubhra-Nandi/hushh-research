@@ -205,7 +205,7 @@ These Firebase values are public client config, but storing them in Secret Manag
 gcloud secrets delete DATABASE_URL --project=YOUR_PROJECT_ID
 ```
 
-Verify with `deploy/verify-secrets.ps1` (or equivalent); see [deploy/README.md](../../deploy/README.md).
+Verify manually with `gcloud secrets list --project=YOUR_PROJECT_ID` and the checklist in [deploy/README.md](../../deploy/README.md).
 
 ---
 

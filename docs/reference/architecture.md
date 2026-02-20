@@ -186,7 +186,7 @@ Current route contract:
 - `/login` -> auth only
 - `/kai/onboarding` -> questionnaire + persona (first-time and vault-backed continuity)
 - `/kai/import` -> portfolio connect/import flow
-- `/kai` -> signed-in market/info home
+- `/kai` -> signed-in exploratory mock home (explicit sonner notice + dashboard CTA)
 - `/kai/dashboard` -> portfolio analytics view
 
 Flow orchestration:
@@ -199,7 +199,9 @@ Flow orchestration:
 ### Vault Security UX Architecture
 
 - `VaultFlow` is the unified create/unlock/recovery surface.
-- Generated-default key mode is first-class, never plaintext.
+- Encryption at rest is mandatory; plaintext mode is not supported.
+- Passphrase + recovery wrappers are required for every vault.
+- Optional quick-unlock wrappers (native biometric/web PRF passkey) wrap the same vault DEK.
 - `VaultMethodService` is the single method-switch API for frontend flows.
 - `VaultMethodPrompt` is a post-login, skippable upsell for passphrase users when quick methods are available.
 - Profile route exposes method management through the same service path.

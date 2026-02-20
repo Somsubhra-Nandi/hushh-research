@@ -131,7 +131,7 @@ POST /api/consent/vault-owner-token  (Firebase Bearer)
 
 Kai personalization no longer uses dedicated `/api/kai/preferences/*` endpoints.
 Optional intro fields are persisted in encrypted world-model domain `kai_profile`.
-Frontend path: first entry auto-opens optional intro modal on `/kai/dashboard`; reopen anytime via dashboard 3-dot menu -> `Personalize Kai`.
+Frontend reads/writes these fields through the centralized onboarding/profile flows that call world-model APIs.
 
 #### Account & Sync
 

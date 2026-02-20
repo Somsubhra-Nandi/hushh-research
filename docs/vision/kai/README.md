@@ -24,16 +24,8 @@
 
 ### Entity Structure
 
-<!-- TODO: LEGAL REVIEW REQUIRED - Finalize entity names after legal paperwork -->
-
-Agent Kai is developed through a collaboration between entities in the Hushh ecosystem:
-
-| Entity                         | Website       | Role                                     |
-| ------------------------------ | ------------- | ---------------------------------------- |
-| **[LEGAL ENTITY NAME - TBD]**  | [TBD]         | Operating entity for Agent Kai           |
-| **Hushh Technology Fund L.P.** | hushhtech.com | Delaware L.P. hedge fund (SEC compliant) |
-
-> [!WARNING] > **PENDING LEGAL REVIEW**: The exact legal entity operating Agent Kai will be finalized upon completion of partnership/entity paperwork. This section will be updated accordingly.
+Agent Kai documentation in this repository describes product behavior and technical architecture only.
+Specific operating-entity legal details are maintained outside this technical documentation set.
 
 ### Educational Tool Disclaimer
 
@@ -51,7 +43,7 @@ Agent Kai is provided as an **educational and informational tool**. It is NOT pa
 | Aspect                         | Status                                               |
 | ------------------------------ | ---------------------------------------------------- |
 | **Agent Kai**                  | Educational tool, NOT investment advice              |
-| **Operating Entity**           | [PENDING LEGAL FINALIZATION]                         |
+| **Operating Entity**           | Not specified in this repository                     |
 | **Hushh Technology Fund L.P.** | SEC compliant (Reg D, ICA exemptions), Delaware L.P. |
 
 Agent Kai's operating entity is NOT registered with the SEC or any state securities regulatory authority as an investment adviser.
@@ -375,8 +367,6 @@ The culmination of the debate process is a comprehensive **Decision Card** that 
 
 ### Required Disclaimer on Every Decision Card
 
-<!-- TODO: LEGAL REVIEW - Replace [LEGAL ENTITY NAME - TBD] with final entity -->
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  ⚠️ IMPORTANT DISCLOSURE                                                 │
@@ -384,7 +374,7 @@ The culmination of the debate process is a comprehensive **Decision Card** that 
 │  This analysis is provided for EDUCATIONAL PURPOSES ONLY.                │
 │                                                                           │
 │  • This is NOT investment advice                                         │
-│  • [LEGAL ENTITY NAME - TBD] is NOT a registered investment adviser     │
+│  • Agent Kai operators are NOT a registered investment adviser           │
 │  • Agent Kai is NOT part of Hushh Technology Fund L.P.'s services       │
 │  • Past performance does not guarantee future results                    │
 │  • You may lose money; there is no assurance of profit                  │
@@ -528,19 +518,15 @@ class KaiConsentScope:
 
 ### Entity Structure
 
-<!-- TODO: LEGAL REVIEW REQUIRED - Finalize entity names after legal paperwork -->
-
 Agent Kai is developed through a collaboration between entities in the Hushh ecosystem:
 
 | Entity                         | Role in Agent Kai                 | Regulatory Status                    |
 | ------------------------------ | --------------------------------- | ------------------------------------ |
-| **[LEGAL ENTITY NAME - TBD]**  | Develops and operates Agent Kai   | [PENDING LEGAL FINALIZATION]         |
+| **Agent Kai Operators**        | Develops and operates Agent Kai   | Not represented as licensed adviser in this repository |
 | **Hushh Technology Fund L.P.** | Related entity in Hushh ecosystem | SEC compliant (Reg D), Delaware L.P. |
 
 > [!IMPORTANT]
 > Agent Kai is NOT part of Hushh Technology Fund L.P.'s investment services. The fund's SEC registration relates to its own fund operations, not to Agent Kai.
-
-> [!WARNING] > **PENDING LEGAL REVIEW**: The exact legal entity operating Agent Kai will be finalized upon completion of partnership/entity paperwork.
 
 ### SEC Considerations
 
