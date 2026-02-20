@@ -285,6 +285,14 @@ jobs:
           SECRET_KEY: "test_secret_key_for_ci_only_32chars_min"
           VAULT_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
+      - name: Run Kai accuracy suite (CI-safe)
+        timeout-minutes: 8
+        run: python scripts/run_kai_accuracy_suite.py --benchmark-limit 2 --no-fail-benchmark
+        env:
+          TESTING: "true"
+          SECRET_KEY: "test_secret_key_for_ci_only_32chars_min"
+          VAULT_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+
   # ============================================================================
   # Integration Check (route contracts; runs when frontend or backend paths changed)
   # ============================================================================
