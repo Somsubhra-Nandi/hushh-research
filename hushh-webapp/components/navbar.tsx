@@ -27,6 +27,7 @@ export const Navbar = () => {
   const useOnboardingChrome = isKaiOnboarding || onboardingFlowActive;
 
   const lastKaiPath = useKaiSession((s) => s.lastKaiPath);
+  const busyOperations = useKaiSession((s) => s.busyOperations);
   const [kaiHref, setKaiHref] = useState("/kai");
 
   React.useLayoutEffect(() => {
@@ -126,6 +127,16 @@ export const Navbar = () => {
         : "kai";
 
   const navigateTo = (value: string) => {
+    const reviewDirty = Boolean(
+      busyOperations["portfolio_review_active"] && busyOperations["portfolio_review_dirty"]
+    );
+    if (
+      reviewDirty &&
+      !window.confirm("You have unsaved portfolio changes. Leaving now will discard them.")
+    ) {
+      return;
+    }
+
     switch (value as NavKey) {
       case "kai":
         router.push(kaiHref);

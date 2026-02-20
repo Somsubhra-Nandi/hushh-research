@@ -31,6 +31,7 @@ import { usePageEnterAnimation } from "@/lib/morphy-ux/hooks/use-page-enter";
 import { PostAuthOnboardingSyncBridge } from "@/components/onboarding/PostAuthOnboardingSyncBridge";
 import { KaiCommandBarGlobal } from "@/components/kai/kai-command-bar-global";
 import { ROUTES, isKaiOnboardingRoute } from "@/lib/navigation/routes";
+import { useScrollReset } from "@/lib/navigation/use-scroll-reset";
 import { Capacitor } from "@capacitor/core";
 
 interface ProvidersProps {
@@ -62,6 +63,7 @@ export function Providers({ children }: ProvidersProps) {
 
   // App-wide page enter fade.
   usePageEnterAnimation(pageRef, { enabled: true, key: pathname });
+  useScrollReset(pathname, { enabled: true, behavior: "auto" });
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
@@ -84,6 +86,7 @@ export function Providers({ children }: ProvidersProps) {
                     <KaiCommandBarGlobal />
                     {/* Main scroll container: extends under fixed bar so content can scroll behind it; padding clears bar height */}
                     <div
+                      data-app-scroll-root="true"
                       className={
                         hideGlobalChrome
                           ? // Landing is a full-screen onboarding flow: no page scroll, no extra top inset.

@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { setOnboardingFlowActiveCookie } from "@/lib/services/onboarding-route-cookie";
 import { ROUTES } from "@/lib/navigation/routes";
+import { useScrollReset } from "@/lib/navigation/use-scroll-reset";
 
 // =============================================================================
 // TYPES
@@ -91,9 +92,16 @@ interface FlowData {
 interface QualityReport {
   raw?: number;
   validated?: number;
+  aggregated?: number;
   dropped?: number;
   reconciled?: number;
   mismatch_detected?: number;
+  dropped_reasons?: Record<string, number>;
+  unknown_name_count?: number;
+  placeholder_symbol_count?: number;
+  zero_qty_zero_price_nonzero_value_count?: number;
+  account_header_row_count?: number;
+  duplicate_symbol_lot_count?: number;
 }
 
 interface LiveHoldingPreview {
@@ -109,6 +117,7 @@ const USE_DASHBOARD_MASTER_VIEW = true;
 // Streaming state
 interface StreamingState {
   stage: ImportStage;
+  stageTrail: string[];
   streamedText: string;
   totalChars: number;
   chunkCount: number;
@@ -229,7 +238,79 @@ function normalizePortfolioData(backendData: Record<string, unknown>): ReviewPor
     };
   });
 
-  console.log("[KaiFlow] Normalized holdings:", normalizedHoldings.length, normalizedHoldings.slice(0, 2));
+  const cleanedHoldings = normalizedHoldings.filter((holding) => {
+    const symbol = (holding.symbol || "").trim().toUpperCase();
+    const name = (holding.name || "").trim().toLowerCase();
+    const hasFinancialSignal =
+      (holding.quantity ?? 0) !== 0 ||
+      (holding.price ?? 0) !== 0 ||
+      (holding.market_value ?? 0) !== 0;
+    if (!hasFinancialSignal) return false;
+    if ((symbol === "" || symbol.startsWith("HOLDING_")) && (!name || name === "unknown")) {
+      return false;
+    }
+    if (
+      (holding.quantity ?? 0) === 0 &&
+      (holding.price ?? 0) === 0 &&
+      (holding.market_value ?? 0) > 0 &&
+      (symbol === "" || symbol.startsWith("HOLDING_"))
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  // Defensive frontend aggregation by symbol (backend should already send canonical rows).
+  const aggregatedBySymbol = new Map<string, (typeof cleanedHoldings)[number] & { lots_count?: number }>();
+  for (const holding of cleanedHoldings) {
+    const key = (holding.symbol || "").trim().toUpperCase();
+    if (!key) continue;
+    const existing = aggregatedBySymbol.get(key);
+    if (!existing) {
+      aggregatedBySymbol.set(key, {
+        ...holding,
+        symbol: key,
+        lots_count: 1,
+      });
+      continue;
+    }
+    existing.lots_count = (existing.lots_count || 1) + 1;
+    existing.quantity = (existing.quantity || 0) + (holding.quantity || 0);
+    existing.market_value = (existing.market_value || 0) + (holding.market_value || 0);
+    if (holding.cost_basis !== undefined) {
+      existing.cost_basis = (existing.cost_basis || 0) + (holding.cost_basis || 0);
+    }
+    if (holding.unrealized_gain_loss !== undefined) {
+      existing.unrealized_gain_loss =
+        (existing.unrealized_gain_loss || 0) + (holding.unrealized_gain_loss || 0);
+    }
+    if ((!existing.name || existing.name === "Unknown") && holding.name) {
+      existing.name = holding.name;
+    }
+    if (!existing.asset_type && holding.asset_type) {
+      existing.asset_type = holding.asset_type;
+    }
+  }
+  const canonicalHoldings = Array.from(aggregatedBySymbol.values()).map((holding) => {
+    const quantity = holding.quantity || 0;
+    const marketValue = holding.market_value || 0;
+    const nextPrice = quantity !== 0 ? marketValue / quantity : holding.price || 0;
+    return {
+      ...holding,
+      price: nextPrice,
+      market_value: marketValue,
+      quantity,
+    };
+  });
+
+  console.log(
+    "[KaiFlow] Normalized holdings:",
+    normalizedHoldings.length,
+    "cleaned:",
+    cleanedHoldings.length,
+    "canonical:",
+    canonicalHoldings.length
+  );
 
   // Get account info from multiple possible sources
   const accountInfo = (
@@ -311,7 +392,7 @@ function normalizePortfolioData(backendData: Record<string, unknown>): ReviewPor
     account_info: normalizedAccountInfo,
     account_summary: normalizedAccountSummary,
     asset_allocation: normalizedAssetAllocation,
-    holdings: normalizedHoldings,
+    holdings: canonicalHoldings,
     income_summary: normalizedIncomeSummary,
     realized_gain_loss: normalizedRealizedGainLoss,
     transactions: Array.isArray(backendData.transactions)
@@ -447,6 +528,7 @@ export function KaiFlow({
   // Streaming state for real-time progress
   const [streaming, setStreaming] = useState<StreamingState>({
     stage: "idle",
+    stageTrail: [],
     streamedText: "",
     totalChars: 0,
     chunkCount: 0,
@@ -463,6 +545,8 @@ export function KaiFlow({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useScrollReset(`${mode}:${state}`, { enabled: true, behavior: "auto" });
 
   const handleAnalyzeLosers = useCallback(() => {
     if (!flowData.portfolioData) {
@@ -764,6 +848,7 @@ export function KaiFlow({
         // Reset streaming state
         setStreaming({
           stage: "uploading",
+          stageTrail: ["[Uploading] Processing uploaded file..."],
           streamedText: "",
           totalChars: 0,
           chunkCount: 0,
@@ -879,6 +964,13 @@ export function KaiFlow({
           }
           return preview;
         };
+        const appendTrailLine = (trail: string[], next?: string): string[] => {
+          if (!next) return trail;
+          const line = next.trim();
+          if (!line) return trail;
+          if (trail[trail.length - 1] === line) return trail;
+          return [...trail, line];
+        };
 
         await consumeCanonicalKaiStream(
           response,
@@ -898,6 +990,10 @@ export function KaiFlow({
 
                 setStreaming((prev) => ({
                   ...prev,
+                  stageTrail: appendTrailLine(
+                    prev.stageTrail,
+                    `[${stage.toUpperCase()}] ${readString(payload.message) ?? stage}`
+                  ),
                   stage,
                   totalChars: readNumber(payload.total_chars) ?? prev.totalChars,
                   chunkCount: readNumber(payload.chunk_count) ?? prev.chunkCount,
@@ -918,8 +1014,13 @@ export function KaiFlow({
                   if (thought) {
                     fullModelTokenText += `${thought}\n`;
                   }
+                  const trail = appendTrailLine(
+                    prev.stageTrail,
+                    thought ? `[THOUGHT ${thoughts.length}] ${thought}` : undefined
+                  );
                   return {
                     ...prev,
+                    stageTrail: trail,
                     stage: "thinking",
                     thoughts,
                     thoughtCount: readNumber(payload.count) ?? thoughts.length,
@@ -954,11 +1055,18 @@ export function KaiFlow({
               case "progress": {
                 const preview = readHoldingsPreview(payload.holdings_preview);
                 const phase = readString(payload.phase);
+                const message = readString(payload.message);
                 setStreaming((prev) => ({
                   ...prev,
+                  stageTrail: appendTrailLine(
+                    prev.stageTrail,
+                    message
+                      ? `[${(phase || prev.stage).toUpperCase()}] ${message}`
+                      : undefined
+                  ),
                   stage: phase === "parsing" ? "parsing" : prev.stage,
                   progressPct: readNumber(payload.progress_pct) ?? prev.progressPct,
-                  statusMessage: readString(payload.message) ?? prev.statusMessage,
+                  statusMessage: message ?? prev.statusMessage,
                   holdingsExtracted:
                     readNumber(payload.holdings_extracted) ?? prev.holdingsExtracted,
                   holdingsTotal: readNumber(payload.holdings_total) ?? prev.holdingsTotal,
@@ -971,6 +1079,7 @@ export function KaiFlow({
                 if (!message) break;
                 setStreaming((prev) => ({
                   ...prev,
+                  stageTrail: appendTrailLine(prev.stageTrail, `[WARNING] ${message}`),
                   statusMessage: message,
                   progressPct: readNumber(payload.progress_pct) ?? prev.progressPct,
                 }));
@@ -998,6 +1107,10 @@ export function KaiFlow({
                 setStreaming((prev) => ({
                   ...prev,
                   stage: "complete",
+                  stageTrail: appendTrailLine(
+                    prev.stageTrail,
+                    `[COMPLETE] ${readString(payload.message) ?? "Import complete!"}`
+                  ),
                   thoughtCount: readNumber(payload.thought_count) ?? prev.thoughtCount,
                   qualityReport,
                   holdingsExtracted:
@@ -1025,6 +1138,7 @@ export function KaiFlow({
                 setStreaming((prev) => ({
                   ...prev,
                   stage: "error",
+                  stageTrail: appendTrailLine(prev.stageTrail, `[ERROR] ${message}`),
                   errorMessage: message,
                   progressPct: readNumber(payload.progress_pct) ?? prev.progressPct,
                   statusMessage: message,
@@ -1039,6 +1153,7 @@ export function KaiFlow({
                 setStreaming((prev) => ({
                   ...prev,
                   stage: "error",
+                  stageTrail: appendTrailLine(prev.stageTrail, `[ERROR] ${message}`),
                   errorMessage: message,
                   progressPct: readNumber(payload.progress_pct) ?? prev.progressPct,
                   statusMessage: message,
@@ -1091,6 +1206,7 @@ export function KaiFlow({
         setStreaming((prev) => ({
           ...prev,
           stage: "error",
+          stageTrail: [...prev.stageTrail, `[ERROR] ${err instanceof Error ? err.message : "Unknown error"}`],
           errorMessage: err instanceof Error ? err.message : "Unknown error",
           statusMessage: err instanceof Error ? err.message : "Import failed",
         }));
@@ -1137,6 +1253,7 @@ export function KaiFlow({
     setState(flowData.portfolioData ? "dashboard" : "import_required");
     setStreaming({
       stage: "idle",
+      stageTrail: [],
       streamedText: "",
       totalChars: 0,
       chunkCount: 0,
@@ -1161,6 +1278,7 @@ export function KaiFlow({
     setError(null);
     setStreaming({
       stage: "idle",
+      stageTrail: [],
       streamedText: "",
       totalChars: 0,
       chunkCount: 0,
@@ -1431,6 +1549,7 @@ export function KaiFlow({
       {mode === "import" && state === "importing" && (
         <ImportProgressView
           stage={streaming.stage}
+          stageTrail={streaming.stageTrail}
           streamedText={streaming.streamedText}
           isStreaming={
             streaming.stage === "uploading" ||
@@ -1458,6 +1577,7 @@ export function KaiFlow({
       {mode === "import" && state === "import_complete" && (
         <ImportProgressView
           stage="complete"
+          stageTrail={streaming.stageTrail}
           streamedText={streaming.streamedText}
           isStreaming={false}
           totalChars={streaming.totalChars}

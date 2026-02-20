@@ -17,7 +17,6 @@
 
 import { useMemo } from "react";
 import { cn } from "@/lib/morphy-ux";
-import { StreamingAccordion } from "@/lib/morphy-ux/streaming-accordion";
 import { 
   Card, 
   CardContent, 
@@ -73,6 +72,8 @@ export interface ImportProgressViewProps {
   progressPct?: number;
   /** Optional status message from backend payload */
   statusMessage?: string;
+  /** Ordered stage/status trail captured during stream */
+  stageTrail?: string[];
   /** Array of thought summaries from Gemini thinking mode */
   thoughts?: string[];
   /** Total thought count */
@@ -140,6 +141,7 @@ export function ImportProgressView({
   chunkCount,
   progressPct,
   statusMessage,
+  stageTrail = [],
   thoughts = [],
   thoughtCount = 0,
   qualityReport,
@@ -185,13 +187,12 @@ export function ImportProgressView({
   const smoothProgress = useSmoothStreamProgress(resolvedProgress);
 
   // Format thoughts into a single text string for the accordion
-  // Matches the [N] **Header** pattern for bold rendering
-  const thoughtsText = useMemo(() => {
-    if (thoughts.length === 0) {
-      return isThinking ? "[1] **Analyzing portfolio structure**\nInitializing extraction engine..." : "";
+  const stageLines = useMemo(() => {
+    if (stageTrail.length > 0) {
+      return stageTrail;
     }
-    return thoughts.map((t, i) => `[${i + 1}] **${t}**`).join("\n");
-  }, [thoughts, isThinking]);
+    return [statusMessage || stageMessages[stage]];
+  }, [stageTrail, stage, statusMessage]);
 
   return (
     <Card className={cn("w-full", className)}>
@@ -237,30 +238,62 @@ export function ImportProgressView({
         </div>
 
 
-        {/* AI Reasoning Accordion - Shows during thinking phase, persists when complete */}
-        {(isThinking || (thoughts.length > 0 && !isComplete) || (isComplete && thoughts.length > 0)) && (
-          <StreamingAccordion
-            id="ai-reasoning"
-            title={`AI Reasoning${thoughtCount > 0 ? ` (${thoughtCount} thoughts)` : ""}`}
-            text={thoughtsText}
-            isStreaming={isThinking || isExtracting}
-            isComplete={isComplete}
-            icon={isComplete ? "brain" : "spinner"}
-            className="border-primary/10"
-          />
-        )}
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>AI Stream Transcript</span>
+            <span>
+              {isStreaming ? "Live" : isComplete ? "Complete" : "Idle"}
+            </span>
+          </div>
+          <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+            <div className="rounded-lg border border-border/40 bg-background/70 px-3 py-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Stage timeline
+              </p>
+              <div className="space-y-1">
+                {stageLines.map((line, index) => (
+                  <p key={`${line}-${index}`} className="text-xs leading-relaxed">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
 
-        {(streamedText.trim().length > 0 || isStreaming) && (
-          <StreamingAccordion
-            id="vertex-token-stream"
-            title="Vertex Gemini Token Stream"
-            text={streamedText}
-            isStreaming={isStreaming}
-            isComplete={isComplete}
-            icon={isComplete ? "check" : "spinner"}
-            className="border-border/40"
-          />
-        )}
+            <div className="rounded-lg border border-border/40 bg-background/70 px-3 py-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Reasoning ({thoughtCount})
+              </p>
+              {thoughts.length > 0 ? (
+                <div className="space-y-1">
+                  {thoughts.map((thought, index) => (
+                    <p key={`${thought}-${index}`} className="text-xs leading-relaxed">
+                      {index + 1}. {thought}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {isThinking
+                    ? "Model is preparing reasoning output..."
+                    : "No explicit reasoning tokens emitted yet."}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border/40 bg-background/70 px-3 py-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Vertex Gemini token stream
+              </p>
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
+                {streamedText.trim().length > 0
+                  ? streamedText
+                  : isStreaming
+                  ? "Waiting for first response tokens..."
+                  : "No streamed tokens captured."}
+              </pre>
+            </div>
+          </div>
+        </div>
 
         {/* Parsing timeline */}
         <div className="rounded-xl border border-border/60 bg-muted/20 p-3">

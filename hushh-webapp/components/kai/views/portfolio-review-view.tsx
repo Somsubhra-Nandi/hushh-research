@@ -62,12 +62,13 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { 
+import {
   Card as MorphyCard, 
   CardContent, 
   CardHeader, 
   CardTitle,
 } from "@/lib/morphy-ux/card";
+import { scrollAppToTop } from "@/lib/navigation/use-scroll-reset";
 
 
 
@@ -271,6 +272,7 @@ export function PortfolioReviewView({
   const [vaultDialogOpen, setVaultDialogOpen] = useState(false);
   const [pendingVaultSave, setPendingVaultSave] = useState(false);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const createdVaultCopyRef = useRef(false);
   const createdVaultModeRef = useRef<string | null>(null);
   const continuationInFlightRef = useRef(false);
@@ -281,8 +283,39 @@ export function PortfolioReviewView({
   // Computed values
   // Scroll to top on mount to ensure clean view framing after progress view
   useEffect(() => {
-    window.scrollTo(0, 0);
+    scrollAppToTop("auto");
   }, []);
+
+  const serializeEditableState = useCallback(
+    (nextAccountInfo: AccountInfo, nextHoldings: Holding[]): string =>
+      JSON.stringify({
+        accountInfo: nextAccountInfo,
+        holdings: nextHoldings.map((holding) => ({
+          ...holding,
+          pending_delete: Boolean(holding.pending_delete),
+        })),
+      }),
+    []
+  );
+
+  const baselineSnapshotRef = useRef(
+    serializeEditableState(
+      initialData.account_info || {},
+      (initialData.holdings || []).map((holding) => ({
+        ...holding,
+        pending_delete: Boolean(holding.pending_delete),
+      }))
+    )
+  );
+
+  const currentEditableSnapshot = useMemo(
+    () => serializeEditableState(accountInfo, holdings),
+    [accountInfo, holdings, serializeEditableState]
+  );
+
+  useEffect(() => {
+    setHasUnsavedChanges(currentEditableSnapshot !== baselineSnapshotRef.current);
+  }, [currentEditableSnapshot]);
 
   useEffect(() => {
     setBusyOperation("portfolio_save", isSaving);
@@ -297,6 +330,26 @@ export function PortfolioReviewView({
       setBusyOperation("portfolio_review_active", false);
     };
   }, [setBusyOperation]);
+
+  useEffect(() => {
+    setBusyOperation("portfolio_review_dirty", hasUnsavedChanges);
+    return () => {
+      setBusyOperation("portfolio_review_dirty", false);
+    };
+  }, [hasUnsavedChanges, setBusyOperation]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges || isSaving) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, isSaving]);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,18 +412,23 @@ export function PortfolioReviewView({
 
   // Handlers
   const handleDeleteHolding = useCallback((index: number) => {
-    let nextDeleteState = false;
+    let action: "mark" | "restore" | null = null;
     setHoldings((prev) =>
-      prev.map((holding, i) =>
-        i === index
-          ? (() => {
-              nextDeleteState = !holding.pending_delete;
-              return { ...holding, pending_delete: nextDeleteState };
-            })()
-          : holding
-      )
+      prev.map((holding, i) => {
+        if (i !== index) return holding;
+        const currentlyPendingDelete = Boolean(holding.pending_delete);
+        action = currentlyPendingDelete ? "restore" : "mark";
+        return {
+          ...holding,
+          pending_delete: !currentlyPendingDelete,
+        };
+      })
     );
-    toast.info(nextDeleteState ? "Holding marked for removal" : "Holding restored");
+    if (action === "restore") {
+      toast.info("Holding restored");
+      return;
+    }
+    toast.info("Holding marked for removal");
   }, []);
 
   const handleUpdateHolding = useCallback(
@@ -628,6 +686,8 @@ export function PortfolioReviewView({
       } else {
         toast.success("Portfolio saved securely.");
       }
+      baselineSnapshotRef.current = serializeEditableState(accountInfo, holdings);
+      setHasUnsavedChanges(false);
       await Promise.resolve(onSaveComplete(portfolioToSave));
     } catch (error) {
       console.error("Save error:", error);
@@ -638,6 +698,18 @@ export function PortfolioReviewView({
       createdVaultModeRef.current = null;
     }
   };
+
+  const confirmDiscardChanges = useCallback((): boolean => {
+    if (!hasUnsavedChanges || isSaving) return true;
+    return window.confirm(
+      "You have unsaved portfolio changes. Leaving now will discard them."
+    );
+  }, [hasUnsavedChanges, isSaving]);
+
+  const handleReimportAttempt = useCallback(() => {
+    if (!confirmDiscardChanges()) return;
+    onReimport();
+  }, [confirmDiscardChanges, onReimport]);
 
   return (
     <div className={cn("relative w-full", className)}>
@@ -662,7 +734,7 @@ export function PortfolioReviewView({
         <MorphyButton 
           variant="muted" 
           size="default" 
-          onClick={onReimport} 
+          onClick={handleReimportAttempt}
           className="shrink-0"
           icon={{ 
             icon: RefreshCw
@@ -1122,6 +1194,7 @@ export function PortfolioReviewView({
                             holding.pending_delete && "pointer-events-none opacity-50"
                           )}
                           onClick={() => setEditingHoldingIndex(index)}
+                          aria-label={`Edit ${holding.symbol || `holding ${index + 1}`}`}
                           icon={{ icon: Pencil }}
                         />
                         <Kbd className="text-[8px] px-1 h-3.5">EDIT</Kbd>
@@ -1137,6 +1210,11 @@ export function PortfolioReviewView({
                               : "text-red-400 hover:text-red-500 hover:bg-red-50"
                           )}
                           onClick={() => handleDeleteHolding(index)}
+                          aria-label={
+                            holding.pending_delete
+                              ? `Undo remove ${holding.symbol || `holding ${index + 1}`}`
+                              : `Remove ${holding.symbol || `holding ${index + 1}`}`
+                          }
                           icon={{ icon: holding.pending_delete ? Undo2 : Trash2 }}
                         />
                         <Kbd className="text-[8px] px-1 h-3.5">

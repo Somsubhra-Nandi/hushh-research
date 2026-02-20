@@ -2,6 +2,16 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+const {
+  infoToastMock,
+  successToastMock,
+  errorToastMock,
+} = vi.hoisted(() => ({
+  infoToastMock: vi.fn(),
+  successToastMock: vi.fn(),
+  errorToastMock: vi.fn(),
+}));
+
 vi.mock("@/lib/firebase/config", () => {
   return {
     app: {},
@@ -48,12 +58,12 @@ vi.mock("@/lib/services/world-model-service", () => {
   };
 });
 
-vi.mock("sonner", () => {
+vi.mock("@/lib/morphy-ux/morphy", () => {
   return {
-    toast: {
-      info: vi.fn(),
-      success: vi.fn(),
-      error: vi.fn(),
+    morphyToast: {
+      info: infoToastMock,
+      success: successToastMock,
+      error: errorToastMock,
     },
   };
 });
@@ -110,5 +120,42 @@ describe("PortfolioReviewView (create vault copy)", () => {
     expect(screen.getByTestId("vault-flow")).toBeTruthy();
     expect(screen.getByText(/generated-default-enabled/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /skip for now/i })).toBeNull();
+  });
+
+  it("emits delete and undo toasts with correct copy", async () => {
+    (VaultService.checkVault as any).mockResolvedValue(true);
+
+    render(
+      <PortfolioReviewView
+        portfolioData={{
+          holdings: [
+            {
+              symbol: "TSLA",
+              name: "Tesla",
+              quantity: 1,
+              price: 100,
+              market_value: 100,
+            },
+          ],
+        }}
+        userId="uid-1"
+        vaultKey="vault-key-1"
+        vaultOwnerToken="vault-owner-token-1"
+        onSaveComplete={vi.fn()}
+        onReimport={vi.fn()}
+      />
+    );
+
+    const removeButton = await screen.findByRole("button", {
+      name: /remove tsla/i,
+    });
+    fireEvent.click(removeButton);
+    expect(infoToastMock).toHaveBeenCalledWith("Holding marked for removal");
+
+    const undoButton = await screen.findByRole("button", {
+      name: /undo remove tsla/i,
+    });
+    fireEvent.click(undoButton);
+    expect(infoToastMock).toHaveBeenCalledWith("Holding restored");
   });
 });

@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { KaiSearchBar } from "@/components/kai/kai-search-bar";
 import { useKaiSession } from "@/lib/stores/kai-session-store";
 import { CacheService, CACHE_KEYS } from "@/lib/services/cache-service";
-import { toast } from "sonner";
+import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
 import { ROUTES } from "@/lib/navigation/routes";
 import { useVault } from "@/lib/vault/vault-context";
 
@@ -36,6 +36,7 @@ export function KaiCommandBarGlobal() {
   const { isVaultUnlocked } = useVault();
   const setAnalysisParams = useKaiSession((s) => s.setAnalysisParams);
   const setLosersInput = useKaiSession((s) => s.setLosersInput);
+  const busyOperations = useKaiSession((s) => s.busyOperations);
   const cache = useMemo(() => CacheService.getInstance(), []);
   const [hasPortfolioData, setHasPortfolioData] = useState(false);
 
@@ -70,8 +71,15 @@ export function KaiCommandBarGlobal() {
     return unsubscribe;
   }, [cache, user?.uid]);
 
-  // Command palette is vault-gated: only available with an unlocked vault session.
-  if (loading || !user || !isVaultUnlocked) {
+  const reviewScreenActive = Boolean(
+    busyOperations["portfolio_review_active"] || busyOperations["portfolio_save"]
+  );
+  const reviewDirty = Boolean(
+    busyOperations["portfolio_review_active"] && busyOperations["portfolio_review_dirty"]
+  );
+
+  // Command palette is vault-gated and hidden on review/save overlays.
+  if (loading || !user || !isVaultUnlocked || reviewScreenActive) {
     return null;
   }
 
@@ -166,6 +174,15 @@ export function KaiCommandBarGlobal() {
   return (
     <KaiSearchBar
       onCommand={(command, params) => {
+        if (
+          reviewDirty &&
+          !window.confirm(
+            "You have unsaved portfolio changes. Leaving now will discard them."
+          )
+        ) {
+          return;
+        }
+
         if (
           !hasPortfolioData &&
           (command === "analyze" ||
