@@ -1,4 +1,6 @@
 {
+  "name": "Kai: Your Personal Agent",
+  "short_name": "Kai",
   "icons": [
     {
       "src": "../icons/icon-48.webp",

@@ -115,6 +115,8 @@
     "vitest": "^2.0.0"
   },
   "overrides": {
+    "@google-cloud/storage": "7.19.0",
+    "fast-xml-parser": "5.3.6",
     "tar": "7.5.7",
     "@isaacs/brace-expansion": "5.0.1"
   }

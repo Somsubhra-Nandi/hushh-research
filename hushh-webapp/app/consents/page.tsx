@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import { useVault } from "@/lib/vault/vault-context";
 import { FCM_MESSAGE_EVENT } from "@/lib/notifications";
 import { ApiService } from "@/lib/services/api-service";
-import { CacheService, CACHE_KEYS, CACHE_TTL } from "@/lib/services/cache-service";
+import { CacheService, CACHE_KEYS } from "@/lib/services/cache-service";
 import { useConsentActions } from "@/lib/consent";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -105,6 +105,8 @@ interface ActiveConsent {
   expires_at: number;
   time_remaining_ms: number;
 }
+
+const CONSENTS_CACHE_TTL_MS = 3 * 60 * 1000;
 
 // ============================================================================
 // MODULE-LEVEL HELPER FUNCTIONS (used by multiple components)
@@ -612,7 +614,7 @@ export default function ConsentsPage() {
         const data = await response.json();
         const pendingData = data.pending || [];
         setPending(pendingData);
-        cache.set(cacheKey, pendingData, CACHE_TTL.SHORT);
+        cache.set(cacheKey, pendingData, CONSENTS_CACHE_TTL_MS);
       }
     } catch (err) {
       console.error("Error fetching pending consents:", err);
@@ -648,7 +650,7 @@ export default function ConsentsPage() {
           auditData = data.history;
         }
         setAuditLog(auditData);
-        cache.set(cacheKey, auditData, CACHE_TTL.SHORT);
+        cache.set(cacheKey, auditData, CONSENTS_CACHE_TTL_MS);
       }
     } catch (err) {
       console.error("Error fetching audit log:", err);
@@ -687,7 +689,7 @@ export default function ConsentsPage() {
           : externalConsents;
 
         setActiveConsents(dedupedActiveData);
-        cache.set(cacheKey, dedupedActiveData, CACHE_TTL.SHORT);
+        cache.set(cacheKey, dedupedActiveData, CONSENTS_CACHE_TTL_MS);
       }
     } catch (err) {
       console.error("Error fetching active consents:", err);

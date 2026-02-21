@@ -195,6 +195,10 @@ export interface KaiHomeMeta {
   stale: boolean;
   stale_reason?: string;
   cache_age_seconds: number;
+  cache_tier?: "memory" | "postgres" | "live";
+  cache_hit?: boolean;
+  warm_source?: "startup" | "unlock" | "request";
+  provider_cooldowns?: Record<string, number>;
   provider_status: Record<string, string>;
   symbol_quality?: {
     requested_count: number;

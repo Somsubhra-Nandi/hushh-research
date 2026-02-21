@@ -22,13 +22,13 @@ const headingSans = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Hushh | Consent-First AI Agents",
+  title: "Kai: Your Personal Agent",
   description:
     "Personal AI agents with consent at the core. Your data, your control.",
-  keywords: ["AI agents", "personal AI", "Hushh", "consent-first", "privacy"],
+  keywords: ["AI agents", "personal AI", "Kai", "consent-first", "privacy"],
   authors: [{ name: "Hushh Labs" }],
   openGraph: {
-    title: "Hushh | Consent-First AI Agents",
+    title: "Kai: Your Personal Agent",
     description: "Personal AI agents with consent at the core.",
     type: "website",
   },

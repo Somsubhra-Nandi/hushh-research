@@ -10,25 +10,14 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-    private var isFirebaseNativeConfigured = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Firebase can also be configured by plugin internals on some paths.
-        // Keep startup idempotent to avoid FIRApp duplicate-configure crash.
-        if FirebaseApp.app() == nil, shouldConfigureFirebaseFromPlist() {
-            FirebaseApp.configure()
-            isFirebaseNativeConfigured = true
-            print("🔥 [AppDelegate] Firebase initialized")
-        } else if FirebaseApp.app() != nil {
-            isFirebaseNativeConfigured = true
+        // Firebase lifecycle is owned by Capacitor Firebase plugins.
+        // Do not call FirebaseApp.configure() here; duplicate configure crashes at startup.
+        if FirebaseApp.app() != nil {
             print("ℹ️ [AppDelegate] Firebase already initialized")
         } else {
-            isFirebaseNativeConfigured = false
-            print("⚠️ [AppDelegate] Firebase native config skipped: invalid or placeholder GoogleService-Info.plist")
-        }
-
-        guard isFirebaseNativeConfigured else {
-            return true
+            print("ℹ️ [AppDelegate] Firebase will initialize via plugin")
         }
 
         // Configure push notifications
@@ -58,7 +47,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        guard isFirebaseNativeConfigured else { return }
+        guard FirebaseApp.app() != nil else {
+            print("⚠️ [AppDelegate] APNs token received before Firebase initialization")
+            return
+        }
         // Pass APNs token to Firebase Messaging
         Messaging.messaging().apnsToken = deviceToken
         print("✅ [AppDelegate] APNs token registered with Firebase Messaging")
@@ -67,27 +59,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("❌ [AppDelegate] Failed to register for remote notifications: \(error)")
-    }
-
-    private func shouldConfigureFirebaseFromPlist() -> Bool {
-        guard
-            let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-            let plist = NSDictionary(contentsOfFile: path) as? [String: Any]
-        else {
-            return false
-        }
-
-        let requiredKeys = ["GOOGLE_APP_ID", "API_KEY", "CLIENT_ID", "PROJECT_ID"]
-        for key in requiredKeys {
-            guard let value = plist[key] as? String, !value.isEmpty else {
-                return false
-            }
-            if value.contains("__FIREBASE_") {
-                return false
-            }
-        }
-
-        return true
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

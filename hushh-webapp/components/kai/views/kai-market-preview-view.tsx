@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/lib/morphy-ux/card";
 import { CacheService, CACHE_KEYS } from "@/lib/services/cache-service";
 import { ensureKaiVaultOwnerToken } from "@/lib/services/kai-token-guard";
 import { ApiService, type KaiHomeInsightsV2 } from "@/lib/services/api-service";
+import { UnlockWarmOrchestrator } from "@/lib/services/unlock-warm-orchestrator";
 import { useVault } from "@/lib/vault/vault-context";
 import { cn } from "@/lib/utils";
 
@@ -27,10 +28,10 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-const POLL_INTERVAL_MS = 180_000;
+const POLL_INTERVAL_MS = 600_000;
 const MIN_REQUEST_GAP_MS = 2_500;
-const MARKET_HOME_CACHE_TTL_MS = 180_000;
-const SESSION_KAI_HOME_TTL_MS = 180_000;
+const MARKET_HOME_CACHE_TTL_MS = 600_000;
+const SESSION_KAI_HOME_TTL_MS = 600_000;
 const TICKER_CANDIDATE_RE = /^[A-Z][A-Z0-9.-]{0,5}$/;
 const EXCLUDED_SYMBOLS = new Set([
   "CASH",
@@ -46,6 +47,20 @@ const EXCLUDED_SYMBOLS = new Set([
   "WITHDRAWAL",
   "DEPOSIT",
 ]);
+
+function readAnyKaiHomeCache(cache: CacheService, userId: string, daysBack = 7): KaiHomeInsightsV2 | null {
+  const prefix = `kai_market_home_${userId}_`;
+  const suffix = `_${daysBack}`;
+  const keys = cache
+    .getStats()
+    .keys.filter((key) => key.startsWith(prefix) && key.endsWith(suffix));
+
+  for (const key of keys) {
+    const value = cache.get<KaiHomeInsightsV2>(key);
+    if (value) return value;
+  }
+  return null;
+}
 
 export function KaiMarketPreviewView() {
   const router = useRouter();
@@ -88,7 +103,7 @@ export function KaiMarketPreviewView() {
     [getVaultOwnerToken, tokenExpiresAt, unlockVault, user?.uid, vaultKey, vaultOwnerToken]
   );
 
-  const trackedSymbols = useMemo(() => {
+  const resolveTrackedSymbols = useCallback(() => {
     if (!user?.uid) return [];
     const cache = CacheService.getInstance();
     const cachedPortfolio = cache.get<Record<string, unknown>>(CACHE_KEYS.PORTFOLIO_DATA(user.uid));
@@ -117,12 +132,6 @@ export function KaiMarketPreviewView() {
       )
       .slice(0, 8);
   }, [user?.uid]);
-
-  const marketCacheKey = useMemo(() => {
-    if (!user?.uid) return null;
-    const symbolsKey = trackedSymbols.length > 0 ? trackedSymbols.join("-") : "default";
-    return CACHE_KEYS.KAI_MARKET_HOME(user.uid, symbolsKey, 7);
-  }, [trackedSymbols, user?.uid]);
   const sessionCacheKey = useMemo(() => {
     if (!user?.uid) return null;
     return `kai_market_home_session_${user.uid}`;
@@ -135,10 +144,23 @@ export function KaiMarketPreviewView() {
       }
 
       const cache = CacheService.getInstance();
+      const trackedSymbols = resolveTrackedSymbols();
+      const symbolsKey = trackedSymbols.length > 0 ? trackedSymbols.join("-") : "default";
+      const marketCacheKey = CACHE_KEYS.KAI_MARKET_HOME(user.uid, symbolsKey, 7);
       if (!forceTokenRefresh && marketCacheKey) {
         const cachedPayload = cache.get<KaiHomeInsightsV2>(marketCacheKey);
         if (cachedPayload) {
           setPayload(cachedPayload);
+          hasPayloadRef.current = true;
+          setLoadingInitial(false);
+          return;
+        }
+      }
+
+      if (!forceTokenRefresh) {
+        const anyCachedPayload = readAnyKaiHomeCache(cache, user.uid, 7);
+        if (anyCachedPayload) {
+          setPayload(anyCachedPayload);
           hasPayloadRef.current = true;
           setLoadingInitial(false);
           return;
@@ -156,10 +178,7 @@ export function KaiMarketPreviewView() {
             const savedAt = Number(parsed?.savedAt || 0);
             const age = Date.now() - savedAt;
             const canUseSession =
-              age >= 0 &&
-              age <= SESSION_KAI_HOME_TTL_MS &&
-              parsed?.payload &&
-              (!vaultKey || trackedSymbols.length === 0);
+              age >= 0 && age <= SESSION_KAI_HOME_TTL_MS && Boolean(parsed?.payload);
             if (canUseSession) {
               setPayload(parsed.payload as KaiHomeInsightsV2);
               hasPayloadRef.current = true;
@@ -169,6 +188,18 @@ export function KaiMarketPreviewView() {
           }
         } catch {
           // Ignore malformed session cache.
+        }
+      }
+
+      if (!forceTokenRefresh && trackedSymbols.length === 0) {
+        await UnlockWarmOrchestrator.awaitInFlightForUser(user.uid, 1_800);
+        const warmedPayload =
+          cache.get<KaiHomeInsightsV2>(marketCacheKey) ?? readAnyKaiHomeCache(cache, user.uid, 7);
+        if (warmedPayload) {
+          setPayload(warmedPayload);
+          hasPayloadRef.current = true;
+          setLoadingInitial(false);
+          return;
         }
       }
 
@@ -224,9 +255,7 @@ export function KaiMarketPreviewView() {
           if (controller.signal.aborted) return;
           setPayload(nextPayload);
           hasPayloadRef.current = true;
-          if (marketCacheKey) {
-            cache.set(marketCacheKey, nextPayload, MARKET_HOME_CACHE_TTL_MS);
-          }
+          cache.set(marketCacheKey, nextPayload, MARKET_HOME_CACHE_TTL_MS);
           if (sessionCacheKey && typeof window !== "undefined") {
             window.sessionStorage.setItem(
               sessionCacheKey,
@@ -254,7 +283,7 @@ export function KaiMarketPreviewView() {
         }
       }
     },
-    [loading, marketCacheKey, resolveToken, sessionCacheKey, trackedSymbols, user?.uid, vaultKey]
+    [loading, resolveToken, resolveTrackedSymbols, sessionCacheKey, user?.uid]
   );
 
   useEffect(() => {
@@ -284,6 +313,18 @@ export function KaiMarketPreviewView() {
   }, [loadInsights, loading, user?.uid]);
 
   const stale = Boolean(payload?.meta?.stale ?? payload?.stale);
+  const hasPayload = Boolean(payload);
+  const hasRefreshError = Boolean(error);
+  const effectiveDegraded = stale || hasRefreshError;
+  const statusMessage = loadingInitial
+    ? "Loading live insights..."
+    : hasRefreshError
+      ? hasPayload
+        ? "Showing cached data while refresh retries."
+        : "Live feeds are temporarily unavailable. Tap retry to reconnect."
+      : stale
+        ? "Showing partial data while provider feeds recover."
+        : "Live feeds are healthy.";
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-7 pb-[calc(148px+var(--app-bottom-inset))]">
@@ -295,21 +336,17 @@ export function KaiMarketPreviewView() {
         <p
           className={cn(
             "mx-auto text-xs",
-            stale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+            effectiveDegraded ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
           )}
         >
-          {loadingInitial
-            ? "Loading live insights..."
-            : stale
-              ? "Showing partial data while provider feeds recover."
-              : "Live feeds are healthy."}
+          {statusMessage}
         </p>
       </header>
 
       <section className="mt-7">
         <HeroStrip
           hero={payload?.hero}
-          stale={stale}
+          stale={effectiveDegraded}
           refreshing={refreshing}
           onRefresh={() => void loadInsights({ manual: true })}
           onOpenDashboard={() => router.push("/kai/dashboard")}
@@ -322,7 +359,9 @@ export function KaiMarketPreviewView() {
             <CardContent className="space-y-3 p-4 text-left">
               <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
                 <AlertTriangle className="h-4 w-4" />
-                <p className="text-sm font-semibold">Failed to refresh market home</p>
+                <p className="text-sm font-semibold">
+                  {hasPayload ? "Failed to refresh market home" : "Failed to load market home"}
+                </p>
               </div>
               <p className="text-xs text-muted-foreground">{error}</p>
               <Button variant="none" effect="fade" size="sm" onClick={() => void loadInsights({ manual: true })}>

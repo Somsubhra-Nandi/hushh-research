@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useVault } from "@/lib/vault/vault-context";
-import { VaultService } from "@/lib/services/vault-service";
 import {
   type VaultMethod,
   VaultMethodService,
@@ -59,15 +58,6 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
       }
 
       try {
-        const hasVault = await VaultService.checkVault(user.uid);
-        if (!hasVault || cancelled) {
-          if (!cancelled) {
-            setOpen(false);
-            setTargetMethod(null);
-          }
-          return;
-        }
-
         // Avoid stacking prompts on top of the first-time /kai nav tour.
         if (pathname === "/kai") {
           const navTourState = await KaiNavTourLocalService.load(user.uid);

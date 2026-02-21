@@ -31,7 +31,7 @@ const NORMALIZED_BACKEND_URL = (() => {
 
 const config: CapacitorConfig = {
   appId: "com.hushh.app",
-  appName: "Hushh",
+  appName: "Kai",
   webDir: "out",
 
   // iOS-specific configuration

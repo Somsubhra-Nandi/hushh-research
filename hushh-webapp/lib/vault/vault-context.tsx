@@ -29,11 +29,9 @@ import React, {
   ReactNode,
 } from "react";
 import { useAuth } from "@/lib/firebase/auth-context";
-import { WorldModelService } from "@/lib/services/world-model-service";
-import { ApiService } from "@/lib/services/api-service";
-import { CacheService, CACHE_KEYS, CACHE_TTL } from "@/lib/services/cache-service";
 import { CacheSyncService } from "@/lib/cache/cache-sync-service";
-import { normalizeStoredPortfolio } from "@/lib/utils/portfolio-normalize";
+import { UnlockWarmOrchestrator } from "@/lib/services/unlock-warm-orchestrator";
+import { VaultService } from "@/lib/services/vault-service";
 
 // ============================================================================
 // Types
@@ -102,6 +100,7 @@ export function VaultProvider({ children }: VaultProviderProps) {
     if (user?.uid) {
       CacheSyncService.onVaultStateChanged(user.uid);
     }
+    VaultService.invalidateVaultStateCache();
   }, [user?.uid]);
 
   // Auto-Lock on Sign Out
@@ -135,108 +134,14 @@ export function VaultProvider({ children }: VaultProviderProps) {
    */
   const prefetchDashboardData = useCallback(
     async (userId: string, token: string, key: string) => {
-      console.log("[VaultContext] Prefetching dashboard data...");
-      const cache = CacheService.getInstance();
-      const KAI_HOME_PREFETCH_TTL_MS = 3 * 60 * 1000;
-
       try {
-        const [
-          ,
-          vaultStatusResult,
-          consentsResult,
-          pendingResult,
-          auditResult,
-        ] = await Promise.allSettled([
-          WorldModelService.getMetadata(userId, false, token),
-          ApiService.getVaultStatus(userId, token),
-          ApiService.getActiveConsents(userId, token),
-          ApiService.getPendingConsents(userId, token),
-          ApiService.getConsentHistory(userId, token, 1, 50),
-        ]);
-
-        if (vaultStatusResult.status === "fulfilled" && vaultStatusResult.value.ok) {
-          const statusData = await vaultStatusResult.value.json();
-          cache.set(CACHE_KEYS.VAULT_STATUS(userId), statusData, CACHE_TTL.SHORT);
-          console.log("[VaultContext] Cached vault status");
-        }
-
-        if (consentsResult.status === "fulfilled" && consentsResult.value.ok) {
-          const consentsData = await consentsResult.value.json();
-          cache.set(CACHE_KEYS.ACTIVE_CONSENTS(userId), consentsData.active || [], CACHE_TTL.SHORT);
-          console.log("[VaultContext] Cached active consents");
-        }
-
-        if (pendingResult.status === "fulfilled" && pendingResult.value.ok) {
-          const pendingData = (await pendingResult.value.json()).pending || [];
-          cache.set(CACHE_KEYS.PENDING_CONSENTS(userId), pendingData, CACHE_TTL.SHORT);
-          console.log("[VaultContext] Cached pending consents");
-        }
-
-        if (auditResult.status === "fulfilled" && auditResult.value.ok) {
-          const data = await auditResult.value.json();
-          const auditData = Array.isArray(data) ? data : data?.items ?? data?.history ?? [];
-          cache.set(CACHE_KEYS.CONSENT_AUDIT_LOG(userId), auditData, CACHE_TTL.SHORT);
-          console.log("[VaultContext] Cached consent audit log");
-        }
-
-        try {
-          const fullBlob = await WorldModelService.loadFullBlob({
-            userId,
-            vaultKey: key,
-            vaultOwnerToken: token,
-          });
-          const financialRaw = fullBlob?.financial;
-          if (financialRaw && typeof financialRaw === "object" && !Array.isArray(financialRaw)) {
-            const normalized = normalizeStoredPortfolio(
-              financialRaw as Record<string, unknown>
-            );
-            CacheSyncService.onPortfolioUpserted(userId, normalized, {
-              invalidateMetadata: false,
-            });
-
-            const holdings = (
-              (Array.isArray(normalized.holdings) && normalized.holdings) ||
-              (Array.isArray(normalized.detailed_holdings) && normalized.detailed_holdings) ||
-              []
-            ) as Array<Record<string, unknown>>;
-            const symbols = holdings
-              .filter((holding) => {
-                const assetType = String(holding.asset_type || "").trim().toLowerCase();
-                const name = String(holding.name || "").trim().toLowerCase();
-                if (assetType.includes("cash") || assetType.includes("sweep")) return false;
-                if (name.includes("cash") || name.includes("sweep")) return false;
-                return true;
-              })
-              .map((holding) => String(holding.symbol || "").trim().toUpperCase())
-              .filter((symbol, index, arr) => Boolean(symbol) && arr.indexOf(symbol) === index)
-              .slice(0, 8);
-            const symbolsKey = symbols.length > 0 ? symbols.join("-") : "default";
-
-            const kaiHome = await ApiService.getKaiMarketInsights({
-              userId,
-              vaultOwnerToken: token,
-              symbols,
-              daysBack: 7,
-            });
-            cache.set(
-              CACHE_KEYS.KAI_MARKET_HOME(userId, symbolsKey, 7),
-              kaiHome,
-              KAI_HOME_PREFETCH_TTL_MS
-            );
-            cache.set(
-              CACHE_KEYS.KAI_MARKET_HOME(userId, "default", 7),
-              kaiHome,
-              KAI_HOME_PREFETCH_TTL_MS
-            );
-            console.log("[VaultContext] Prefetched Kai market home cache");
-          }
-        } catch (error) {
-          console.warn("[VaultContext] Market prefetch warm-up failed:", error);
-        }
-
-        console.log("[VaultContext] Prefetch complete");
-      } catch (err) {
-        console.warn("[VaultContext] Prefetch error (non-blocking):", err);
+        await UnlockWarmOrchestrator.run({
+          userId,
+          vaultKey: key,
+          vaultOwnerToken: token,
+        });
+      } catch (error) {
+        console.warn("[VaultContext] Unlock warm orchestration failed:", error);
       }
     },
     []

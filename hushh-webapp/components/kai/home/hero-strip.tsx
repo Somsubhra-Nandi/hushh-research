@@ -131,7 +131,7 @@ export function HeroStrip({
               aria-label="Refresh market home"
               disabled={Boolean(refreshing)}
             >
-              <RefreshCcw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              <RefreshCcw className={cn("h-4 w-4", refreshing && "animate-pulse")} />
             </Button>
             <Button variant="blue-gradient" effect="fill" size="sm" onClick={onOpenDashboard}>
               Open Dashboard

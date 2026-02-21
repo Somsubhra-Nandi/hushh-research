@@ -29,8 +29,9 @@ Notes:
 | Step | Route/UI | Web Service Layer | Backend Route | Cache Layer | Provider Layer |
 | --- | --- | --- | --- | --- | --- |
 | Token resolution | `/kai` | `ensureKaiVaultOwnerToken` (`lib/services/kai-token-guard.ts`) | `/api/consent/vault-owner-token` (through web proxy) | in-memory token + expiry in vault context | N/A |
-| Home fetch | `KaiMarketPreviewView` | `ApiService.getKaiMarketInsights` | `/api/kai/market/insights/{user_id}` | frontend memory/session cache (3 min), backend memory cache (fresh/stale) | Finnhub -> PMP/FMP -> fallbacks with cooldowns |
+| Home fetch | `KaiMarketPreviewView` | `ApiService.getKaiMarketInsights` | `/api/kai/market/insights/{user_id}` | frontend memory/session cache (3 min), backend L1 memory + L2 postgres (`kai_market_cache_entries`) | Finnhub -> PMP/FMP -> fallbacks with cooldowns |
 | Refresh behavior | manual refresh + poll | same as above | same as above | cache-first while fresh; stale fallback if provider errors | degraded labels and provider status emitted in payload |
+| Startup/unlock warm | vault unlock flow + onboarding bridge | `UnlockWarmOrchestrator` (single-flight) | same endpoints as above | preloads world-model + consents + kai home caches | avoids duplicate warm calls across components |
 
 ### 4) Debate Stream -> Degraded Mode -> UI Decision Cards
 
@@ -54,6 +55,7 @@ Notes:
 - Token guard: `hushh-webapp/lib/services/kai-token-guard.ts`
 - Backend route: `consent-protocol/api/routes/kai/market_insights.py`
 - Backend cache: `consent-protocol/hushh_mcp/services/market_insights_cache.py`
+- Backend L2 cache: `consent-protocol/hushh_mcp/services/market_cache_store.py`
 
 ### `/kai/dashboard`
 - UI: `hushh-webapp/components/kai/views/dashboard-master-view.tsx`
@@ -73,6 +75,7 @@ Notes:
 | --- | --- | --- | --- |
 | Route or payload schema change | API service parse and UI render paths | Silent undefined fields in cards/charts | `verify:routes`, stream contract checks, manual `/kai` + dashboard smoke |
 | Cache key/TTL change | stale/fresh behavior in home/dashboard | hidden over-fetch or stale UI claims | `verify:cache`, `kai-system-audit.py`, cache logs |
+| Unlock warm orchestration change | initial route readiness after vault unlock | duplicate warm calls, repeated `/db/vault/get`, delayed first paint | unlock-to-ready smoke + cache-hit logs |
 | World-model summary change | context counters and dashboard hero values | false-zero context or missing counts | world-model audit script + debate context smoke |
 | Provider fallback/cooldown change | market home and debate data completeness | rate-limit loops, noisy degraded states | provider status telemetry + `/kai` refresh behavior |
 | Onboarding/chrome gating change | navbar/topbar/command bar visibility | onboarding regressions, broken tour sequencing | route-level smoke and mobile parity checklist |

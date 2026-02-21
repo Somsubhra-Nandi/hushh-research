@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type HushhLoaderVariant = "fullscreen" | "page" | "inline" | "compact";
@@ -19,9 +18,8 @@ export interface HushhLoaderProps {
  * IMPORTANT:
  * - No debug strings (per product decision).
  * - UI-only. No backend/plugin involvement.
- * - All variants now render their own spinner (no delegation to root loader).
- * - Use inline/compact for component-level loading states.
- * - Use page/fullscreen for full-page loading states.
+ * - No spinner/progress glyphs here; top StepProgressBar owns progress indication.
+ * - This component renders only neutral static placeholder text.
  */
 export function HushhLoader({
   label = "Loading…",
@@ -29,14 +27,7 @@ export function HushhLoader({
   className,
 }: HushhLoaderProps) {
   if (variant === "compact") {
-    return (
-      <Loader2
-        className={cn(
-          "h-4 w-4 animate-spin text-primary inline-block",
-          className
-        )}
-      />
-    );
+    return <span className={cn("inline-block text-muted-foreground", className)}>…</span>;
   }
 
   const isFullscreen = variant === "fullscreen";
@@ -52,15 +43,12 @@ export function HushhLoader({
           : isPage
           ? "min-h-[60vh] w-full"
           : isInline
-          ? "w-full py-8"
+          ? "w-full py-6"
           : "",
         className
       )}
     >
-      <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-        <p className="text-muted-foreground">{label}</p>
-      </div>
+      <p className={cn("text-sm text-muted-foreground", isInline && "text-xs")}>{label}</p>
     </div>
   );
 }

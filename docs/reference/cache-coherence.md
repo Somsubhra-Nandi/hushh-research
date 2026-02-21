@@ -8,6 +8,8 @@ Source files:
 - `hushh-webapp/lib/services/cache-service.ts`
 - `hushh-webapp/lib/cache/cache-sync-service.ts`
 - `hushh-webapp/lib/cache/cache-context.tsx`
+- `consent-protocol/hushh_mcp/services/market_insights_cache.py`
+- `consent-protocol/hushh_mcp/services/market_cache_store.py`
 
 ## Key Taxonomy
 
@@ -31,6 +33,11 @@ Summary metadata write-through fields (when available):
 - `item_count`
 - `holdings_count` (financial/portfolio-like domains)
 - `portfolio_total_value`
+
+Backend Kai market cache tiers (generalized modules):
+- L1 memory cache: `market_insights_cache`
+- L2 Postgres cache table: `kai_market_cache_entries`
+- L3 live provider fetch
 
 ## Mutation -> Cache Sync Matrix
 

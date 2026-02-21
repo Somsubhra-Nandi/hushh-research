@@ -1178,3 +1178,8 @@ md-ripple.morphy-md-ripple {
 .animate-stage-pulse {
   animation: stage-pulse 1.5s ease-in-out infinite;
 }
+
+/* Loading policy: no spinner glyph rotation, rely on skeleton/pulse + step progress. */
+.animate-spin {
+  animation: none !important;
+}

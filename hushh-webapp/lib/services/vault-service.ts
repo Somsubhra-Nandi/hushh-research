@@ -43,11 +43,20 @@ export interface VaultState {
 }
 
 export class VaultService {
+  private static readonly VAULT_STATE_CACHE_TTL_MS = 3 * 60 * 1000;
   private static readonly ALLOWED_METHODS: VaultMethod[] = [
     "passphrase",
     "generated_default_native_biometric",
     "generated_default_web_prf",
   ];
+  private static vaultStateCache = new Map<
+    string,
+    {
+      state: VaultState;
+      cachedAt: number;
+    }
+  >();
+  private static vaultStateInflight = new Map<string, Promise<VaultState>>();
 
   private static normalizeNullableString(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
@@ -58,6 +67,34 @@ export class VaultService {
       return undefined;
     }
     return trimmed;
+  }
+
+  private static getCachedVaultState(userId: string): VaultState | null {
+    const entry = this.vaultStateCache.get(userId);
+    if (!entry) return null;
+    const age = Date.now() - entry.cachedAt;
+    if (age > this.VAULT_STATE_CACHE_TTL_MS) {
+      this.vaultStateCache.delete(userId);
+      return null;
+    }
+    return entry.state;
+  }
+
+  private static setCachedVaultState(userId: string, state: VaultState): void {
+    this.vaultStateCache.set(userId, {
+      state,
+      cachedAt: Date.now(),
+    });
+  }
+
+  static invalidateVaultStateCache(userId?: string): void {
+    if (userId) {
+      this.vaultStateCache.delete(userId);
+      this.vaultStateInflight.delete(userId);
+      return;
+    }
+    this.vaultStateCache.clear();
+    this.vaultStateInflight.clear();
   }
 
   private static normalizeVaultKeyHex(value: string): string | null {
@@ -559,81 +596,106 @@ export class VaultService {
    * Get vault state (recovery + all enrolled wrappers).
    */
   static async getVaultState(userId: string): Promise<VaultState> {
+    const cached = this.getCachedVaultState(userId);
+    if (cached) {
+      return cached;
+    }
+
+    const inFlight = this.vaultStateInflight.get(userId);
+    if (inFlight) {
+      return inFlight;
+    }
+
     console.log("🔐 [VaultService] getVaultState called for:", userId);
 
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const authToken = await this.getFirebaseToken();
-        const result = await HushhVault.getVault({ userId, authToken });
-        const wrapperProbe = (result as { wrappers?: unknown }).wrappers;
-        const extractedCount = this.extractWrappers(wrapperProbe).length;
-        const wrapperShape = this.describeWrapperPayload(wrapperProbe);
-        let hasVaultCheckResult: boolean | "error" | "unknown" = "unknown";
-        if (!extractedCount) {
-          try {
-            hasVaultCheckResult = await this.checkVault(userId);
-          } catch {
-            hasVaultCheckResult = "error";
-          }
-          console.warn(
-            "[VaultService] Native getVault returned wrapper payload with zero extractable wrappers",
-            {
-              wrapperType: wrapperProbe == null ? "nullish" : typeof wrapperProbe,
-              wrapperShape,
-              hasVault: hasVaultCheckResult,
-            }
-          );
-        }
+    const requestPromise = (async () => {
+      if (Capacitor.isNativePlatform()) {
         try {
-          return this.normalizeVaultState(result as Partial<VaultState>);
+          const authToken = await this.getFirebaseToken();
+          const result = await HushhVault.getVault({ userId, authToken });
+          const wrapperProbe = (result as { wrappers?: unknown }).wrappers;
+          const extractedCount = this.extractWrappers(wrapperProbe).length;
+          const wrapperShape = this.describeWrapperPayload(wrapperProbe);
+          let hasVaultCheckResult: boolean | "error" | "unknown" = "unknown";
+          if (!extractedCount) {
+            try {
+              hasVaultCheckResult = await this.checkVault(userId);
+            } catch {
+              hasVaultCheckResult = "error";
+            }
+            console.warn(
+              "[VaultService] Native getVault returned wrapper payload with zero extractable wrappers",
+              {
+                wrapperType: wrapperProbe == null ? "nullish" : typeof wrapperProbe,
+                wrapperShape,
+                hasVault: hasVaultCheckResult,
+              }
+            );
+          }
+          try {
+            const normalized = this.normalizeVaultState(result as Partial<VaultState>);
+            this.setCachedVaultState(userId, normalized);
+            return normalized;
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Vault state normalization failed.";
+            throw new Error(
+              `${message} [platform=${Capacitor.getPlatform()} source=native wrapperShape=${wrapperShape} extracted=${extractedCount} hasVault=${hasVaultCheckResult}]`
+            );
+          }
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Vault state normalization failed.";
-          throw new Error(
-            `${message} [platform=${Capacitor.getPlatform()} source=native wrapperShape=${wrapperShape} extracted=${extractedCount} hasVault=${hasVaultCheckResult}]`
-          );
+          console.error("❌ [VaultService] Native getVaultState error:", error);
+          throw error;
         }
-      } catch (error) {
-        console.error("❌ [VaultService] Native getVaultState error:", error);
-        throw error;
       }
-    }
 
-    const url = this.getApiUrl(`/api/vault/get?userId=${userId}`);
-    const authToken = await this.getFirebaseToken();
-    const headers: HeadersInit = {};
-    if (authToken) {
-      headers["Authorization"] = `Bearer ${authToken}`;
-    }
+      const url = this.getApiUrl(`/api/vault/get?userId=${userId}`);
+      const authToken = await this.getFirebaseToken();
+      const headers: HeadersInit = {};
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
 
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      throw new Error("Failed to get vault");
-    }
-    const payload = (await response.json()) as Partial<VaultState>;
-    const wrapperProbe = (payload as { wrappers?: unknown }).wrappers;
-    const extractedCount = this.extractWrappers(wrapperProbe).length;
-    const wrapperShape = this.describeWrapperPayload(wrapperProbe);
-    let hasVaultCheckResult: boolean | "error" | "unknown" = "unknown";
-    if (!extractedCount) {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error("Failed to get vault");
+      }
+      const payload = (await response.json()) as Partial<VaultState>;
+      const wrapperProbe = (payload as { wrappers?: unknown }).wrappers;
+      const extractedCount = this.extractWrappers(wrapperProbe).length;
+      const wrapperShape = this.describeWrapperPayload(wrapperProbe);
+      let hasVaultCheckResult: boolean | "error" | "unknown" = "unknown";
+      if (!extractedCount) {
+        try {
+          hasVaultCheckResult = await this.checkVault(userId);
+        } catch {
+          hasVaultCheckResult = "error";
+        }
+        console.warn("[VaultService] Web getVault payload has zero extractable wrappers", {
+          wrapperShape,
+          hasVault: hasVaultCheckResult,
+        });
+      }
       try {
-        hasVaultCheckResult = await this.checkVault(userId);
-      } catch {
-        hasVaultCheckResult = "error";
+        const normalized = this.normalizeVaultState(payload);
+        this.setCachedVaultState(userId, normalized);
+        return normalized;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Vault state normalization failed.";
+        throw new Error(
+          `${message} [platform=web source=api wrapperShape=${wrapperShape} extracted=${extractedCount} hasVault=${hasVaultCheckResult}]`
+        );
       }
-      console.warn("[VaultService] Web getVault payload has zero extractable wrappers", {
-        wrapperShape,
-        hasVault: hasVaultCheckResult,
-      });
-    }
+    })();
+
+    this.vaultStateInflight.set(userId, requestPromise);
     try {
-      return this.normalizeVaultState(payload);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Vault state normalization failed.";
-      throw new Error(
-        `${message} [platform=web source=api wrapperShape=${wrapperShape} extracted=${extractedCount} hasVault=${hasVaultCheckResult}]`
-      );
+      return await requestPromise;
+    } finally {
+      if (this.vaultStateInflight.get(userId) === requestPromise) {
+        this.vaultStateInflight.delete(userId);
+      }
     }
   }
 
@@ -665,6 +727,7 @@ export class VaultService {
         if (!result?.success) {
           throw new Error("Native vault setup failed.");
         }
+        this.invalidateVaultStateCache(userId);
         CacheSyncService.onVaultStateChanged(userId, { hasVault: true });
         return;
       } catch (error) {
@@ -695,6 +758,7 @@ export class VaultService {
     if (!response.ok) {
       throw new Error("Failed to setup vault state");
     }
+    this.invalidateVaultStateCache(userId);
     CacheSyncService.onVaultStateChanged(userId, { hasVault: true });
   }
 
@@ -724,6 +788,7 @@ export class VaultService {
       if (!result?.success) {
         throw new Error("Native vault wrapper upsert failed.");
       }
+      this.invalidateVaultStateCache(params.userId);
       return;
     }
 
@@ -749,6 +814,7 @@ export class VaultService {
     if (!response.ok) {
       throw new Error("Failed to upsert vault wrapper.");
     }
+    this.invalidateVaultStateCache(params.userId);
   }
 
   static async setPrimaryVaultMethod(
@@ -767,6 +833,7 @@ export class VaultService {
       if (!result?.success) {
         throw new Error("Native primary vault method update failed.");
       }
+      this.invalidateVaultStateCache(userId);
       return;
     }
 
@@ -783,6 +850,7 @@ export class VaultService {
     if (!response.ok) {
       throw new Error("Failed to set primary vault method.");
     }
+    this.invalidateVaultStateCache(userId);
   }
 
   // ============================================================================

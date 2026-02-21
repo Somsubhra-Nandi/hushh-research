@@ -5,7 +5,7 @@ import React, {
   useContext,
   useState,
   useCallback,
-  useRef,
+  useMemo,
   ReactNode,
 } from "react";
 
@@ -48,6 +48,21 @@ interface StepProgressContextValue {
    * True when loading is in progress (progress > 0 and < 100).
    */
   isLoading: boolean;
+
+  /**
+   * Start a scoped progress task to avoid cross-route conflicts.
+   */
+  beginTask: (scope: string, totalSteps: number) => void;
+
+  /**
+   * Advance one step for the given scope.
+   */
+  completeTaskStep: (scope: string) => void;
+
+  /**
+   * End/clear a scoped task.
+   */
+  endTask: (scope: string) => void;
 }
 
 const StepProgressContext = createContext<StepProgressContextValue | undefined>(
@@ -59,34 +74,90 @@ interface StepProgressProviderProps {
 }
 
 export function StepProgressProvider({ children }: StepProgressProviderProps) {
-  const [totalSteps, setTotalSteps] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState(0);
-  const completedRef = useRef(0);
+  const LEGACY_SCOPE = "__legacy__";
+  const [tasks, setTasks] = useState<
+    Record<
+      string,
+      {
+        totalSteps: number;
+        completedSteps: number;
+      }
+    >
+  >({});
 
-  const registerSteps = useCallback((total: number) => {
-    setTotalSteps(total);
-    setCompletedSteps(0);
-    completedRef.current = 0;
+  const beginTask = useCallback((scope: string, totalSteps: number) => {
+    if (!scope) return;
+    const safeTotal = Math.max(0, Math.floor(totalSteps));
+    setTasks((prev) => ({
+      ...prev,
+      [scope]: {
+        totalSteps: safeTotal,
+        completedSteps: 0,
+      },
+    }));
   }, []);
+
+  const completeTaskStep = useCallback((scope: string) => {
+    if (!scope) return;
+    setTasks((prev) => {
+      const current = prev[scope];
+      if (!current) return prev;
+      const nextCompleted = Math.min(current.totalSteps, current.completedSteps + 1);
+      return {
+        ...prev,
+        [scope]: {
+          ...current,
+          completedSteps: nextCompleted,
+        },
+      };
+    });
+  }, []);
+
+  const endTask = useCallback((scope: string) => {
+    if (!scope) return;
+    setTasks((prev) => {
+      if (!(scope in prev)) return prev;
+      const next = { ...prev };
+      delete next[scope];
+      return next;
+    });
+  }, []);
+
+  const registerSteps = useCallback(
+    (total: number) => {
+      beginTask(LEGACY_SCOPE, total);
+    },
+    [beginTask]
+  );
 
   const completeStep = useCallback(() => {
-    // Use ref to avoid stale closure issues
-    completedRef.current += 1;
-    setCompletedSteps(completedRef.current);
-  }, []);
+    completeTaskStep(LEGACY_SCOPE);
+  }, [completeTaskStep]);
 
   const reset = useCallback(() => {
-    setTotalSteps(0);
-    setCompletedSteps(0);
-    completedRef.current = 0;
-  }, []);
+    endTask(LEGACY_SCOPE);
+  }, [endTask]);
 
-  // Calculate progress percentage
-  const progress =
-    totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const metrics = useMemo(() => {
+    const values = Object.values(tasks);
+    if (!values.length) {
+      return { progress: 0, isLoading: false };
+    }
 
-  // Loading is true when we have steps registered and haven't completed all
-  const isLoading = totalSteps > 0 && completedSteps < totalSteps;
+    const total = values.reduce((sum, current) => sum + Math.max(0, current.totalSteps), 0);
+    const completed = values.reduce(
+      (sum, current) => sum + Math.min(current.totalSteps, Math.max(0, current.completedSteps)),
+      0
+    );
+    if (total <= 0) {
+      return { progress: 0, isLoading: false };
+    }
+    const progress = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+    return {
+      progress,
+      isLoading: completed < total,
+    };
+  }, [tasks]);
 
   return (
     <StepProgressContext.Provider
@@ -94,8 +165,11 @@ export function StepProgressProvider({ children }: StepProgressProviderProps) {
         registerSteps,
         completeStep,
         reset,
-        progress,
-        isLoading,
+        progress: metrics.progress,
+        isLoading: metrics.isLoading,
+        beginTask,
+        completeTaskStep,
+        endTask,
       }}
     >
       {children}
@@ -118,6 +192,9 @@ export function useStepProgress(): StepProgressContextValue {
       reset: () => {},
       progress: 0,
       isLoading: false,
+      beginTask: () => {},
+      completeTaskStep: () => {},
+      endTask: () => {},
     };
   }
 
