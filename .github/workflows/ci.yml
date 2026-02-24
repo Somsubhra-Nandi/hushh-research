@@ -278,3 +278,60 @@ jobs:
             exit 1
           fi
           echo "All required CI jobs passed or were intentionally skipped."
+
+  # ============================================================================
+  # Deploy to Cloud Run (deploy branch only, runs strictly after CI gate passes)
+  # ============================================================================
+  deploy-cloudrun:
+    name: "Deploy Cloud Run"
+    needs:
+      - ci-status
+    if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GCP_REGION: us-central1
+      BACKEND_SERVICE: consent-protocol
+      FRONTEND_SERVICE: hushh-webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy backend using Cloud Build
+        run: gcloud builds submit --config=deploy/backend.cloudbuild.yaml
+
+      - name: Get backend URL
+        id: backend-url
+        run: |
+          BACKEND_URL=$(gcloud run services describe "${{ env.BACKEND_SERVICE }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --format='value(status.url)')
+          echo "url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+          echo "Backend URL: $BACKEND_URL"
+
+      - name: Deploy frontend using Cloud Build
+        run: gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
+
+      - name: Get frontend URL
+        id: frontend-url
+        run: |
+          FRONTEND_URL=$(gcloud run services describe "${{ env.FRONTEND_SERVICE }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --format='value(status.url)')
+          echo "url=$FRONTEND_URL" >> "$GITHUB_OUTPUT"
+          echo "Frontend URL: $FRONTEND_URL"
+
+      - name: Deployment Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "✅ Production Deployment Complete"
+          echo "Backend: ${{ steps.backend-url.outputs.url }}"
+          echo "Frontend: ${{ steps.frontend-url.outputs.url }}"
