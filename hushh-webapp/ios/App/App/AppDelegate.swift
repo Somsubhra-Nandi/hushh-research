@@ -12,12 +12,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Firebase lifecycle is owned by Capacitor Firebase plugins.
-        // Do not call FirebaseApp.configure() here; duplicate configure crashes at startup.
-        if FirebaseApp.app() != nil {
-            print("ℹ️ [AppDelegate] Firebase already initialized")
+        // Ensure Firebase is initialized once for native plugins and auth flows.
+        if FirebaseApp.app() == nil {
+            if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+                FirebaseApp.configure()
+                print("✅ [AppDelegate] Firebase configured")
+            } else {
+                print("⚠️ [AppDelegate] GoogleService-Info.plist missing; Firebase not configured")
+            }
         } else {
-            print("ℹ️ [AppDelegate] Firebase will initialize via plugin")
+            print("ℹ️ [AppDelegate] Firebase already initialized")
         }
 
         // Configure push notifications

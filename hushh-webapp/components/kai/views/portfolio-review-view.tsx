@@ -589,6 +589,68 @@ function deriveCashFromHoldings(holdings: Holding[]): number | undefined {
   return total > 0 ? total : undefined;
 }
 
+function deriveAssetAllocationFromHoldings(holdings: Holding[]): AssetAllocation {
+  const bucketTotals: Record<"cash" | "equities" | "bonds" | "real_assets" | "other", number> = {
+    cash: 0,
+    equities: 0,
+    bonds: 0,
+    real_assets: 0,
+    other: 0,
+  };
+
+  let totalMarketValue = 0;
+
+  for (const holding of holdings) {
+    const marketValue = toFiniteNumber(holding.market_value) ?? 0;
+    if (marketValue <= 0) continue;
+
+    const hint =
+      `${holding.instrument_kind || ""} ${holding.asset_type || ""} ${holding.name || ""}`.toLowerCase();
+
+    let bucket: keyof typeof bucketTotals = "other";
+    if (isCashLikeHolding(holding) || holding.is_cash_equivalent) bucket = "cash";
+    else if (hint.includes("bond") || hint.includes("fixed income") || hint.includes("treasury")) {
+      bucket = "bonds";
+    } else if (
+      hint.includes("real estate") ||
+      hint.includes("real asset") ||
+      hint.includes("reit") ||
+      hint.includes("commod")
+    ) {
+      bucket = "real_assets";
+    } else if (
+      hint.includes("equity") ||
+      hint.includes("stock") ||
+      hint.includes("etf") ||
+      hint.includes("fund") ||
+      hint.includes("adr")
+    ) {
+      bucket = "equities";
+    }
+
+    bucketTotals[bucket] += marketValue;
+    totalMarketValue += marketValue;
+  }
+
+  const fromValue = (bucket: keyof typeof bucketTotals): number | undefined => {
+    if (totalMarketValue <= 0 || bucketTotals[bucket] <= 0) return undefined;
+    return Number(((bucketTotals[bucket] / totalMarketValue) * 100).toFixed(2));
+  };
+
+  return compactRecord({
+    cash_pct: fromValue("cash"),
+    cash_value: bucketTotals.cash || undefined,
+    equities_pct: fromValue("equities"),
+    equities_value: bucketTotals.equities || undefined,
+    bonds_pct: fromValue("bonds"),
+    bonds_value: bucketTotals.bonds || undefined,
+    real_assets_pct: fromValue("real_assets"),
+    real_assets_value: bucketTotals.real_assets || undefined,
+    other_pct: fromValue("other"),
+    other_value: bucketTotals.other || undefined,
+  } satisfies AssetAllocation) as AssetAllocation;
+}
+
 function statementCompletenessScore(statement: Record<string, unknown>): number {
   const summary = sanitizeAccountSummary(statement.account_summary);
   const allocation = sanitizeAssetAllocation(statement.asset_allocation);
@@ -781,26 +843,36 @@ export function PortfolioReviewView({
   );
   const pendingDeleteCount = holdings.length - activeHoldings.length;
 
-  const totalValue = useMemo(() => {
-    const holdingsTotal = activeHoldings.reduce((sum, h) => sum + (h.market_value || 0), 0);
+  const liveCashBalance = useMemo(() => {
     const holdingsCash = deriveCashFromHoldings(activeHoldings);
-    const resolvedCashBalance =
-      toFiniteNumber(initialData.cash_balance) ??
-      toFiniteNumber(accountSummary.cash_balance) ??
-      0;
-    // When cash-equivalent positions are already in holdings, do not add cash again.
-    const derivedTotal = holdingsTotal + (holdingsCash !== undefined ? 0 : resolvedCashBalance);
+    if (holdingsCash !== undefined) return holdingsCash;
     return (
-      toFiniteNumber(initialData.total_value) ??
-      toFiniteNumber(accountSummary.ending_value) ??
-      derivedTotal
+      toFiniteNumber(accountSummary.cash_balance) ??
+      toFiniteNumber(initialData.cash_balance) ??
+      0
     );
+  }, [activeHoldings, accountSummary.cash_balance, initialData.cash_balance]);
+
+  const totalValue = useMemo(() => {
+    const holdingsTotal = activeHoldings.reduce(
+      (sum, h) => sum + (toFiniteNumber(h.market_value) ?? 0),
+      0
+    );
+    const holdingsCash = deriveCashFromHoldings(activeHoldings);
+    const hasLiveHoldingsMarketValue = activeHoldings.some(
+      (holding) => toFiniteNumber(holding.market_value) !== undefined
+    );
+    // When cash-equivalent positions are already in holdings, do not add cash again.
+    const derivedTotal = holdingsTotal + (holdingsCash !== undefined ? 0 : liveCashBalance);
+    if (hasLiveHoldingsMarketValue) return derivedTotal;
+    return toFiniteNumber(initialData.total_value) ??
+      toFiniteNumber(accountSummary.ending_value) ??
+      derivedTotal;
   }, [
     activeHoldings,
-    accountSummary.cash_balance,
     accountSummary.ending_value,
-    initialData.cash_balance,
     initialData.total_value,
+    liveCashBalance,
   ]);
 
   const totalUnrealizedGainLoss = useMemo(() => {
@@ -811,6 +883,12 @@ export function PortfolioReviewView({
   }, [activeHoldings]);
 
   const riskBucket = useMemo(() => deriveRiskBucket(activeHoldings), [activeHoldings]);
+
+  const displayAssetAllocation = useMemo(() => {
+    const liveAllocation = deriveAssetAllocationFromHoldings(activeHoldings);
+    if (hasAllocationValues(liveAllocation)) return liveAllocation;
+    return assetAllocation;
+  }, [activeHoldings, assetAllocation]);
 
   // Handlers
   const handleDeleteHolding = useCallback((index: number) => {
@@ -843,6 +921,15 @@ export function PortfolioReviewView({
           if (field === "quantity" || field === "price") {
             updated.market_value =
               (updated.quantity || 0) * (updated.price || 0);
+            const costBasis = toFiniteNumber(updated.cost_basis);
+            if (costBasis !== undefined) {
+              const unrealized = (updated.market_value || 0) - costBasis;
+              updated.unrealized_gain_loss = unrealized;
+              updated.unrealized_gain_loss_pct =
+                costBasis === 0
+                  ? undefined
+                  : Number(((unrealized / costBasis) * 100).toFixed(2));
+            }
           }
           return updated;
         })
@@ -1447,7 +1534,7 @@ export function PortfolioReviewView({
                 </div>
                 <div className="min-w-0 text-center sm:text-right sm:pr-4">
                   <p className="text-2xl font-black break-all">
-                    {formatCurrency(initialData.cash_balance || accountSummary.cash_balance || 0)}
+                    {formatCurrency(liveCashBalance)}
                   </p>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cash</p>
                 </div>
@@ -1532,7 +1619,7 @@ export function PortfolioReviewView({
         </AccordionItem>
 
         {/* Asset Allocation */}
-        {hasAllocationValues(assetAllocation) && (
+        {hasAllocationValues(displayAssetAllocation) && (
         <AccordionItem value="allocation" className="border-b-0 bg-card rounded-2xl border px-5">
             <AccordionTrigger className="text-base font-bold py-5 hover:no-underline">
 
@@ -1544,70 +1631,70 @@ export function PortfolioReviewView({
             </AccordionTrigger>
             <AccordionContent>
               <div className="space-y-3 pt-2">
-                {assetAllocation.cash_pct !== undefined && (
+                {displayAssetAllocation.cash_pct !== undefined && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Cash</span>
                     <div className="text-right">
                       <span className="font-medium">
-                        {assetAllocation.cash_pct?.toFixed(1)}%
+                        {displayAssetAllocation.cash_pct?.toFixed(1)}%
                       </span>
                       <span className="text-muted-foreground text-sm ml-2">
-                        {formatCurrency(assetAllocation.cash_value)}
+                        {formatCurrency(displayAssetAllocation.cash_value)}
                       </span>
                     </div>
                   </div>
                 )}
-                {assetAllocation.equities_pct !== undefined && (
+                {displayAssetAllocation.equities_pct !== undefined && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Equities</span>
                     <div className="text-right">
                       <span className="font-medium">
-                        {assetAllocation.equities_pct?.toFixed(1)}%
+                        {displayAssetAllocation.equities_pct?.toFixed(1)}%
                       </span>
                       <span className="text-muted-foreground text-sm ml-2">
-                        {formatCurrency(assetAllocation.equities_value)}
+                        {formatCurrency(displayAssetAllocation.equities_value)}
                       </span>
                     </div>
                   </div>
                 )}
-                {assetAllocation.bonds_pct !== undefined &&
-                  assetAllocation.bonds_pct > 0 && (
+                {displayAssetAllocation.bonds_pct !== undefined &&
+                  displayAssetAllocation.bonds_pct > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Bonds</span>
                       <div className="text-right">
                         <span className="font-medium">
-                          {assetAllocation.bonds_pct?.toFixed(1)}%
+                          {displayAssetAllocation.bonds_pct?.toFixed(1)}%
                         </span>
                         <span className="text-muted-foreground text-sm ml-2">
-                          {formatCurrency(assetAllocation.bonds_value)}
+                          {formatCurrency(displayAssetAllocation.bonds_value)}
                         </span>
                       </div>
                     </div>
                   )}
-                {assetAllocation.real_assets_pct !== undefined &&
-                  assetAllocation.real_assets_pct > 0 && (
+                {displayAssetAllocation.real_assets_pct !== undefined &&
+                  displayAssetAllocation.real_assets_pct > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Real Assets</span>
                       <div className="text-right">
                         <span className="font-medium">
-                          {assetAllocation.real_assets_pct?.toFixed(1)}%
+                          {displayAssetAllocation.real_assets_pct?.toFixed(1)}%
                         </span>
                         <span className="text-muted-foreground text-sm ml-2">
-                          {formatCurrency(assetAllocation.real_assets_value)}
+                          {formatCurrency(displayAssetAllocation.real_assets_value)}
                         </span>
                       </div>
                     </div>
                   )}
-                {assetAllocation.other_pct !== undefined &&
-                  assetAllocation.other_pct > 0 && (
+                {displayAssetAllocation.other_pct !== undefined &&
+                  displayAssetAllocation.other_pct > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Other</span>
                       <div className="text-right">
                         <span className="font-medium">
-                          {assetAllocation.other_pct?.toFixed(1)}%
+                          {displayAssetAllocation.other_pct?.toFixed(1)}%
                         </span>
                         <span className="text-muted-foreground text-sm ml-2">
-                          {formatCurrency(assetAllocation.other_value)}
+                          {formatCurrency(displayAssetAllocation.other_value)}
                         </span>
                       </div>
                     </div>
@@ -1701,7 +1788,7 @@ export function PortfolioReviewView({
           ) : (
             holdings.map((holding, index) => (
               <div
-                key={`${holding.symbol}-${index}`}
+                key={`holding-${index}`}
                 className={cn(
                   "p-3 rounded-lg border transition-colors",
                   holding.pending_delete && "opacity-60 border-dashed border-muted-foreground/40 bg-muted/40",

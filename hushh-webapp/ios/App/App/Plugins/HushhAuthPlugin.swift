@@ -36,10 +36,29 @@ public class HushhAuthPlugin: CAPPlugin, CAPBridgedPlugin {
     // Apple Sign-In properties
     private var currentNonce: String?
     private var appleSignInCall: CAPPluginCall?
+
+    // Ensure Firebase is initialized before any FirebaseAuth call.
+    private func ensureFirebaseConfigured() -> Bool {
+        if FirebaseApp.app() != nil {
+            return true
+        }
+        guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
+            print("❌ [\(TAG)] Missing GoogleService-Info.plist (required for FirebaseApp.configure)")
+            return false
+        }
+        FirebaseApp.configure()
+        print("✅ [\(TAG)] Firebase configured")
+        return true
+    }
     
     // MARK: - Sign In
     @objc func signIn(_ call: CAPPluginCall) {
         print("🤖 [\(TAG)] signIn() CALLED - Native plugin invoked!")
+
+        guard ensureFirebaseConfigured() else {
+            call.reject("Missing GoogleService-Info.plist (Firebase not configured)")
+            return
+        }
         
         guard let viewController = bridge?.viewController else {
             call.reject("No view controller available")
@@ -100,15 +119,15 @@ public class HushhAuthPlugin: CAPPlugin, CAPBridgedPlugin {
                     }
                     
                     self.currentIdToken = firebaseIdToken
-                    self.currentAccessToken = idToken
+                    self.currentAccessToken = accessToken
                     
                     // Store in UserDefaults (TODO: migrate to Keychain)
                     UserDefaults.standard.set(firebaseIdToken, forKey: "hushh_id_token")
-                    UserDefaults.standard.set(idToken, forKey: "hushh_access_token")
+                    UserDefaults.standard.set(accessToken, forKey: "hushh_access_token")
                     
                     let response: [String: Any] = [
                         "idToken": firebaseIdToken ?? "",
-                        "accessToken": idToken,
+                        "accessToken": accessToken,
                         "user": [
                 "uid": firebaseUser.uid,
                             "email": firebaseUser.email ?? "",

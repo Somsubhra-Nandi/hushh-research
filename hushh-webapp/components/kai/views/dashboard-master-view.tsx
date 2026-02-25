@@ -401,33 +401,6 @@ export function DashboardMasterView({
     [holdingsDraft]
   );
 
-  const workingPortfolioData = useMemo<PortfolioData>(
-    () => ({
-      ...portfolioData,
-      holdings: activeHoldings,
-    }),
-    [activeHoldings, portfolioData]
-  );
-
-  const model = useMemo(
-    () => mapPortfolioToDashboardViewModel(workingPortfolioData),
-    [workingPortfolioData]
-  );
-
-  const allocationData = useMemo(
-    () =>
-      model.allocation.map((entry, index) => ({
-        ...entry,
-        color: ALLOCATION_COLOR_PALETTE[index % ALLOCATION_COLOR_PALETTE.length] ?? "#2563eb",
-      })),
-    [model.allocation]
-  );
-
-  const holdingSymbols = useMemo(
-    () => model.canonicalModel.debateContext.eligibleSymbols.slice(0, 20),
-    [model.canonicalModel.debateContext.eligibleSymbols]
-  );
-
   const holdingsChangeSummary = useMemo(() => {
     const baselineBySource = baselineBySourceRef.current;
     let added = 0;
@@ -464,6 +437,62 @@ export function DashboardMasterView({
   }, [holdingsDraft]);
 
   const hasHoldingsChanges = holdingsChangeSummary.total > 0;
+
+  const workingPortfolioData = useMemo<PortfolioData>(
+    () => {
+      const cashBalance = Number(
+        portfolioData.account_summary?.cash_balance ?? portfolioData.cash_balance ?? 0
+      );
+      const holdingsTotalValue = activeHoldings.reduce(
+        (sum, holding) => sum + Number(holding.market_value || 0),
+        0
+      );
+      const holdingsIncludeCash = activeHoldings.some(
+        (holding) => holding.is_cash_equivalent === true
+      );
+      const endingValue = holdingsTotalValue + (holdingsIncludeCash ? 0 : cashBalance);
+      const beginningValueRaw = Number(portfolioData.account_summary?.beginning_value);
+      const beginningValue = Number.isFinite(beginningValueRaw) ? beginningValueRaw : endingValue;
+
+      return {
+        ...portfolioData,
+        holdings: activeHoldings,
+        total_value: endingValue,
+        cash_balance: cashBalance,
+        account_summary: {
+          ...portfolioData.account_summary,
+          ending_value: endingValue,
+          cash_balance: cashBalance,
+          equities_value: activeHoldings
+            .filter((holding) => holding.is_cash_equivalent !== true)
+            .reduce((sum, holding) => sum + Number(holding.market_value || 0), 0),
+          change_in_value: endingValue - beginningValue,
+        },
+        ...(hasHoldingsChanges ? { analytics_v2: undefined } : {}),
+      };
+    },
+    [activeHoldings, hasHoldingsChanges, portfolioData]
+  );
+
+  const model = useMemo(
+    () => mapPortfolioToDashboardViewModel(workingPortfolioData),
+    [workingPortfolioData]
+  );
+
+  const allocationData = useMemo(
+    () =>
+      model.allocation.map((entry, index) => ({
+        ...entry,
+        color: ALLOCATION_COLOR_PALETTE[index % ALLOCATION_COLOR_PALETTE.length] ?? "#2563eb",
+      })),
+    [model.allocation]
+  );
+
+  const holdingSymbols = useMemo(
+    () => model.canonicalModel.debateContext.eligibleSymbols.slice(0, 20),
+    [model.canonicalModel.debateContext.eligibleSymbols]
+  );
+
   const desktopHoldingTables = useMemo(
     () => ({
       all: holdingsDraft,
@@ -729,8 +758,19 @@ export function DashboardMasterView({
       const cashBalance = Number(
         portfolioData.account_summary?.cash_balance ?? portfolioData.cash_balance ?? 0
       );
-      const equitiesValue = holdingsForSave.reduce((sum, holding) => sum + (holding.market_value || 0), 0);
-      const endingValue = equitiesValue + cashBalance;
+      const holdingsTotalValue = holdingsForSave.reduce(
+        (sum, holding) => sum + Number(holding.market_value || 0),
+        0
+      );
+      const holdingsIncludeCash = holdingsForSave.some(
+        (holding) => holding.is_cash_equivalent === true
+      );
+      const endingValue = holdingsTotalValue + (holdingsIncludeCash ? 0 : cashBalance);
+      const beginningValueRaw = Number(portfolioData.account_summary?.beginning_value);
+      const beginningValue = Number.isFinite(beginningValueRaw) ? beginningValueRaw : endingValue;
+      const equitiesValue = holdingsForSave
+        .filter((holding) => holding.is_cash_equivalent !== true)
+        .reduce((sum, holding) => sum + Number(holding.market_value || 0), 0);
 
       const updatedPortfolioData: PortfolioData = {
         ...portfolioData,
@@ -740,6 +780,7 @@ export function DashboardMasterView({
           ending_value: endingValue,
           equities_value: equitiesValue,
           cash_balance: cashBalance,
+          change_in_value: endingValue - beginningValue,
         },
         total_value: endingValue,
         cash_balance: cashBalance,
