@@ -8,8 +8,8 @@ import {
   checkPrfSupport,
   registerWithPrf,
   authenticateWithPrf,
-  getRpId,
 } from "@/lib/vault/prf-auth";
+import { resolvePasskeyRpId } from "@/lib/vault/passkey-rp";
 import {
   createVaultWithPassphrase,
   unlockVaultWithPassphrase,
@@ -113,37 +113,10 @@ async function canUseNativeBiometricVault(): Promise<boolean> {
 }
 
 function resolveRpId(): string {
-  const configuredRp = process.env.NEXT_PUBLIC_PASSKEY_RP_ID?.trim();
-  if (configuredRp) {
-    return configuredRp;
-  }
-
-  if (Capacitor.isNativePlatform()) {
-    const configuredAppUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-      process.env.NEXT_PUBLIC_FRONTEND_URL?.trim() ||
-      "";
-    if (configuredAppUrl) {
-      try {
-        const hostname = new URL(configuredAppUrl).hostname;
-        if (hostname) {
-          return hostname;
-        }
-      } catch {
-        // Ignore malformed URL and continue to runtime-derived fallbacks.
-      }
-    }
-
-    // Native WebViews may run under a local/app scheme. Production builds should
-    // set NEXT_PUBLIC_PASSKEY_RP_ID explicitly or NEXT_PUBLIC_APP_URL with a
-    // passkey-capable host.
-    return getRpId();
-  }
-
-  if (typeof window === "undefined") {
-    return "localhost";
-  }
-  return getRpId();
+  return resolvePasskeyRpId({
+    isNative: Capacitor.isNativePlatform(),
+    hostname: typeof window !== "undefined" ? window.location.hostname : null,
+  });
 }
 
 async function canUseNativePasskeyVault(): Promise<boolean> {

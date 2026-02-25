@@ -175,8 +175,9 @@ export function KaiNavTour() {
         "ring-offset-background",
         "shadow-lg",
         "relative",
-        "!z-[355]",
-        "z-50"
+        "!z-[380]",
+        "z-50",
+        "kai-tour-highlight"
       );
     });
 
@@ -192,7 +193,8 @@ export function KaiNavTour() {
       "ring-offset-background",
       "shadow-lg",
       "relative",
-      "!z-[355]"
+      "!z-[380]",
+      "kai-tour-highlight"
     );
 
     return () => {
@@ -203,7 +205,8 @@ export function KaiNavTour() {
         "ring-offset-background",
         "shadow-lg",
         "relative",
-        "!z-[355]"
+        "!z-[380]",
+        "kai-tour-highlight"
       );
     };
   }, [activeStep, open]);
@@ -329,7 +332,7 @@ export function KaiNavTour() {
         width: `${cardWidth}px`,
         left: "50%",
         transform: "translateX(-50%)",
-        bottom: "calc(var(--app-bottom-inset) + var(--kai-command-fixed-ui, 90px) + 88px)",
+        bottom: "calc(var(--app-bottom-inset) + var(--kai-command-fixed-ui, 90px) + 12px)",
       };
     }
 
@@ -370,7 +373,7 @@ export function KaiNavTour() {
   })();
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[320]" data-no-route-swipe>
+    <div className="pointer-events-none fixed inset-0 z-[360]" data-no-route-swipe>
       <div className="pointer-events-auto absolute inset-0 bg-black/35 backdrop-blur-[2px] dark:bg-black/45" />
       <div className="pointer-events-auto absolute" style={cardStyle} data-no-route-swipe>
         <Card

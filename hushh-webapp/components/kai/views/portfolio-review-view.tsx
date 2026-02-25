@@ -49,7 +49,10 @@ import {
 } from "@/components/ui/accordion";
 import { WorldModelService } from "@/lib/services/world-model-service";
 import { CacheSyncService } from "@/lib/cache/cache-sync-service";
-import type { PortfolioData as CachedPortfolioData } from "@/lib/cache/cache-context";
+import {
+  useCache,
+  type PortfolioData as CachedPortfolioData,
+} from "@/lib/cache/cache-context";
 import { useKaiSession } from "@/lib/stores/kai-session-store";
 import { Button as MorphyButton } from "@/lib/morphy-ux/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -691,6 +694,7 @@ export function PortfolioReviewView({
   onBack: _onBack,
   className,
 }: PortfolioReviewViewProps) {
+  const { setPortfolioData: setCachePortfolioData } = useCache();
   const { user } = useAuth();
   const { vaultKey: ctxVaultKey, vaultOwnerToken: ctxVaultOwnerToken } = useVault();
   const effectiveVaultKey = ctxVaultKey ?? vaultKey;
@@ -1380,10 +1384,28 @@ export function PortfolioReviewView({
 
       const postSaveSyncStartedAt = nowMs();
       // 5. Prime/invalidate deterministic cache entries for all financial reads.
+      const cachePortfolioData: CachedPortfolioData = {
+        ...(portfolioToSave as unknown as CachedPortfolioData),
+        account_info: {
+          ...(portfolioToSave.account_info || {}),
+          brokerage_name: portfolioToSave.account_info?.brokerage,
+          account_holder: portfolioToSave.account_info?.holder_name,
+        },
+      };
+      setCachePortfolioData(userId, cachePortfolioData);
       CacheSyncService.onPortfolioUpserted(
         userId,
-        portfolioToSave as unknown as CachedPortfolioData
+        cachePortfolioData
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("kai:portfolio-saved", {
+            detail: {
+              userId,
+            },
+          })
+        );
+      }
 
       // 6. Optional read-back verification (disabled by default in production).
       if (shouldVerifySave) {

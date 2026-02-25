@@ -7,6 +7,7 @@ const KEY_PREFIX = "vault_method_prompt_v1";
 type PromptState = {
   dismissed_for_method: string;
   dismissed_at: string;
+  dismissed_for_rp_id?: string;
 };
 
 function keyForUser(userId: string): string {
@@ -26,16 +27,28 @@ export class VaultMethodPromptLocalService {
       ) {
         return null;
       }
+      if (
+        parsed.dismissed_for_rp_id !== undefined &&
+        typeof parsed.dismissed_for_rp_id !== "string"
+      ) {
+        return null;
+      }
       return parsed;
     } catch {
       return null;
     }
   }
 
-  static async dismiss(userId: string, method: string): Promise<void> {
+  static async dismiss(
+    userId: string,
+    method: string,
+    rpId?: string
+  ): Promise<void> {
+    const normalizedRp = rpId?.trim();
     const state: PromptState = {
       dismissed_for_method: method,
       dismissed_at: new Date().toISOString(),
+      ...(normalizedRp ? { dismissed_for_rp_id: normalizedRp } : {}),
     };
 
     await Preferences.set({

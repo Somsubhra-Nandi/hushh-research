@@ -8,6 +8,7 @@ import {
   unlockVaultWithPassphrase as webUnlockVault,
   unlockVaultWithRecoveryKey as webUnlockRecall,
 } from "@/lib/vault/passphrase-key";
+import { resolvePasskeyRpId } from "@/lib/vault/passkey-rp";
 import { auth } from "@/lib/firebase/config";
 import { apiJson } from "@/lib/services/api-client";
 import type {
@@ -167,11 +168,11 @@ export class VaultService {
   }
 
   private static getCurrentRpId(): string | null {
-    if (typeof window === "undefined") return null;
-    const host = window.location.hostname;
-    if (!host) return null;
-    if (host === "127.0.0.1") return "localhost";
-    return host;
+    const rpId = resolvePasskeyRpId({
+      isNative: Capacitor.isNativePlatform(),
+      hostname: typeof window !== "undefined" ? window.location.hostname : null,
+    });
+    return rpId || null;
   }
 
   private static describeWrapperPayload(input: unknown): string {
@@ -302,6 +303,48 @@ export class VaultService {
       method === "generated_default_web_prf" ||
       method === "generated_default_native_passkey_prf"
     );
+  }
+
+  private static async buildApiError(
+    response: Response,
+    fallbackMessage: string
+  ): Promise<Error> {
+    let message = fallbackMessage;
+    let code: string | undefined;
+
+    try {
+      const raw = await response.text();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Record<string, unknown>;
+          const detail =
+            parsed?.detail && typeof parsed.detail === "object"
+              ? (parsed.detail as Record<string, unknown>)
+              : null;
+          const directCode = this.normalizeNullableString(
+            typeof parsed.code === "string" ? parsed.code : undefined
+          );
+          const directError = this.normalizeNullableString(
+            typeof parsed.error === "string" ? parsed.error : undefined
+          );
+          const detailCode = this.normalizeNullableString(
+            detail && typeof detail.code === "string" ? detail.code : undefined
+          );
+          const detailError = this.normalizeNullableString(
+            detail && typeof detail.error === "string" ? detail.error : undefined
+          );
+
+          code = detailCode || directCode || undefined;
+          message = detailError || directError || message;
+        } catch {
+          message = raw;
+        }
+      }
+    } catch {
+      // Ignore error body parse failures and keep fallback.
+    }
+
+    return new Error(code ? `${message} [${code}]` : message);
   }
 
   static getWrapperByMethod(
@@ -856,7 +899,7 @@ export class VaultService {
       }),
     });
     if (!response.ok) {
-      throw new Error("Failed to setup vault state");
+      throw await this.buildApiError(response, "Failed to setup vault state.");
     }
     this.invalidateVaultStateCache(userId);
     CacheSyncService.onVaultStateChanged(userId, { hasVault: true });
@@ -925,7 +968,7 @@ export class VaultService {
       }),
     });
     if (!response.ok) {
-      throw new Error("Failed to upsert vault wrapper.");
+      throw await this.buildApiError(response, "Failed to upsert vault wrapper.");
     }
     this.invalidateVaultStateCache(params.userId);
   }
@@ -972,7 +1015,10 @@ export class VaultService {
       }),
     });
     if (!response.ok) {
-      throw new Error("Failed to set primary vault method.");
+      throw await this.buildApiError(
+        response,
+        "Failed to set primary vault method."
+      );
     }
     this.invalidateVaultStateCache(userId);
   }

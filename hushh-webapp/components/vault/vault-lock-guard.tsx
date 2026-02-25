@@ -156,8 +156,8 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
 
   // User exists but vault is locked - show unlock dialog
   return (
-    <div className="flex items-center justify-center min-h-[60vh] p-4">
-      <div className="w-full max-w-md">
+    <div className="flex min-h-[60vh] items-center justify-center p-3 sm:p-4">
+      <div className="w-full max-w-sm sm:max-w-md">
         <VaultFlow
           user={user}
           enableGeneratedDefault

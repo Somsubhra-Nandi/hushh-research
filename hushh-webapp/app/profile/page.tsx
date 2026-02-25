@@ -404,7 +404,7 @@ export default function ProfilePage() {
       ? "Unlock your vault to confirm deletion. This is permanent and removes all encrypted data."
       : "Unlock your vault to access profile data and settings.";
 
-  async function switchVaultMethod(targetMethod: VaultMethod, passphrase?: string) {
+  async function switchToQuickMethod(targetMethod: VaultMethod) {
     if (!user?.uid) return;
 
     if (!isVaultUnlocked || !vaultKey) {
@@ -420,22 +420,79 @@ export default function ProfilePage() {
         currentVaultKey: vaultKey,
         displayName: user.displayName || user.email || "Hushh User",
         targetMethod,
-        passphrase,
       });
 
       setVaultMethod(result.method);
       toast.success(`Vault method updated to ${readableMethod(result.method)}.`);
       await refreshVaultMethodState(user.uid);
-
-      setPassphraseDialogOpen(false);
-      setNewPassphrase("");
-      setConfirmPassphrase("");
     } catch (error) {
       console.error("[ProfilePage] Failed to switch vault method:", error);
       toast.error(
         error instanceof Error
           ? error.message
           : "Failed to switch vault security method."
+      );
+    } finally {
+      setSwitchingVaultMethod(false);
+    }
+  }
+
+  async function preferPassphraseUnlock() {
+    if (!user?.uid) return;
+
+    if (!isVaultUnlocked || !vaultKey) {
+      toast.info("Unlock your vault to change security method.");
+      setShowVaultUnlock(true);
+      return;
+    }
+
+    setSwitchingVaultMethod(true);
+    try {
+      await VaultService.setPrimaryVaultMethod(user.uid, "passphrase", "default");
+      setVaultMethod("passphrase");
+      toast.success("Primary unlock updated to passphrase.");
+      await refreshVaultMethodState(user.uid);
+    } catch (error) {
+      console.error("[ProfilePage] Failed to prefer passphrase unlock:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to update preferred unlock method."
+      );
+    } finally {
+      setSwitchingVaultMethod(false);
+    }
+  }
+
+  async function changePassphrase() {
+    if (!user?.uid) return;
+
+    if (!isVaultUnlocked || !vaultKey) {
+      toast.info("Unlock your vault to change passphrase.");
+      setShowVaultUnlock(true);
+      return;
+    }
+
+    setSwitchingVaultMethod(true);
+    try {
+      const result = await VaultMethodService.changePassphrase({
+        userId: user.uid,
+        currentVaultKey: vaultKey,
+        newPassphrase,
+        keepPrimaryMethod: true,
+      });
+      setVaultMethod(result.primaryMethod);
+      toast.success("Passphrase updated successfully.");
+      await refreshVaultMethodState(user.uid);
+      setPassphraseDialogOpen(false);
+      setNewPassphrase("");
+      setConfirmPassphrase("");
+    } catch (error) {
+      console.error("[ProfilePage] Failed to update passphrase:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to update passphrase."
       );
     } finally {
       setSwitchingVaultMethod(false);
@@ -734,7 +791,7 @@ export default function ProfilePage() {
                   <Button
                     size="default"
                     disabled={switchingVaultMethod}
-                    onClick={() => void switchVaultMethod(recommendedQuickMethod)}
+                    onClick={() => void switchToQuickMethod(recommendedQuickMethod)}
                   >
                     {switchingVaultMethod ? (
                       <>
@@ -756,9 +813,21 @@ export default function ProfilePage() {
                     effect="fade"
                     size="default"
                     disabled={switchingVaultMethod}
+                    onClick={() => void preferPassphraseUnlock()}
+                  >
+                    Prefer passphrase unlock
+                  </Button>
+                )}
+
+                {vaultMethod && (
+                  <Button
+                    variant="none"
+                    effect="fade"
+                    size="default"
+                    disabled={switchingVaultMethod}
                     onClick={() => setPassphraseDialogOpen(true)}
                   >
-                    Switch to passphrase
+                    Change passphrase
                   </Button>
                 )}
               </div>
@@ -848,9 +917,9 @@ export default function ProfilePage() {
 
       <Dialog open={passphraseDialogOpen} onOpenChange={setPassphraseDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogTitle>Switch to passphrase unlock</DialogTitle>
+          <DialogTitle>Change passphrase</DialogTitle>
           <DialogDescription>
-            Set a new passphrase for vault unlock. Recovery key fallback remains active.
+            Set a new passphrase for vault unlock. Your passkey/biometric wrappers remain active.
           </DialogDescription>
           <div className="space-y-3 pt-2">
             <Input
@@ -882,9 +951,9 @@ export default function ProfilePage() {
                   newPassphrase.length < 8 ||
                   newPassphrase !== confirmPassphrase
                 }
-                onClick={() => void switchVaultMethod("passphrase", newPassphrase)}
+                onClick={() => void changePassphrase()}
               >
-                {switchingVaultMethod ? "Saving..." : "Save passphrase"}
+                {switchingVaultMethod ? "Saving..." : "Save new passphrase"}
               </Button>
             </div>
           </div>

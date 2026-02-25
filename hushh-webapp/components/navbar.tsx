@@ -15,6 +15,7 @@ import { getKaiChromeState } from "@/lib/navigation/kai-chrome-state";
 import { SegmentedPill, type SegmentedPillOption } from "@/lib/morphy-ux/ui";
 import { useKaiBottomChromeVisibility } from "@/lib/navigation/kai-bottom-chrome-visibility";
 import { cn } from "@/lib/utils";
+import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
 
 type NavKey = "kai" | "consents" | "profile";
 
@@ -121,6 +122,11 @@ export const Navbar = () => {
       : "kai";
 
   const navigateTo = (value: string) => {
+    if (busyOperations["portfolio_save"]) {
+      toast.info("Saving to vault. Please wait until encryption completes.");
+      return;
+    }
+
     const reviewDirty = Boolean(
       busyOperations["portfolio_review_active"] && busyOperations["portfolio_review_dirty"]
     );

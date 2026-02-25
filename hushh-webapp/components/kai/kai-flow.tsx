@@ -458,6 +458,45 @@ export function KaiFlow({
 
   useScrollReset(`${mode}:${state}`, { enabled: true, behavior: "auto" });
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isDashboardMode) return;
+
+    const handlePortfolioSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (!detail || detail.userId !== userId) return;
+
+      const cachedPortfolioData = getPortfolioData(userId) ?? undefined;
+      const hasCachedPortfolioData = Boolean(
+        cachedPortfolioData &&
+          Array.isArray(cachedPortfolioData.holdings) &&
+          cachedPortfolioData.holdings.length > 0
+      );
+      if (!hasCachedPortfolioData || !cachedPortfolioData) return;
+
+      const normalizedCachedHoldings = normalizeHoldingsWithPct(
+        cachedPortfolioData.holdings
+      );
+      const normalizedCachedPortfolio: PortfolioData = {
+        ...cachedPortfolioData,
+        holdings: normalizedCachedHoldings,
+      };
+      setPortfolioData(userId, normalizedCachedPortfolio);
+      setFlowData({
+        hasFinancialData: true,
+        holdingsCount: normalizedCachedPortfolio.holdings?.length || 0,
+        portfolioData: normalizedCachedPortfolio,
+        holdings: normalizedCachedPortfolio.holdings?.map((h) => h.symbol) || [],
+      });
+      setState("dashboard");
+    };
+
+    window.addEventListener("kai:portfolio-saved", handlePortfolioSaved);
+    return () => {
+      window.removeEventListener("kai:portfolio-saved", handlePortfolioSaved);
+    };
+  }, [getPortfolioData, isDashboardMode, setPortfolioData, userId]);
+
   // Check World Model for financial data on mount
   useEffect(() => {
     async function checkFinancialData() {

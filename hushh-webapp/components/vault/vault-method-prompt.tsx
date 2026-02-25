@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Fingerprint, KeyRound } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useVault } from "@/lib/vault/vault-context";
+import { VaultService } from "@/lib/services/vault-service";
 import {
   type VaultMethod,
   VaultMethodService,
 } from "@/lib/services/vault-method-service";
 import { VaultMethodPromptLocalService } from "@/lib/services/vault-method-prompt-local-service";
 import { KaiNavTourLocalService } from "@/lib/services/kai-nav-tour-local-service";
+import { resolvePasskeyRpId } from "@/lib/vault/passkey-rp";
 import { Button } from "@/lib/morphy-ux/button";
 import { Icon } from "@/lib/morphy-ux/ui";
 import {
@@ -43,6 +46,14 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [targetMethod, setTargetMethod] = useState<VaultMethod | null>(null);
+  const currentRpId = useMemo(
+    () =>
+      resolvePasskeyRpId({
+        isNative: Capacitor.isNativePlatform(),
+        hostname: typeof window !== "undefined" ? window.location.hostname : null,
+      }),
+    []
+  );
 
   const canEvaluate = enabled && !loading && !!user?.uid && isVaultUnlocked && !!vaultKey;
 
@@ -72,15 +83,15 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
           }
         }
 
-        const [currentMethod, capability, localState] = await Promise.all([
-          VaultMethodService.getCurrentMethod(user.uid),
+        const [vaultState, capability, localState] = await Promise.all([
+          VaultService.getVaultState(user.uid),
           VaultMethodService.getCapabilityMatrix(),
           VaultMethodPromptLocalService.load(user.uid),
         ]);
 
         if (cancelled) return;
 
-        if (currentMethod !== "passphrase") {
+        if (vaultState.primaryMethod !== "passphrase") {
           setOpen(false);
           setTargetMethod(null);
           return;
@@ -92,8 +103,22 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
           return;
         }
 
+        const hasRecommendedWrapper =
+          VaultService.getWrapperByMethod(vaultState, capability.recommendedMethod) !== null;
+        if (hasRecommendedWrapper) {
+          await VaultMethodPromptLocalService.dismiss(
+            user.uid,
+            capability.recommendedMethod,
+            currentRpId
+          );
+          setOpen(false);
+          setTargetMethod(capability.recommendedMethod as VaultMethod);
+          return;
+        }
+
         if (
-          localState?.dismissed_for_method === capability.recommendedMethod
+          localState?.dismissed_for_method === capability.recommendedMethod &&
+          localState?.dismissed_for_rp_id === currentRpId
         ) {
           setOpen(false);
           setTargetMethod(capability.recommendedMethod as VaultMethod);
@@ -112,7 +137,7 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
     return () => {
       cancelled = true;
     };
-  }, [canEvaluate, pathname, user?.uid]);
+  }, [canEvaluate, currentRpId, pathname, user?.uid]);
 
   const title = useMemo(() => {
     if (!targetMethod) return "Enable faster unlock";
@@ -125,9 +150,9 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
   const description = useMemo(() => {
     if (!targetMethod) return "Switch from passphrase unlock to a faster secure method.";
     if (targetMethod === "generated_default_native_biometric") {
-      return "Use device biometric authentication first, with passphrase and recovery key as fallback.";
+      return "Use device biometric authentication first. Passphrase and recovery key remain available.";
     }
-    return "Use passkey authentication first, with passphrase and recovery key as fallback.";
+    return "Use passkey authentication first. Passphrase and recovery key remain available.";
   }, [targetMethod]);
 
   async function handleNotNow() {
@@ -136,7 +161,7 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
       return;
     }
 
-    await VaultMethodPromptLocalService.dismiss(user.uid, targetMethod);
+    await VaultMethodPromptLocalService.dismiss(user.uid, targetMethod, currentRpId);
     setOpen(false);
   }
 
@@ -151,7 +176,11 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
         displayName: user.displayName || user.email || "Hushh User",
         targetMethod,
       });
-      await VaultMethodPromptLocalService.dismiss(user.uid, result.method);
+      await VaultMethodPromptLocalService.dismiss(
+        user.uid,
+        result.method,
+        currentRpId
+      );
       toast.success(`Vault unlock updated to ${readableMethod(result.method)}.`);
       setOpen(false);
     } catch (error) {
@@ -190,7 +219,7 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
           <Button
             variant="none"
             effect="fade"
-            size="default"
+            size="lg"
             onClick={() => void handleNotNow()}
             disabled={busy}
           >
@@ -199,7 +228,7 @@ export function VaultMethodPrompt({ enabled }: VaultMethodPromptProps) {
           <Button
             variant="blue-gradient"
             effect="fill"
-            size="default"
+            size="lg"
             onClick={() => void handleEnable()}
             disabled={busy}
           >

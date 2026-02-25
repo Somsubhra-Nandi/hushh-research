@@ -25,6 +25,32 @@ function ensureVaultKeyHex(value: string): string {
   return normalized;
 }
 
+function normalizeVaultMethodError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+
+  if (
+    lowered.includes("vault_passkey_rp_mismatch") ||
+    lowered.includes("rp id is not allowed")
+  ) {
+    return new Error(
+      "Passkey is enrolled for a different domain. Use passphrase once and enroll passkey for this device/domain."
+    );
+  }
+
+  if (lowered.includes("client_upgrade_required")) {
+    return new Error("Client upgrade required. Please update the app and retry.");
+  }
+
+  if (lowered.includes("passphrase wrapper missing")) {
+    return new Error(
+      "Passphrase wrapper is missing for this vault. Use passphrase/recovery flow once to repair wrapper enrollment."
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 export class VaultMethodService {
   static async getCurrentMethod(userId: string): Promise<VaultMethod> {
     const state = await VaultService.getVaultState(userId);
@@ -48,7 +74,7 @@ export class VaultMethodService {
         return {
           passphrase: true,
           generatedNativeBiometric: true,
-          generatedWebPrf: true,
+          generatedWebPrf: false,
           recommendedMethod: "generated_default_native_passkey_prf",
         };
       }
@@ -77,23 +103,124 @@ export class VaultMethodService {
     targetMethod: VaultMethod;
     passphrase?: string;
   }): Promise<{ method: VaultMethod }> {
-    const canonicalVaultKey = ensureVaultKeyHex(params.currentVaultKey);
-    const state = await VaultService.getVaultState(params.userId);
-    const vaultKeyHash = await VaultService.hashVaultKey(canonicalVaultKey);
+    try {
+      const canonicalVaultKey = ensureVaultKeyHex(params.currentVaultKey);
+      const state = await VaultService.getVaultState(params.userId);
+      const vaultKeyHash = await VaultService.hashVaultKey(canonicalVaultKey);
 
-    if (state.vaultKeyHash && state.vaultKeyHash !== vaultKeyHash) {
-      throw new Error("Vault key mismatch detected. Unlock vault again.");
+      if (state.vaultKeyHash && state.vaultKeyHash !== vaultKeyHash) {
+        throw new Error("Vault key mismatch detected. Unlock vault again.");
+      }
+
+      if (params.targetMethod === "passphrase") {
+        const passphrase = params.passphrase?.trim();
+        if (!passphrase || passphrase.length < 8) {
+          throw new Error("Passphrase must be at least 8 characters.");
+        }
+
+        const wrapped = await rewrapVaultKeyWithPassphrase({
+          vaultKeyHex: canonicalVaultKey,
+          wrappingSecret: passphrase,
+        });
+
+        await VaultService.upsertVaultWrapper({
+          userId: params.userId,
+          vaultKeyHash,
+          wrapper: {
+            method: "passphrase",
+            encryptedVaultKey: wrapped.encryptedVaultKey,
+            salt: wrapped.salt,
+            iv: wrapped.iv,
+          },
+        });
+
+        await VaultService.setPrimaryVaultMethod(params.userId, "passphrase");
+        return { method: "passphrase" };
+      }
+
+      const material = await VaultBootstrapService.provisionGeneratedMethodMaterial({
+        userId: params.userId,
+        displayName: params.displayName,
+      });
+
+      if (material.mode !== params.targetMethod) {
+        throw new Error("Requested method is not supported on this device.");
+      }
+
+      try {
+        const wrapped = await rewrapVaultKeyWithPassphrase({
+          vaultKeyHex: canonicalVaultKey,
+          wrappingSecret: material.wrappingSecret,
+        });
+
+        await VaultService.upsertVaultWrapper({
+          userId: params.userId,
+          vaultKeyHash,
+          wrapper: {
+            method: material.mode,
+            wrapperId:
+              material.passkeyCredentialId ??
+              (material.mode === "generated_default_native_biometric"
+                ? "default"
+                : "default"),
+            encryptedVaultKey: wrapped.encryptedVaultKey,
+            salt: wrapped.salt,
+            iv: wrapped.iv,
+            passkeyCredentialId: material.passkeyCredentialId,
+            passkeyPrfSalt: material.passkeyPrfSalt,
+            passkeyRpId: material.passkeyRpId,
+            passkeyProvider: material.passkeyProvider,
+            passkeyDeviceLabel: material.passkeyDeviceLabel,
+            passkeyLastUsedAt: Date.now(),
+          },
+        });
+
+        await VaultService.setPrimaryVaultMethod(
+          params.userId,
+          material.mode,
+          material.passkeyCredentialId ?? "default"
+        );
+        return { method: material.mode };
+      } catch (error) {
+        if (
+          material.mode === "generated_default_native_biometric" &&
+          Capacitor.isNativePlatform()
+        ) {
+          await VaultBootstrapService.clearGeneratedDefaultMaterial(
+            params.userId,
+            material.mode as GeneratedVaultKeyMode
+          );
+        }
+        throw error;
+      }
+    } catch (error) {
+      throw normalizeVaultMethodError(error);
     }
+  }
 
-    if (params.targetMethod === "passphrase") {
-      const passphrase = params.passphrase?.trim();
-      if (!passphrase || passphrase.length < 8) {
+  static async changePassphrase(params: {
+    userId: string;
+    currentVaultKey: string;
+    newPassphrase: string;
+    keepPrimaryMethod?: boolean;
+  }): Promise<{ primaryMethod: VaultMethod; passphraseUpdated: true }> {
+    try {
+      const canonicalVaultKey = ensureVaultKeyHex(params.currentVaultKey);
+      const state = await VaultService.getVaultState(params.userId);
+      const vaultKeyHash = await VaultService.hashVaultKey(canonicalVaultKey);
+
+      if (state.vaultKeyHash && state.vaultKeyHash !== vaultKeyHash) {
+        throw new Error("Vault key mismatch detected. Unlock vault again.");
+      }
+
+      const nextPassphrase = params.newPassphrase.trim();
+      if (nextPassphrase.length < 8) {
         throw new Error("Passphrase must be at least 8 characters.");
       }
 
       const wrapped = await rewrapVaultKeyWithPassphrase({
         vaultKeyHex: canonicalVaultKey,
-        wrappingSecret: passphrase,
+        wrappingSecret: nextPassphrase,
       });
 
       await VaultService.upsertVaultWrapper({
@@ -101,67 +228,29 @@ export class VaultMethodService {
         vaultKeyHash,
         wrapper: {
           method: "passphrase",
+          wrapperId: "default",
           encryptedVaultKey: wrapped.encryptedVaultKey,
           salt: wrapped.salt,
           iv: wrapped.iv,
         },
       });
 
-      await VaultService.setPrimaryVaultMethod(params.userId, "passphrase");
-      return { method: "passphrase" };
-    }
-
-    const material = await VaultBootstrapService.provisionGeneratedMethodMaterial({
-      userId: params.userId,
-      displayName: params.displayName,
-    });
-
-    if (material.mode !== params.targetMethod) {
-      throw new Error("Requested method is not supported on this device.");
-    }
-
-    try {
-      const wrapped = await rewrapVaultKeyWithPassphrase({
-        vaultKeyHex: canonicalVaultKey,
-        wrappingSecret: material.wrappingSecret,
-      });
-
-      await VaultService.upsertVaultWrapper({
-        userId: params.userId,
-        vaultKeyHash,
-        wrapper: {
-          method: material.mode,
-          wrapperId:
-            material.passkeyCredentialId ??
-            (material.mode === "generated_default_native_biometric"
-              ? "default"
-              : "default"),
-          encryptedVaultKey: wrapped.encryptedVaultKey,
-          salt: wrapped.salt,
-          iv: wrapped.iv,
-          passkeyCredentialId: material.passkeyCredentialId,
-          passkeyPrfSalt: material.passkeyPrfSalt,
-          passkeyRpId: material.passkeyRpId,
-          passkeyProvider: material.passkeyProvider,
-          passkeyDeviceLabel: material.passkeyDeviceLabel,
-          passkeyLastUsedAt: Date.now(),
-        },
-      });
-
-      await VaultService.setPrimaryVaultMethod(
-        params.userId,
-        material.mode,
-        material.passkeyCredentialId ?? "default"
-      );
-      return { method: material.mode };
-    } catch (error) {
-      if (material.mode === "generated_default_native_biometric" && Capacitor.isNativePlatform()) {
-        await VaultBootstrapService.clearGeneratedDefaultMaterial(
+      const keepPrimaryMethod = params.keepPrimaryMethod ?? true;
+      if (!keepPrimaryMethod) {
+        await VaultService.setPrimaryVaultMethod(
           params.userId,
-          material.mode as GeneratedVaultKeyMode
+          "passphrase",
+          "default"
         );
+        return { primaryMethod: "passphrase", passphraseUpdated: true };
       }
-      throw error;
+
+      return {
+        primaryMethod: state.primaryMethod,
+        passphraseUpdated: true,
+      };
+    } catch (error) {
+      throw normalizeVaultMethodError(error);
     }
   }
 }
