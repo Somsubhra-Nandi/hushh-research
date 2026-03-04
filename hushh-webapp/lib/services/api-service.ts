@@ -1357,23 +1357,6 @@ export class ApiService {
     });
   }
 
-  // ==================== Chat/Agents ====================
-
-  /**
-   * Send message to chat agent
-   */
-  static async sendChatMessage(data: {
-    message: string;
-    userId: string;
-    agentId?: string;
-    sessionState?: Record<string, unknown>;
-  }): Promise<Response> {
-    return apiFetch("/api/chat", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
   // ==================== Helpers ====================
 
   /**

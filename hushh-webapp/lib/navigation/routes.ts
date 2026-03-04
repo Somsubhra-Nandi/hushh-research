@@ -7,8 +7,6 @@ export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
   LOGOUT: "/logout",
-  PRIVACY: "/privacy",
-  DOCS: "/docs",
   PROFILE: "/profile",
   CONSENTS: "/consents",
   KAI_HOME: "/kai",
@@ -30,9 +28,7 @@ export function isPublicRoute(pathname: string): boolean {
   return (
     pathname === ROUTES.HOME ||
     pathname === ROUTES.LOGIN ||
-    pathname === ROUTES.DOCS ||
     pathname === ROUTES.LOGOUT ||
-    pathname === ROUTES.PRIVACY ||
     pathname === ROUTES.PROFILE
   );
 }

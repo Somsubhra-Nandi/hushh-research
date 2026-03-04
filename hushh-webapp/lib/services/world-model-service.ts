@@ -471,7 +471,7 @@ export class WorldModelService {
           userId,
           vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const raw = nativeResult as any;
         result = {
           userId: raw.user_id || raw.userId || userId,
@@ -618,7 +618,7 @@ export class WorldModelService {
         userId,
         vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       return {
         userId: raw.user_id || raw.userId || userId,
@@ -669,7 +669,7 @@ export class WorldModelService {
         domain,
         vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       return (raw.attributes || []).map((a: Record<string, unknown>) => ({
         domain: a.domain as string,
@@ -951,7 +951,7 @@ export class WorldModelService {
         userId,
         vaultOwnerToken: this.getVaultOwnerToken(),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       const domains = raw.domains || raw.data || [];
       return (domains as Record<string, unknown>[]).map((d) => ({
@@ -998,7 +998,7 @@ export class WorldModelService {
         includeEmpty,
         vaultOwnerToken: this.getVaultOwnerToken(),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       const domains = raw.domains || raw.data || [];
       return (domains as Record<string, unknown>[]).map((d) => ({
@@ -1046,7 +1046,7 @@ export class WorldModelService {
         userId,
         vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       return {
         userId: raw.user_id || raw.userId || userId,
@@ -1095,7 +1095,7 @@ export class WorldModelService {
         portfolioName,
         vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       return raw.portfolio || null;
     }
@@ -1160,7 +1160,7 @@ export class WorldModelService {
         userId,
         vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const raw = nativeResult as any;
       return raw.portfolios || raw.data || [];
     }
@@ -1212,7 +1212,7 @@ export class WorldModelService {
           vaultOwnerToken: this.getVaultOwnerToken(vaultOwnerToken),
         });
         if (nativeResult?.ciphertext && nativeResult?.iv && nativeResult?.tag) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           const raw = nativeResult as any;
           result = {
             ciphertext: raw.ciphertext,

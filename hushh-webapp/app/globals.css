@@ -92,7 +92,7 @@ html body[data-scroll-locked] {
   --color-voteBearish: hsl(var(--chart-5));
 
   --radius: 1.25rem;
-  /* Lucide defaults (see docs/reference/design-system.md): change once to update all icons. */
+  /* Lucide defaults (see docs/reference/quality/design-system.md): change once to update all icons. */
   --lucide-stroke-width: 1;
   /* Safe area and fixed-bottom UI spacing tokens (single source of truth). */
   --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);

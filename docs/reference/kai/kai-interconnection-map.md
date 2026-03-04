@@ -95,6 +95,6 @@ Notes:
 - Runtime audit entrypoint: `scripts/verify-pre-launch.sh`
 
 See also:
-- `docs/reference/mobile-kai-parity-map.md`
-- `docs/reference/kai-change-impact-matrix.md`
-- `docs/reference/world-model-compatibility-playbook.md`
+- `docs/reference/kai/mobile-kai-parity-map.md`
+- `docs/reference/kai/kai-change-impact-matrix.md`
+- `docs/reference/architecture/world-model-compatibility-playbook.md`

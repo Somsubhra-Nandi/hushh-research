@@ -96,6 +96,7 @@ const INITIAL_ROUND_STATE: Record<string, AgentState> = {
   sentiment: { ...INITIAL_AGENT_STATE },
   valuation: { ...INITIAL_AGENT_STATE },
 };
+const AGENTS = ["fundamental", "sentiment", "valuation"] as const;
 
 // ============================================================================
 // Error Classification
@@ -683,8 +684,6 @@ export function DebateStreamView({
   const headerChangePct = headerMarketQuote?.change_pct ?? null;
 
   // ---- Overall progress computation ----
-  const AGENTS = ["fundamental", "sentiment", "valuation"] as const;
-
   const overallProgress = useMemo(() => {
     let progress = 0;
     // Round 1: each agent complete = +14%, active/streaming = +7%
@@ -1170,7 +1169,7 @@ export function DebateStreamView({
           break;
       }
     },
-    [onDecisionSaved, resolveRoundForEnvelope, setBusyOperation, ticker, updateAgentState, userId]
+    [decision, onDecisionSaved, resolveRoundForEnvelope, setBusyOperation, ticker, updateAgentState, userId]
   );
 
   useEffect(() => {

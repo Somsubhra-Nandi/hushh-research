@@ -231,7 +231,7 @@ export async function getInitialChatState(userId: string): Promise<{
   });
 
   // Transform snake_case to camelCase for React components
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const raw = result as any;
   return {
     isNewUser: raw.is_new_user ?? raw.isNewUser ?? true,
@@ -361,7 +361,7 @@ export async function chat(params: {
   });
 
   // Transform snake_case to camelCase for React components
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const raw = result as any;
   return {
     response: raw.response || "",

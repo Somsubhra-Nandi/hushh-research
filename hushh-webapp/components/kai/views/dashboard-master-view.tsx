@@ -1063,7 +1063,7 @@ export function DashboardMasterView({
     } finally {
       setIsDeletingImportedData(false);
     }
-  }, [onReupload, portfolioData.account_info, setCachePortfolioData, userId, vaultKey, vaultOwnerToken]);
+  }, [onReupload, portfolioData.account_info, userId, vaultKey, vaultOwnerToken]);
 
   const handleEditHolding = useCallback(
     (holdingId: string) => {

@@ -828,6 +828,7 @@ export function PortfolioReviewView({
   const createdVaultCopyRef = useRef(false);
   const createdVaultModeRef = useRef<string | null>(null);
   const continuationInFlightRef = useRef(false);
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {});
   const saveInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
@@ -943,10 +944,10 @@ export function PortfolioReviewView({
 
     setPendingVaultSave(false);
     continuationInFlightRef.current = true;
-    void handleSave().finally(() => {
+    void handleSaveRef.current().finally(() => {
       continuationInFlightRef.current = false;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [pendingVaultSave, effectiveVaultKey]);
 
   const activeHoldings = useMemo(
@@ -1928,6 +1929,7 @@ export function PortfolioReviewView({
       createdVaultModeRef.current = null;
     }
   };
+  handleSaveRef.current = handleSave;
 
   const confirmDiscardChanges = useCallback((): boolean => {
     if (!hasUnsavedChanges || isBusySaving) return true;

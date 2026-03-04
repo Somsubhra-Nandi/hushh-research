@@ -105,6 +105,17 @@ def _request_json(
         except json.JSONDecodeError:
             parsed = {"error": raw}
         return ApiResponse(status_code=http_err.code, payload=parsed)
+    except error.URLError as url_err:
+        reason = getattr(url_err, "reason", None)
+        return ApiResponse(
+            status_code=0,
+            payload={"error": f"network_error: {reason or str(url_err)}"},
+        )
+    except TimeoutError:
+        return ApiResponse(
+            status_code=0,
+            payload={"error": f"network_error: request timed out after {timeout_seconds}s"},
+        )
 
 
 def _extract_list(payload: Any) -> list[dict[str, Any]]:

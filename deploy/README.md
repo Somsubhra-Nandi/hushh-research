@@ -40,7 +40,7 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 
 3. **Configure Secrets** (one-time setup)
 
-   Secrets in GCP Secret Manager must match **exactly** what the code uses — no more, no less. See [docs/reference/env-and-secrets.md](../docs/reference/env-and-secrets.md) for the full audit and gcloud CLI.
+   Secrets in GCP Secret Manager must match **exactly** what the code uses — no more, no less. See [docs/reference/operations/env-and-secrets.md](../docs/reference/operations/env-and-secrets.md) for the full audit and gcloud CLI.
 
    ```bash
    python3 scripts/ops/verify-env-secrets-parity.py \
@@ -178,7 +178,7 @@ All required secrets must exist in Google Cloud Secret Manager before deployment
 
 **Note:** 
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, and `SYNC_REMOTE_ENABLED` are set as Cloud Run env vars (not secrets) in `backend.cloudbuild.yaml`
-- Migrations use DB_* only (no DATABASE_URL). See docs/reference/env-and-secrets.md.
+- Migrations use DB_* only (no DATABASE_URL). See docs/reference/operations/env-and-secrets.md.
 - **Action required:** Create `DB_USER` and `DB_PASSWORD` secrets in Secret Manager if they don't exist:
   ```bash
   echo "your-db-username" | gcloud secrets create DB_USER --data-file=-
@@ -201,7 +201,7 @@ All required secrets must exist in Google Cloud Secret Manager before deployment
 
 These Firebase values are public client config, but are still centrally injected from Secret Manager to avoid hardcoded deploy YAML values.
 
-See [docs/reference/env-and-secrets.md](../docs/reference/env-and-secrets.md) for full reference.
+See [docs/reference/operations/env-and-secrets.md](../docs/reference/operations/env-and-secrets.md) for full reference.
 
 ### Mobile Firebase Artifacts (Regulated)
 

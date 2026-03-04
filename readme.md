@@ -136,11 +136,11 @@ uvicorn server:app --reload --port 8000
 | Document                                                              | Description                |
 | --------------------------------------------------------------------- | -------------------------- |
 | [**🚀 Getting Started**](./getting_started.md)                        | Setup and run locally      |
-| [**📖 Documentation Index**](./docs/readme.md)                        | Complete documentation hub |
+| [**📖 Documentation Index**](./docs/README.md)                        | Complete documentation hub |
 | [**👥 Contributor Guide**](./contributing.md)                         | Making your first contribution |
-| [**🏗️ Architecture**](./docs/reference/architecture.md)               | System design & flows      |
+| [**🏗️ Architecture**](./docs/reference/architecture/architecture.md)  | System design & flows      |
 | [**🔐 Consent Protocol**](./consent-protocol/docs/reference/consent-protocol.md) | Token lifecycle            |
-| [**🔧 Developer API**](./docs/reference/api-contracts.md)             | API contract surface       |
+| [**🔧 Developer API**](./docs/reference/architecture/api-contracts.md) | API contract surface      |
 | [**💾 Database Schema**](./consent-protocol/db/migrations/COMBINED_MIGRATION.sql) | PostgreSQL tables          |
 
 ---

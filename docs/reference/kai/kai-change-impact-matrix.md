@@ -17,12 +17,12 @@ Use this matrix before merge/release to identify blast radius and compatibility 
 
 ## Contract Delta Checklist (Per PR)
 
-- API payload additions/changes documented in `docs/reference/api-contracts.md`
-- Stream event/payload changes documented in `docs/reference/streaming-contract.md`
+- API payload additions/changes documented in `docs/reference/architecture/api-contracts.md`
+- Stream event/payload changes documented in `docs/reference/streaming/streaming-contract.md`
 - Type/interface deltas reflected in service typings
-- Cache key additions/invalidations documented in `docs/reference/cache-coherence.md`
+- Cache key additions/invalidations documented in `docs/reference/architecture/cache-coherence.md`
 - World model/domain summary changes documented in `consent-protocol/docs/reference/world-model.md`
-- Mobile parity impacts documented in `docs/reference/mobile-kai-parity-map.md`
+- Mobile parity impacts documented in `docs/reference/kai/mobile-kai-parity-map.md`
 
 ## Migration and Data-Shape Risks
 

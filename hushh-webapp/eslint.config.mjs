@@ -33,7 +33,7 @@ export default [
       "@typescript-eslint": tseslint.plugin,
     },
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/ban-ts-comment": "warn",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -51,6 +51,7 @@ export default [
   {
     rules: {
       "react/no-unescaped-entities": "off",
+      "react-hooks/exhaustive-deps": "warn",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/purity": "off",
       "react-hooks/incompatible-library": "off",

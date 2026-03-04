@@ -59,8 +59,8 @@ Use fused stack:
 - Lucide through `Icon` wrapper (`lib/morphy-ux/ui/icon.tsx`)
 
 References:
-- `docs/reference/design-system.md`
-- `docs/reference/frontend-pattern-catalog.md`
+- `docs/reference/quality/design-system.md`
+- `docs/reference/quality/frontend-pattern-catalog.md`
 - `hushh-webapp/components/README.md`
 
 ## Local Development

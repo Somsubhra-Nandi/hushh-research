@@ -67,5 +67,5 @@ Default stance:
 
 ## Relationship To API Contracts
 
-- `docs/reference/api-contracts.md` documents the endpoint surface (what exists and how to call it).
+- `docs/reference/architecture/api-contracts.md` documents the endpoint surface (what exists and how to call it).
 - `route-contracts.json` is a governance manifest that prevents drift and undeclared routes in `hushh-webapp/app/api/`.

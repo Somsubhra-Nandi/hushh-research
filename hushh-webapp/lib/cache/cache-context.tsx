@@ -66,7 +66,7 @@ export interface PortfolioData {
     unrealized_gain_loss?: number;
     unrealized_gain_loss_pct?: number;
   }>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   [key: string]: any;
 }
 

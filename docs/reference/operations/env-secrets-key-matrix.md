@@ -29,8 +29,8 @@ bash scripts/verify-pre-launch.sh
 | `DB_PORT` | `consent-protocol/db/connection.py` | Y | N | N | env | N | env | N | required |
 | `DB_NAME` | `consent-protocol/db/connection.py` | Y | N | N | env | N | env | N | required |
 | `CONSENT_SSE_ENABLED` | `consent-protocol/api/routes/sse.py` | Y | N | N | env | N | env | N | required |
-| `SYNC_REMOTE_ENABLED` | `consent-protocol/api/routes/sync.py` | Y | N | N | env | N | env | N | required |
-| `DEVELOPER_API_ENABLED` | `consent-protocol/api/routes/developer.py` | Y | N | N | env | N | env | N | required |
+| `SYNC_REMOTE_ENABLED` | `runtime deploy env` | Y | N | N | env | N | env | N | required |
+| `DEVELOPER_API_ENABLED` | `consent-protocol/server.py` | Y | N | N | env | N | env | N | required |
 | `CORS_ALLOWED_ORIGINS` | `consent-protocol/server.py` | Y | N | N | env | N | env | N | required |
 | `BACKEND_URL` | frontend server-side API handlers | N | N | Y | N | Y | N | N | required |
 | `NEXT_PUBLIC_BACKEND_URL` | `hushh-webapp/lib/config.ts` | N | Y | N | N | N | N | N | required |

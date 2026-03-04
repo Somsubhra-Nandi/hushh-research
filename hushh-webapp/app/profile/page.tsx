@@ -641,9 +641,9 @@ export default function ProfilePage() {
                   <Button
                     variant="gradient"
                     size="sm"
-                    onClick={() => router.push("/chat")}
+                    onClick={() => router.push(ROUTES.KAI_DASHBOARD)}
                   >
-                    Ask Agent Kai
+                    Open Kai
                   </Button>
                 </>
               )}

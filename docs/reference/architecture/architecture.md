@@ -296,7 +296,7 @@ Connection: SQLAlchemy with Supabase Session Pooler. No ORM models -- raw SQL th
 | `renaissance_screening_criteria` | Screening tier definitions              | No        |
 | `renaissance_avoid`         | Excluded stocks                             | No        |
 
-See [World Model](../../consent-protocol/docs/reference/world-model.md) for detailed schema.
+See [World Model](../../../consent-protocol/docs/reference/world-model.md) for detailed schema.
 
 ### RPCs (Core + Optional)
 
@@ -370,8 +370,8 @@ These rules are non-negotiable across the entire codebase:
 
 ## See Also
 
-- [World Model](../../consent-protocol/docs/reference/world-model.md) -- Two-table encryption architecture
+- [World Model](../../../consent-protocol/docs/reference/world-model.md) -- Two-table encryption architecture
 - [API Contracts](./api-contracts.md) -- Every endpoint documented
-- [Kai Agents](../../consent-protocol/docs/reference/kai-agents.md) -- Financial analysis system
-- [Agent Development](../../consent-protocol/docs/reference/agent-development.md) -- Building new agents
-- [Consent Protocol](../../consent-protocol/docs/reference/consent-protocol.md) -- Token model and security
+- [Kai Agents](../../../consent-protocol/docs/reference/kai-agents.md) -- Financial analysis system
+- [Agent Development](../../../consent-protocol/docs/reference/agent-development.md) -- Building new agents
+- [Consent Protocol](../../../consent-protocol/docs/reference/consent-protocol.md) -- Token model and security

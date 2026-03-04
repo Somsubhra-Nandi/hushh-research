@@ -2,9 +2,9 @@
 
 This document describes the **Tri-Flow CI** workflow and how to stay aligned with it so code changes do not fail CI. Run local checks before every commit.
 
-**Workflow file:** [.github/workflows/ci.yml](../../.github/workflows/ci.yml)  
-**Local mirror:** [scripts/test-ci-local.sh](../../scripts/test-ci-local.sh)  
-**Simulation (extended):** [scripts/test-ci-simulation.sh](../../scripts/test-ci-simulation.sh)
+**Workflow file:** [.github/workflows/ci.yml](../../../.github/workflows/ci.yml)  
+**Local mirror:** [scripts/test-ci-local.sh](../../../scripts/test-ci-local.sh)  
+**Simulation (extended):** [scripts/test-ci-simulation.sh](../../../scripts/test-ci-simulation.sh)
 
 ---
 
@@ -39,7 +39,7 @@ This document describes the **Tri-Flow CI** workflow and how to stay aligned wit
 
 | Tool | CI Version | Local requirement |
 |------|------------|-------------------|
-| Node.js | 20 | 20+ (see [test-ci-local.sh](../../scripts/test-ci-local.sh)) |
+| Node.js | 20 | 20+ (see [test-ci-local.sh](../../../scripts/test-ci-local.sh)) |
 | Python | 3.13 | 3.13 (CI asserts exactly 3.13) |
 | npm | latest | Use latest (script upgrades before run) |
 | pip | latest | Use latest (script upgrades before run) |
@@ -68,8 +68,8 @@ Using a different Node or Python locally can cause “pass locally, fail in CI�
 
 **Coding rules that affect CI:**
 
-- Do **not** use `fetch("/api/...")` in components or pages; use the service layer (see [Architecture](./architecture.md)).
-- ESLint must pass with no **errors** (warnings may exist but should be cleaned up over time).
+- Do **not** use `fetch("/api/...")` in components or pages; use the service layer (see [Architecture](../architecture/architecture.md)).
+- ESLint must pass with zero warnings (`--max-warnings=0`).
 - TypeScript must compile with no errors.
 
 ---
@@ -87,13 +87,13 @@ Using a different Node or Python locally can cause “pass locally, fail in CI�
 | Tests | `pytest tests/ -v --tb=short --cov=hushh_mcp --cov-report=xml --cov-report=term` | Yes |
 
 **Test env (CI):**  
-`TESTING=true`, `SECRET_KEY`, and `VAULT_ENCRYPTION_KEY` are set in the workflow (see [ci.yml](../../.github/workflows/ci.yml)).
+`TESTING=true`, `SECRET_KEY`, and `VAULT_ENCRYPTION_KEY` are set in the workflow (see [ci.yml](../../../.github/workflows/ci.yml)).
 
 **Consent-token rule for automated tests:** Use fixture-issued VAULT_OWNER tokens from `consent-protocol/tests/conftest.py`. `consent-protocol/tests/dev_test_token.py` is debug-only and must not be required by CI.
 
 **Config files:**
 
-- **Ruff:** [consent-protocol/pyproject.toml](../../consent-protocol/pyproject.toml) — `[tool.ruff]` and `[tool.ruff.lint]`. Target Python 3.13, line-length 100, selected rules (E, F, B, I, S), per-file ignores for tests and routes.
+- **Ruff:** [consent-protocol/pyproject.toml](../../../consent-protocol/pyproject.toml) — `[tool.ruff]` and `[tool.ruff.lint]`. Target Python 3.13, line-length 100, selected rules (E, F, B, I, S), per-file ignores for tests and routes.
 - **Mypy:** Same `pyproject.toml` — `[tool.mypy]`. Python 3.13, `warn_return_any`, `ignore_missing_imports`, overrides for `hushh_mcp.*` and consent/vault.
 
 **Coding rules that affect CI:**
@@ -115,7 +115,7 @@ Using a different Node or Python locally can cause “pass locally, fail in CI�
 | Install | `npm ci` in `hushh-webapp/` | Yes |
 | Verify | `npm run verify:routes` (script: `hushh-webapp/scripts/verify-route-contracts.cjs`) | Yes |
 
-Route contracts must stay in sync between frontend expectations and backend (or proxy) routes. See [API Contracts](api-contracts.md). If you add or change API routes, update the contract and run `npm run verify:routes` (or full local CI).
+Route contracts must stay in sync between frontend expectations and backend (or proxy) routes. See [API Contracts](../architecture/api-contracts.md). If you add or change API routes, update the contract and run `npm run verify:routes` (or full local CI).
 
 ---
 
@@ -123,9 +123,9 @@ Route contracts must stay in sync between frontend expectations and backend (or 
 
 Canonical streaming is a production contract, not an implementation detail.
 
-- Contract source: [Streaming Contract](./streaming-contract.md)
-- Runtime pattern: [Streaming Implementation Guide](./streaming-implementation-guide.md)
-- Vertex constraints: [Vertex AI Streaming Notes](./vertex-ai-streaming-notes.md)
+- Contract source: [Streaming Contract](../streaming/streaming-contract.md)
+- Runtime pattern: [Streaming Implementation Guide](../streaming/streaming-implementation-guide.md)
+- Vertex constraints: [Vertex AI Streaming Notes](../streaming/vertex-ai-streaming-notes.md)
 
 Minimum checks for streaming changes:
 
@@ -153,7 +153,7 @@ This script:
 If it exits 0, CI should pass. If it fails, fix the reported step before committing.
 
 **Alternative (extended simulation):**  
-`./scripts/test-ci-simulation.sh` runs additional edge-case and validation steps; use when you want to stress-test the same setup as CI.
+`scripts/test-ci-simulation.sh` runs additional edge-case and validation steps; use when you want to stress-test the same setup as CI.
 
 ---
 
@@ -161,10 +161,10 @@ If it exits 0, CI should pass. If it fails, fix the reported step before committ
 
 | Area | Commands (from repo root) |
 |------|----------------------------|
-| Frontend | `cd hushh-webapp && npm ci && npm run typecheck && npm run lint -- --max-warnings=161 && npm run verify:design-system && npm run verify:investor-language && npm run build && npm run test:ci` |
+| Frontend | `cd hushh-webapp && npm ci && npm run typecheck && npm run lint -- --max-warnings=0 && npm run verify:design-system && npm run verify:investor-language && npm run build && npm run test:ci` |
 | Backend | `cd consent-protocol && pip install -r requirements.txt -r requirements-dev.txt && ruff check . && mypy --config-file pyproject.toml --ignore-missing-imports && pytest tests/` |
 | Integration | `cd hushh-webapp && npm ci && npm run verify:routes` |
-| All | `./scripts/test-ci-local.sh` |
+| All | `scripts/test-ci-local.sh` |
 
 ---
 
@@ -209,10 +209,10 @@ The daily scheduled workflow `.github/workflows/prod-supabase-backup-posture.yml
 
 ## Related Docs
 
-- [Getting Started](../guides/getting-started.md) -- Setup and local CI instructions.
-- [API Contracts](api-contracts.md) -- API contract verification.
-- [Architecture](./architecture.md) -- Tri-Flow and service-layer rules.
-- [Streaming Contract](./streaming-contract.md) -- Canonical SSE contract.
+- [Getting Started](../../guides/getting-started.md) -- Setup and local CI instructions.
+- [API Contracts](../architecture/api-contracts.md) -- API contract verification.
+- [Architecture](../architecture/architecture.md) -- Tri-Flow and service-layer rules.
+- [Streaming Contract](../streaming/streaming-contract.md) -- Canonical SSE contract.
 
 ---
 

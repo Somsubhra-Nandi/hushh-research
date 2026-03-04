@@ -397,7 +397,7 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
         markAsPending(consent.id);
       }
     },
-    [userId, vaultKey, markAsHandling, markAsHandled, markAsPending, onActionComplete]
+    [userId, vaultKey, getVaultOwnerToken, markAsHandling, markAsHandled, markAsPending, onActionComplete]
   );
 
   /**
@@ -456,7 +456,7 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
         markAsPending(requestId);
       }
     },
-    [userId, markAsHandling, markAsHandled, markAsPending, onActionComplete]
+    [userId, getVaultOwnerToken, markAsHandling, markAsHandled, markAsPending, onActionComplete]
   );
 
   /**

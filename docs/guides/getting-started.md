@@ -223,7 +223,7 @@ Or apply directly in the Supabase SQL Editor.
 
 ## See Also
 
-- [Architecture](../reference/architecture.md) -- System overview
+- [Architecture](../reference/architecture/architecture.md) -- System overview
 - [Agent Development](../../consent-protocol/docs/reference/agent-development.md) -- Building new agents
 - [Mobile Development](./mobile.md) -- Capacitor iOS/Android
 - [New Feature Checklist](./new-feature.md) -- Adding a feature end-to-end

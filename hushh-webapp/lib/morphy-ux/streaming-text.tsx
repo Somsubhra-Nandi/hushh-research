@@ -237,8 +237,9 @@ export function StreamingTextDisplay({
   }, [isStreaming, userScrolledUp]);
 
   // Scroll to bottom when displayText first has content
+  const hasDisplayText = displayText.length > 0;
   useEffect(() => {
-    if (displayText && displayText.length > 0 && !userScrolledUp) {
+    if (hasDisplayText && !userScrolledUp) {
       const container = containerRef.current;
       if (container) {
         requestAnimationFrame(() => {
@@ -252,7 +253,7 @@ export function StreamingTextDisplay({
         });
       }
     }
-  }, [displayText.length > 0]); // Only trigger when text goes from empty to non-empty
+  }, [hasDisplayText, userScrolledUp]);
 
   const isEmpty = !displayText || displayText.length === 0;
 

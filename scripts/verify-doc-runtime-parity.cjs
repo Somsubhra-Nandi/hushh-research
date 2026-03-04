@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { execSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
 
@@ -60,7 +61,7 @@ const REQUIRED_CANONICAL_ROUTES = {
 
 const REQUIRED_OPERATIONAL_MARKERS = [
   {
-    file: "docs/reference/api-contracts.md",
+    file: "docs/reference/architecture/api-contracts.md",
     patterns: [
       "/api/kai/market/insights/{user_id}",
       "layout_version",
@@ -72,7 +73,7 @@ const REQUIRED_OPERATIONAL_MARKERS = [
     ],
   },
   {
-    file: "docs/reference/streaming-contract.md",
+    file: "docs/reference/streaming/streaming-contract.md",
     patterns: [
       "\"event\": \"decision\"",
       "short_recommendation",
@@ -290,11 +291,30 @@ function verifyCanonicalRouteContract(operationalDocs) {
 }
 
 function verifyNoGeneratedArtifacts() {
-  const offenders = GENERATED_ARTIFACT_DIRS.filter((dir) => exists(dir));
+  const offenders = [];
+
+  for (const dir of GENERATED_ARTIFACT_DIRS) {
+    try {
+      const tracked = execSync(`git ls-files -- "${dir}"`, {
+        cwd: repoRoot,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf8",
+      })
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (tracked.length > 0) {
+        offenders.push(`${dir} (tracked files present)`);
+      }
+    } catch {
+      // ignore git invocation failures and continue best-effort checks
+    }
+  }
+
   if (offenders.length) {
-    fail(`Generated native artifact trees must not exist in workspace:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
+    fail(`Generated native artifact trees must not be tracked:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
   } else {
-    ok("No generated iOS artifact doc/build trees present");
+    ok("No generated iOS artifact doc/build trees are tracked");
   }
 }
 

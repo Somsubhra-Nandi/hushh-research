@@ -31,3 +31,9 @@ if [ -f scripts/verify-capacitor-routes.cjs ]; then
 else
   echo "⚠ WARNING: verify-capacitor-routes.cjs not found, skipping"
 fi
+
+if [ -f "$REPO_ROOT/scripts/verify-doc-links.cjs" ]; then
+  node "$REPO_ROOT/scripts/verify-doc-links.cjs"
+else
+  echo "⚠ WARNING: scripts/verify-doc-links.cjs not found, skipping"
+fi

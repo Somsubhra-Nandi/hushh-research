@@ -13,15 +13,16 @@ import { useVault } from "@/lib/vault/vault-context";
 export function PostAuthOnboardingSyncBridge() {
   const { user, loading } = useAuth();
   const { isVaultUnlocked, vaultKey, vaultOwnerToken } = useVault();
+  const userId = user?.uid ?? null;
   const syncingRef = useRef(false);
   const lastSyncedSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (loading || !user || !isVaultUnlocked || !vaultKey || !vaultOwnerToken) {
+    if (loading || !userId || !isVaultUnlocked || !vaultKey || !vaultOwnerToken) {
       return;
     }
 
-    const signature = `${user.uid}:${vaultOwnerToken}`;
+    const signature = `${userId}:${vaultOwnerToken}`;
     if (lastSyncedSignatureRef.current === signature) {
       return;
     }
@@ -34,7 +35,7 @@ export function PostAuthOnboardingSyncBridge() {
     lastSyncedSignatureRef.current = signature;
 
     void PostUnlockSyncService.run({
-      userId: user.uid,
+      userId,
       vaultKey,
       vaultOwnerToken,
     })
@@ -48,7 +49,7 @@ export function PostAuthOnboardingSyncBridge() {
       .finally(() => {
         syncingRef.current = false;
       });
-  }, [loading, user?.uid, isVaultUnlocked, vaultKey, vaultOwnerToken]);
+  }, [loading, userId, isVaultUnlocked, vaultKey, vaultOwnerToken]);
 
   return null;
 }

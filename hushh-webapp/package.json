@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ci": "vitest run __tests__/api/agent/chat.test.ts __tests__/api/compliance/protocol-audit.test.ts __tests__/api/consent/api-service-consent.test.ts __tests__/api/consent/events-proxy.test.ts __tests__/api/kai/proxy-route.test.ts __tests__/services/passkey-rp.test.ts __tests__/services/vault-method-prompt-local-service.test.ts __tests__/services/vault-method-service.test.ts __tests__/services/world-model-cache.test.ts __tests__/services/world-model-prepared-blob-store.test.ts __tests__/streaming/sse-parser.test.ts",
+    "test:ci": "vitest run __tests__/api/compliance/protocol-audit.test.ts __tests__/api/consent/api-service-consent.test.ts __tests__/api/consent/events-proxy.test.ts __tests__/api/kai/proxy-route.test.ts __tests__/services/passkey-rp.test.ts __tests__/services/vault-method-prompt-local-service.test.ts __tests__/services/vault-method-service.test.ts __tests__/services/world-model-cache.test.ts __tests__/services/world-model-prepared-blob-store.test.ts __tests__/streaming/sse-parser.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "verify:design-system": "node scripts/verify-design-system-usage.cjs",

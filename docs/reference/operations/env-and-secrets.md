@@ -3,7 +3,7 @@
 > Single source of truth for env vars and **strict parity** with code and GCP Secret Manager.  
 > **Rule:** What is in `.env` / Secret Manager must match exactly what the code reads — no extra keys, no missing keys.
 
-See also: [deploy/README.md](../../deploy/README.md), [consent-protocol/.env.example](../../consent-protocol/.env.example), [hushh-webapp/.env.example](../../hushh-webapp/.env.example), [deploy/.env.backend.example](../../deploy/.env.backend.example), [deploy/.env.frontend.example](../../deploy/.env.frontend.example). For FCM push notifications, see [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md).
+See also: [deploy/README.md](../../../deploy/README.md), [consent-protocol/.env.example](../../../consent-protocol/.env.example), [hushh-webapp/.env.example](../../../hushh-webapp/.env.example), [deploy/.env.backend.example](../../../deploy/.env.backend.example), [deploy/.env.frontend.example](../../../deploy/.env.frontend.example). For FCM push notifications, see [fcm-notifications.md](../../../consent-protocol/docs/reference/fcm-notifications.md).
 
 ---
 
@@ -84,7 +84,7 @@ Used by:
 |----------|------------|----------|--------|
 | `NEXT_PUBLIC_BACKEND_URL` | `lib/api/consent.ts`, `lib/config.ts`, api routes, etc. | Yes | Prod build: from Secret Manager `BACKEND_URL` |
 | `NEXT_PUBLIC_FIREBASE_*` (6 base keys) | `lib/firebase/config.ts` | Yes | API key, auth domain, project ID, storage bucket, messaging sender ID, app ID |
-| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | `lib/notifications/fcm-service.ts` | Yes (prod build) | Web FCM token registration; from Firebase Console. See [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md). |
+| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | `lib/notifications/fcm-service.ts` | Yes (prod build) | Web FCM token registration; from Firebase Console. See [fcm-notifications.md](../../../consent-protocol/docs/reference/fcm-notifications.md). |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_UAT` / `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_STAGING` / `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION` | `lib/firebase/config.ts` | Recommended | Use UAT + production IDs; staging key is legacy-compatible alias |
 | `NEXT_PUBLIC_GTM_ID_UAT` / `NEXT_PUBLIC_GTM_ID_STAGING` / `NEXT_PUBLIC_GTM_ID_PRODUCTION` | `app/layout.tsx`, `lib/observability/env.ts` | Recommended | Use UAT + production GTM IDs; staging key is legacy-compatible alias |
 | `NEXT_PUBLIC_OBSERVABILITY_ENV` | `lib/observability/env.ts` | Recommended | Use `uat` or `production` (`staging` is accepted as legacy alias) |
@@ -159,7 +159,7 @@ These are used by MCP modules (`mcp_modules/`) for MCP server functionality, not
 | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Yes | No | `.env.local` / CI / Prod build-arg | Required by current Cloud Build frontend manifest |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | No | Same | Required by current Cloud Build frontend manifest |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | No | Same | Required by current Cloud Build frontend manifest |
-| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Yes | No | Same | **Web push (FCM)**: VAPID key from Firebase Console -> Cloud Messaging -> Web configuration -> Key pair. Required for production build and consent push on web. See [fcm-notifications.md](../../consent-protocol/docs/reference/fcm-notifications.md). |
+| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Yes | No | Same | **Web push (FCM)**: VAPID key from Firebase Console -> Cloud Messaging -> Web configuration -> Key pair. Required for production build and consent push on web. See [fcm-notifications.md](../../../consent-protocol/docs/reference/fcm-notifications.md). |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_UAT` | Recommended | No | `.env.local` / CI / build-arg | Analytics measurement ID for UAT (preferred key) |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_STAGING` | Optional legacy | No | `.env.local` / CI / build-arg | Backward-compatible alias for UAT measurement ID |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION` | Recommended | No | `.env.local` / CI / Prod build-arg | Analytics measurement ID for production |
@@ -256,7 +256,7 @@ These Firebase values are public client config, but storing them in Secret Manag
 gcloud secrets delete DATABASE_URL --project=YOUR_PROJECT_ID
 ```
 
-Verify manually with `gcloud secrets list --project=YOUR_PROJECT_ID` and the checklist in [deploy/README.md](../../deploy/README.md).
+Verify manually with `gcloud secrets list --project=YOUR_PROJECT_ID` and the checklist in [deploy/README.md](../../../deploy/README.md).
 
 ---
 

@@ -30,14 +30,14 @@ function HomeContent() {
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     if (typeof window === "undefined") return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (window as any).resetOnboardingMarketing = async () => {
       await OnboardingLocalService.clearMarketingSeen();
       window.location.href = "/";
     };
 
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       delete (window as any).resetOnboardingMarketing;
     };
   }, []);

@@ -384,5 +384,5 @@ See [Architecture: Tri-Flow](./architecture.md#tri-flow-architecture) for the fu
 ## See Also
 
 - [Architecture](./architecture.md) -- System overview and tri-flow
-- [World Model](../../consent-protocol/docs/reference/world-model.md) -- Data storage endpoints
-- [Consent Protocol](../../consent-protocol/docs/reference/consent-protocol.md) -- Token lifecycle
+- [World Model](../../../consent-protocol/docs/reference/world-model.md) -- Data storage endpoints
+- [Consent Protocol](../../../consent-protocol/docs/reference/consent-protocol.md) -- Token lifecycle

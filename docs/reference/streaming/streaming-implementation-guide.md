@@ -47,6 +47,6 @@ Use this pattern for any new Kai streaming feature.
 
 ## 7. Operational Checklist
 
-- Validate: `npm run typecheck`, `npm run lint -- --max-warnings=161`, `npm run test:ci`.
+- Validate: `npm run typecheck`, `npm run lint -- --max-warnings=0`, `npm run test:ci`.
 - Validate backend: `ruff`, `mypy`, `pytest`.
 - Run manual smoke on Import / Optimize / Analyze in iOS, Android, and web.

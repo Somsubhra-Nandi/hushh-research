@@ -31,8 +31,8 @@ describe("observability schema", () => {
         result: "error",
         error_class: "auth_failed",
         // blocked key + value patterns (runtime guard)
-        user_id: "abc123", // eslint-disable-line @typescript-eslint/no-explicit-any
-        token_hint: "abcdEFGHijklMNOPqrstUVWXyz012345", // eslint-disable-line @typescript-eslint/no-explicit-any
+        user_id: "abc123",  
+        token_hint: "abcdEFGHijklMNOPqrstUVWXyz012345",  
       } as any
     );
 

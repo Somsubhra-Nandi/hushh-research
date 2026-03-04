@@ -12,7 +12,7 @@ Use this checklist for EVERY new feature that involves data operations.
 - [ ] Create endpoint in `consent-protocol/api/routes/{domain}.py`
 - [ ] Add VAULT_OWNER token validation
 - [ ] Test endpoint with curl/Postman
-- [ ] Document in `docs/reference/api-contracts.md`
+- [ ] Document in `docs/reference/architecture/api-contracts.md`
 
 ## Web Proxy (Next.js)
 
@@ -103,9 +103,9 @@ If you add a new `.swift` file (e.g. a new plugin or helper) and need to edit `i
 ## Documentation
 
 - [ ] Add route to `hushh-webapp/route-contracts.json`
-- [ ] Update `docs/reference/api-contracts.md` if needed
+- [ ] Update `docs/reference/architecture/api-contracts.md` if needed
 - [ ] Add JSDoc comments to service methods
-- [ ] Add/update PR impact map using `docs/reference/pr-impact-checklist.md`
+- [ ] Add/update PR impact map using `docs/reference/quality/pr-impact-checklist.md`
 
 ## Common Mistakes to Avoid
 
@@ -293,10 +293,10 @@ For features that use Server-Sent Events (SSE) streaming:
 
 - [Project Context Map](../project_context_map.md) - Tri-flow architecture rules
 - [Component README](../../hushh-webapp/components/README.md) - Component guidelines
-- [API Contracts](../reference/api-contracts.md) - Endpoint documentation
-- [Route Contracts](../reference/route_contracts.md) - Next.js route governance
-- [Architecture](../reference/architecture.md) - System design
-- [PR Impact Checklist](../reference/pr-impact-checklist.md) - Required PR mapping
+- [API Contracts](../reference/architecture/api-contracts.md) - Endpoint documentation
+- [Route Contracts](../reference/architecture/route-contracts.md) - Next.js route governance
+- [Architecture](../reference/architecture/architecture.md) - System design
+- [PR Impact Checklist](../reference/quality/pr-impact-checklist.md) - Required PR mapping
 - [Native Streaming Guide](./native_streaming.md) - SSE streaming patterns
 - [Testing Guide](../../TESTING.md) - BYOK-compliant testing
 - [Security Policy](../../SECURITY.md) - Security guidelines
