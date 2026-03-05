@@ -1085,6 +1085,7 @@ export function DashboardMasterView({
       const quantity = Number(updatedHolding.quantity);
       const price = Number(updatedHolding.price);
       const marketValue = Number(updatedHolding.market_value);
+      const isAddingNewHolding = !editingHoldingId;
 
       if (
         !Number.isFinite(quantity) ||
@@ -1131,6 +1132,9 @@ export function DashboardMasterView({
         return next;
       });
       closeHoldingModal();
+      if (isAddingNewHolding) {
+        toast.success("Holding added");
+      }
     },
     [closeHoldingModal, editingHoldingId]
   );

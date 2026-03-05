@@ -1062,6 +1062,7 @@ export function PortfolioReviewView({
       const quantity = Number(updatedHolding.quantity);
       const price = Number(updatedHolding.price);
       const marketValue = Number(updatedHolding.market_value);
+      const isAddingNewHolding = editingHoldingIndex < 0;
 
       if (
         !Number.isFinite(quantity) ||
@@ -1101,6 +1102,9 @@ export function PortfolioReviewView({
         return next;
       });
       closeHoldingModal();
+      if (isAddingNewHolding) {
+        toast.success("Holding added");
+      }
     },
     [closeHoldingModal, editingHoldingIndex]
   );
@@ -1123,7 +1127,6 @@ export function PortfolioReviewView({
     };
     setEditingHolding(newHolding);
     setEditingHoldingIndex(-1);
-    toast.info("New holding added - please fill in the details");
   }, []);
 
   const tableHoldingRows = useMemo<ReviewHoldingRow[]>(
