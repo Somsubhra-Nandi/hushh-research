@@ -168,10 +168,11 @@ jobs:
           PY
           )"
 
+          # Use a custom delimiter so comma-separated origins are treated as one env var value.
           gcloud run services update "${{ env.BACKEND_SERVICE }}" \
             --project="${{ env.GCP_PROJECT_ID }}" \
             --region="${{ env.GCP_REGION }}" \
-            --update-env-vars="CORS_ALLOWED_ORIGINS=${MERGED_CORS}"
+            --update-env-vars "^##^CORS_ALLOWED_ORIGINS=${MERGED_CORS}"
 
       - name: Retain latest frontend revisions
         if: steps.scope.outputs.deploy_frontend == 'true'
