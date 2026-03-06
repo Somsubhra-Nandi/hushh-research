@@ -164,11 +164,9 @@ export function VaultFlow({
           ) {
             setVaultMode("passphrase");
             setUnlockWithPassphraseFallback(true);
-            if (Capacitor.isNativePlatform()) {
-              setUnlockHint(
-                toInvestorMessage("VAULT_PASSKEY_ENROLL_REQUIRED")
-              );
-            }
+            setUnlockHint(
+              toInvestorMessage("VAULT_PASSKEY_ENROLL_REQUIRED")
+            );
           } else if (
             primaryWrapper.method === "generated_default_native_biometric" ||
             primaryWrapper.method === "generated_default_web_prf" ||
