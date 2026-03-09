@@ -23,6 +23,12 @@ Use this section for production-grade rules and contracts that govern:
 7. [Validation Checklist](./validation-checklist.md)
 8. [External Dependencies](./external-dependencies.md)
 
+## Canonical-Only Policy
+
+1. This directory stores implemented/runtime truth only.
+2. Planning drafts must not live in this directory.
+3. Any IAM behavior change must update these canonical docs in the same PR.
+
 ## Core Ecosystem Alignment
 
 IAM decisions in this directory must stay aligned with the repository core stack:
@@ -32,7 +38,3 @@ IAM decisions in this directory must stay aligned with the repository core stack
 3. A2A delegation boundaries
 4. ADK compliance checks
 5. BYOK, consent-first, tri-flow invariants
-
-## Historical Planning Docs
-
-Time-bound exploration docs are kept under [future/](./future/README.md). They are reference context, not canonical runtime contracts.

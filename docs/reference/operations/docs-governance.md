@@ -35,6 +35,7 @@ CI gate policy:
 1. Keep a minimal blocking set (secret scan, web, protocol, integration).
 2. Treat docs parity and subtree drift as advisory unless explicitly promoted.
 3. Do not add a new CI/parity script unless it replaces or consolidates an existing script in the same PR.
+4. Every new CI/helper script must declare owner team (`frontend`, `backend`, or `platform`) and get owner approval.
 
 ## One-Time Rules
 

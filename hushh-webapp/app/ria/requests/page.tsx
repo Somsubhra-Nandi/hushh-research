@@ -3,7 +3,11 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
-import { RiaService, type RiaRequestRecord } from "@/lib/services/ria-service";
+import {
+  isIAMSchemaNotReadyError,
+  RiaService,
+  type RiaRequestRecord,
+} from "@/lib/services/ria-service";
 
 export default function RiaRequestsPage() {
   const { user } = useAuth();
@@ -14,16 +18,19 @@ export default function RiaRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [iamUnavailable, setIamUnavailable] = useState(false);
 
   async function loadRequests() {
     if (!user) return;
     try {
       setLoading(true);
+      setIamUnavailable(false);
       const idToken = await user.getIdToken();
       const next = await RiaService.listRequests(idToken);
       setItems(next);
-    } catch {
+    } catch (loadError) {
       setItems([]);
+      setIamUnavailable(isIAMSchemaNotReadyError(loadError));
     } finally {
       setLoading(false);
     }
@@ -57,6 +64,9 @@ export default function RiaRequestsPage() {
       setSubjectUserId("");
       await loadRequests();
     } catch (submitError) {
+      if (isIAMSchemaNotReadyError(submitError)) {
+        setIamUnavailable(true);
+      }
       setError(submitError instanceof Error ? submitError.message : "Failed to create request");
     } finally {
       setSaving(false);
@@ -71,18 +81,25 @@ export default function RiaRequestsPage() {
       </p>
 
       <form className="mt-4 space-y-3 rounded-2xl border border-border bg-background p-4" onSubmit={onSubmit}>
+        {iamUnavailable ? (
+          <p className="text-sm text-muted-foreground">
+            RIA request setup is in progress for this environment.
+          </p>
+        ) : null}
         <input
           required
           value={subjectUserId}
           onChange={(event) => setSubjectUserId(event.target.value)}
           placeholder="Investor user ID"
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
 
         <select
           value={scopeTemplate}
           onChange={(event) => setScopeTemplate(event.target.value)}
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         >
           <option value="ria_financial_summary_v1">RIA financial summary</option>
           <option value="ria_risk_profile_v1">RIA risk profile</option>
@@ -92,6 +109,7 @@ export default function RiaRequestsPage() {
           value={durationHours}
           onChange={(event) => setDurationHours(Number(event.target.value))}
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         >
           <option value={24}>24h</option>
           <option value={168}>7d</option>
@@ -103,7 +121,7 @@ export default function RiaRequestsPage() {
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || iamUnavailable}
           className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background"
         >
           {saving ? "Creating..." : "Create request"}
@@ -120,7 +138,7 @@ export default function RiaRequestsPage() {
             </p>
           </article>
         ))}
-        {!loading && items.length === 0 ? (
+        {!loading && !iamUnavailable && items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No requests yet.</p>
         ) : null}
       </section>

@@ -59,6 +59,10 @@ Blocking by default:
 3. `scripts/ci/protocol-check.sh`
 4. `scripts/ci/integration-check.sh`
 
+Canonical executor:
+
+- `scripts/ci/orchestrate.sh` (used by GitHub Actions stages and local wrappers)
+
 Optional/advisory by default:
 
 1. `scripts/ci/docs-parity-check.sh`
@@ -279,6 +283,10 @@ All required secrets must exist in Google Cloud Secret Manager before deployment
 - `NEXT_PUBLIC_GTM_ID_PRODUCTION`
 
 These Firebase values are public client config, but are still centrally injected from Secret Manager to avoid hardcoded deploy YAML values.
+
+**Frontend runtime (server-only Next.js API handlers):**
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` (required for auth-split setups, e.g., UAT web using prod Firebase Auth)
 
 See [docs/reference/operations/env-and-secrets.md](../docs/reference/operations/env-and-secrets.md) for full reference.
 

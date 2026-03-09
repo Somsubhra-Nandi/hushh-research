@@ -20,6 +20,12 @@ Current branch divergence policy:
 2. Production analytics key parity is intentionally deferred until approved migration.
 3. Missing production analytics keys should be tracked as migration backlog, not silently backfilled outside release planning.
 
+Profile bootstrap rule:
+
+1. `scripts/env/bootstrap_profiles.sh` must validate canonical identity keys in generated local profiles:
+- backend `ENVIRONMENT`
+- frontend `NEXT_PUBLIC_APP_ENV`
+
 ## Contract Matrix
 
 | key | read_by_code | backend_local_env | frontend_local_env | secret_manager | backend_cloudbuild | frontend_cloudbuild | cloud_run_live_backend | cloud_run_live_frontend | classification |
@@ -27,8 +33,8 @@ Current branch divergence policy:
 | `SECRET_KEY` | `consent-protocol/hushh_mcp/config.py` | Y | N | Y | secret | N | secret | N | required |
 | `VAULT_ENCRYPTION_KEY` | `consent-protocol/hushh_mcp/config.py` | Y | N | Y | secret | N | secret | N | required |
 | `GOOGLE_API_KEY` | `consent-protocol/hushh_mcp/config.py` | Y | N | Y | secret | N | secret | N | required |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | `consent-protocol/api/utils/firebase_admin.py`, `hushh-webapp/lib/firebase/admin.ts` | Y | Y | Y | secret | N | secret | N | required |
-| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | `consent-protocol/api/utils/firebase_admin.py` | Y | N | Y | secret | N | secret | N | required |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | `consent-protocol/api/utils/firebase_admin.py`, `hushh-webapp/lib/firebase/admin.ts` | Y | Y | Y | secret | secret | secret | secret | required |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | `consent-protocol/api/utils/firebase_admin.py`, `hushh-webapp/lib/firebase/admin.ts` | Y | Y | Y | secret | secret | secret | secret | required |
 | `FRONTEND_URL` | `consent-protocol/server.py` | Y | N | Y | secret | N | secret | N | required |
 | `DB_USER` | `consent-protocol/db/connection.py` | Y | N | Y | secret | N | secret | N | required |
 | `DB_PASSWORD` | `consent-protocol/db/connection.py` | Y | N | Y | secret | N | secret | N | required |

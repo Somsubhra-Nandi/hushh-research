@@ -38,6 +38,24 @@ require_contains() {
   fi
 }
 
+require_contains_any() {
+  local haystack="$1"
+  local label="$2"
+  shift 2
+  local found=0
+  for needle in "$@"; do
+    if printf '%s' "$haystack" | grep -Fq "$needle"; then
+      found=1
+      break
+    fi
+  done
+  if [ "$found" -eq 1 ]; then
+    ok "$label"
+  else
+    error "$label"
+  fi
+}
+
 extract_block() {
   local file="$1"
   local start_regex="$2"
@@ -59,8 +77,10 @@ UPSTREAM_BACKEND_BLOCK="$(extract_block "$UPSTREAM_WORKFLOW" '^  backend-check:'
 
 require_contains "bash scripts/ci/backend-check.sh" "$(cat "$MONO_PROTOCOL_SCRIPT")" \
   "Monorepo protocol-check script delegates to consent-protocol/scripts/ci/backend-check.sh"
-require_contains "run: bash scripts/ci/protocol-check.sh" "$MONO_PROTOCOL_BLOCK" \
-  "Monorepo protocol-check workflow job runs shared wrapper script"
+require_contains_any "$MONO_PROTOCOL_BLOCK" \
+  "Monorepo protocol-check workflow job runs shared protocol stage script" \
+  "run: bash scripts/ci/protocol-check.sh" \
+  "run: bash scripts/ci/orchestrate.sh protocol"
 require_contains "run: bash scripts/ci/backend-check.sh" "$UPSTREAM_BACKEND_BLOCK" \
   "Upstream backend-check workflow job runs shared backend-check script"
 

@@ -94,6 +94,11 @@ const REMOVED_SCRIPT_REFERENCES = [
   "npm run cap:ios:dev:run",
 ];
 
+const REMOVED_FILE_REFERENCES = [
+  "scripts/test-ci-simulation.sh",
+  "scripts/ci-simulate.sh",
+];
+
 function fail(message) {
   console.error(`ERROR: ${message}`);
   process.exitCode = 1;
@@ -216,6 +221,25 @@ function verifyNoRemovedScriptReferences(files) {
     fail(`Stale script references found in docs:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
   } else {
     ok("Docs do not reference removed/stale package scripts");
+  }
+}
+
+function verifyNoRemovedFileReferences(files) {
+  const offenders = [];
+
+  for (const file of files) {
+    const src = read(file);
+    for (const removedPath of REMOVED_FILE_REFERENCES) {
+      if (src.includes(removedPath)) {
+        offenders.push(`${file}: stale file reference "${removedPath}"`);
+      }
+    }
+  }
+
+  if (offenders.length) {
+    fail(`Stale file references found in docs:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
+  } else {
+    ok("Docs do not reference removed helper scripts");
   }
 }
 
@@ -385,6 +409,7 @@ function main() {
   scanUnresolvedMarkers(firstPartyDocs);
   scanSpeculativeOperationalContent(operationalDocs);
   verifyNoRemovedScriptReferences(firstPartyDocs);
+  verifyNoRemovedFileReferences(firstPartyDocs);
   verifyDocPathReferences(operationalDocs);
   verifyCanonicalRouteContract(operationalDocs);
   verifyRequiredOperationalMarkers();

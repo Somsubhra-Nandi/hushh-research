@@ -7,6 +7,8 @@ export interface PersonaState {
   personas: Persona[];
   last_active_persona: Persona;
   investor_marketplace_opt_in: boolean;
+  iam_schema_ready: boolean;
+  mode: "full" | "compat_investor";
 }
 
 export interface MarketplaceRia {
@@ -74,17 +76,41 @@ interface FetchOptions {
   idToken?: string;
 }
 
+interface ErrorPayload {
+  detail?: string;
+  error?: string;
+  code?: string;
+  hint?: string;
+}
+
+export class RiaApiError extends Error {
+  status: number;
+  code?: string;
+  hint?: string;
+
+  constructor(message: string, status: number, code?: string, hint?: string) {
+    super(message);
+    this.name = "RiaApiError";
+    this.status = status;
+    this.code = code;
+    this.hint = hint;
+  }
+}
+
+export function isIAMSchemaNotReadyError(error: unknown): error is RiaApiError {
+  return error instanceof RiaApiError && error.code === "IAM_SCHEMA_NOT_READY";
+}
+
 async function toJsonOrThrow<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as T & {
-    detail?: string;
-    error?: string;
-  };
+  const payload = (await response.json().catch(() => ({}))) as T & ErrorPayload;
   if (!response.ok) {
     const message =
       (typeof payload.detail === "string" && payload.detail) ||
       (typeof payload.error === "string" && payload.error) ||
       `Request failed: ${response.status}`;
-    throw new Error(message);
+    const code = typeof payload.code === "string" ? payload.code : undefined;
+    const hint = typeof payload.hint === "string" ? payload.hint : undefined;
+    throw new RiaApiError(message, response.status, code, hint);
   }
   return payload;
 }

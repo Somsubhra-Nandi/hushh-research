@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ci": "vitest run __tests__/api/compliance/protocol-audit.test.ts __tests__/api/consent/api-service-consent.test.ts __tests__/api/consent/events-proxy.test.ts __tests__/api/kai/proxy-route.test.ts __tests__/services/passkey-rp.test.ts __tests__/services/vault-method-prompt-local-service.test.ts __tests__/services/vault-method-service.test.ts __tests__/services/world-model-cache.test.ts __tests__/services/world-model-prepared-blob-store.test.ts __tests__/streaming/sse-parser.test.ts",
+    "test:ci": "node scripts/run-test-ci.cjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "verify:design-system": "node scripts/verify-design-system-usage.cjs",
@@ -27,7 +27,7 @@
     "verify:capacitor:routes": "node scripts/verify-capacitor-routes.cjs",
     "verify:mobile-firebase": "node scripts/verify-mobile-firebase.cjs",
     "verify:mobile-firebase:release": "npx cross-env REQUIRE_PROD_FIREBASE_ARTIFACTS=true node scripts/verify-mobile-firebase.cjs",
-    "verify:capacitor:e2e": "npm run verify:routes && npm run verify:parity && npm run verify:capacitor:config && npm run cap:build:mobile && npm run verify:capacitor:routes",
+    "verify:capacitor:e2e": "bash scripts/native/verify-capacitor-e2e.sh",
     "inject:mobile-firebase": "bash scripts/inject-mobile-firebase-artifacts.sh",
     "sync:mobile-firebase": "bash scripts/sync-mobile-firebase-artifacts.sh",
     "cap:build": "npm run cap:build:mobile",
@@ -37,9 +37,9 @@
     "cap:clean:ios": "rm -rf ios/App/build ios/App/DerivedData || true",
     "cap:sync:android:prod": "npx cross-env CAPACITOR_PLATFORM=android npx cap sync android",
     "cap:sync:ios:prod": "npx cross-env CAPACITOR_PLATFORM=ios npx cap sync ios",
-    "cap:android:prod:fresh:run": "npm run cap:clean:web && npm run cap:clean:android && npm run cap:build:mobile && npm run cap:sync:android:prod && npx cap run android --target Pixel_9_Pro",
-    "cap:ios:prod:fresh:run": "npm run cap:clean:web && npm run cap:clean:ios && npm run cap:build:mobile && npm run cap:sync:ios:prod && npx cap run ios",
-    "cap:ios:prod:sync": "npm run cap:build:mobile && npm run cap:sync:ios:prod"
+    "cap:android:prod:fresh:run": "bash scripts/native/android-prod-fresh-run.sh",
+    "cap:ios:prod:fresh:run": "bash scripts/native/ios-prod-fresh-run.sh",
+    "cap:ios:prod:sync": "bash scripts/native/ios-prod-sync.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

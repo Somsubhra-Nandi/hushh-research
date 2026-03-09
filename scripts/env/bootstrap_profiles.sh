@@ -334,6 +334,20 @@ hydrate_frontend_dev() {
   do
     set_if_non_empty "$file" "$key" "$(read_env_value "$FRONTEND_ACTIVE" "$key")"
   done
+
+  # Next.js server routes in hushh-webapp verify Firebase ID tokens.
+  # Keep these server-only values in frontend local profiles for parity with Cloud Run.
+  set_if_non_empty "$file" "FIREBASE_SERVICE_ACCOUNT_JSON" "$(read_env_value "$FRONTEND_ACTIVE" "FIREBASE_SERVICE_ACCOUNT_JSON")"
+  set_if_non_empty "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON" "$(read_env_value "$FRONTEND_ACTIVE" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON")"
+  if [ -z "$(read_env_value "$file" "FIREBASE_SERVICE_ACCOUNT_JSON")" ]; then
+    set_if_non_empty "$file" "FIREBASE_SERVICE_ACCOUNT_JSON" "$(read_env_value "$BACKEND_ACTIVE" "FIREBASE_SERVICE_ACCOUNT_JSON")"
+  fi
+  if [ -z "$(read_env_value "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON")" ]; then
+    set_if_non_empty "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON" "$(read_env_value "$BACKEND_ACTIVE" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON")"
+  fi
+  if [ -z "$(read_env_value "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON")" ]; then
+    set_if_non_empty "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON" "$(read_env_value "$file" "FIREBASE_SERVICE_ACCOUNT_JSON")"
+  fi
 }
 
 hydrate_frontend_cloud() {
@@ -377,6 +391,13 @@ hydrate_frontend_cloud() {
     set_secret_key "$file" "$profile" "$project" "$key" "true"
   done
 
+  # Server-side token verification in frontend API routes.
+  set_secret_key "$file" "$profile" "$project" "FIREBASE_SERVICE_ACCOUNT_JSON" "true"
+  set_secret_key "$file" "$profile" "$project" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON" "false"
+  if [ -z "$(read_env_value "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON")" ]; then
+    set_if_non_empty "$file" "FIREBASE_AUTH_SERVICE_ACCOUNT_JSON" "$(read_env_value "$file" "FIREBASE_SERVICE_ACCOUNT_JSON")"
+  fi
+
   for key in \
     NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_UAT NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_STAGING NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION \
     NEXT_PUBLIC_GTM_ID_UAT NEXT_PUBLIC_GTM_ID_STAGING NEXT_PUBLIC_GTM_ID_PRODUCTION
@@ -408,6 +429,49 @@ hydrate_frontend_cloud "$FRONTEND_DIR/.env.prod.local" "prod" "$PROD_PROJECT_ID"
 for profile in "${profiles[@]}"; do
   chmod 600 "$BACKEND_DIR/.env.${profile}.local" "$FRONTEND_DIR/.env.${profile}.local"
 done
+
+validate_canonical_keys() {
+  local profile="$1"
+  local backend_file="$2"
+  local frontend_file="$3"
+  local expected_backend="$4"
+  local expected_frontend="$5"
+
+  local backend_env
+  backend_env="$(read_env_value "$backend_file" "ENVIRONMENT")"
+  local frontend_env
+  frontend_env="$(read_env_value "$frontend_file" "NEXT_PUBLIC_APP_ENV")"
+
+  if [ -z "$backend_env" ]; then
+    MISSING_REQUIRED+=("${profile}: missing ENVIRONMENT in ${backend_file#$REPO_ROOT/}")
+  elif [ "$backend_env" != "$expected_backend" ]; then
+    WARNINGS+=("${profile}: ENVIRONMENT expected ${expected_backend} but found ${backend_env}")
+  fi
+
+  if [ -z "$frontend_env" ]; then
+    MISSING_REQUIRED+=("${profile}: missing NEXT_PUBLIC_APP_ENV in ${frontend_file#$REPO_ROOT/}")
+  elif [ "$frontend_env" != "$expected_frontend" ]; then
+    WARNINGS+=("${profile}: NEXT_PUBLIC_APP_ENV expected ${expected_frontend} but found ${frontend_env}")
+  fi
+}
+
+validate_canonical_keys "dev" \
+  "$BACKEND_DIR/.env.dev.local" \
+  "$FRONTEND_DIR/.env.dev.local" \
+  "development" \
+  "development"
+
+validate_canonical_keys "uat" \
+  "$BACKEND_DIR/.env.uat.local" \
+  "$FRONTEND_DIR/.env.uat.local" \
+  "uat" \
+  "uat"
+
+validate_canonical_keys "prod" \
+  "$BACKEND_DIR/.env.prod.local" \
+  "$FRONTEND_DIR/.env.prod.local" \
+  "production" \
+  "production"
 
 for path in \
   "$BACKEND_DIR/.env.dev.local" "$BACKEND_DIR/.env.uat.local" "$BACKEND_DIR/.env.prod.local" \

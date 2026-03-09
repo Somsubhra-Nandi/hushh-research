@@ -13,7 +13,7 @@ Define two-sided discovery and consent-initiation behavior between investors and
 
 1. Discovery is allowed using public profile metadata only.
 2. Private data is inaccessible before consent approval.
-3. Consent request flow is available from both sides.
+3. In current runtime, consent request creation is RIA -> Investor.
 
 ## Public Profile Contract
 
@@ -37,10 +37,9 @@ Public cards must not include private portfolio or sensitive personal fields.
 
 ## Abuse Controls
 
-1. Request rate limits per actor and time window.
-2. Cooldown after repeated denials.
-3. Blocklist support for actor pairs.
-4. High-sensitivity requests require explicit reason.
+1. Auth is mandatory for request creation surfaces.
+2. Policy checks enforce actor direction, template allowlist, and duration caps.
+3. Verification status gate blocks unverified RIA request creation.
 
 ## Observability Contract
 

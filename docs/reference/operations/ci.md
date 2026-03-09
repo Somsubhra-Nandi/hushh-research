@@ -4,7 +4,7 @@ This document describes the **Tri-Flow CI** workflow and how to stay aligned wit
 
 **Workflow file:** [.github/workflows/ci.yml](../../../.github/workflows/ci.yml)  
 **Local mirror:** [scripts/test-ci-local.sh](../../../scripts/test-ci-local.sh)  
-**Simulation (extended):** [scripts/test-ci-simulation.sh](../../../scripts/test-ci-simulation.sh)
+**Orchestrator:** [scripts/ci/orchestrate.sh](../../../scripts/ci/orchestrate.sh)
 
 ---
 
@@ -53,6 +53,12 @@ The `CI Status Gate` remains the single required status for branch protection an
 
 Do not add new CI/parity scripts without replacing or consolidating an existing check.
 
+### Script Lifecycle Policy
+
+1. Add a new CI/helper script only when it replaces or consolidates an existing one in the same PR.
+2. Every CI/helper script must have a clear owner (`frontend`, `backend`, or `platform`) in PR notes.
+3. Any CI scope expansion requires reviewer approval from the owning team.
+
 ## Branch Divergence Clarity (UAT now, Prod later)
 
 1. `deploy_uat` currently carries newer analytics/auth-split expectations.
@@ -88,7 +94,7 @@ Using a different Node or Python locally can cause â€œpass locally, fail in CIâ€
 | Investor language | `npm run verify:investor-language` | Yes |
 | Build (web) | `npm run build` (Next.js) | Yes |
 | Security audit budget | `npm audit --json` + budget gate (`moderate/high/critical`) | Yes |
-| Tests | `npm run test:ci` (11 retained fundamental suites) | Yes |
+| Tests | `npm run test:ci` (manifest-driven curated suites) | Yes |
 
 **Build env (CI):** `NEXT_PUBLIC_BACKEND_URL` and all six `NEXT_PUBLIC_FIREBASE_*` vars are set to placeholders in the workflow so the build does not depend on real secrets.
 
@@ -183,9 +189,6 @@ INCLUDE_ADVISORY_CHECKS=1 ./scripts/test-ci-local.sh
 ```
 
 If it exits 0, CI should pass. If it fails, fix the reported step before committing.
-
-**Alternative (extended simulation):**  
-`scripts/test-ci-simulation.sh` runs additional edge-case and validation steps; use when you want to stress-test the same setup as CI.
 
 ---
 

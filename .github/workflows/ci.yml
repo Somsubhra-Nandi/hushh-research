@@ -55,7 +55,7 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
       - name: Run gitleaks scan (no license secret required)
-        run: bash scripts/ci/secret-scan.sh
+        run: bash scripts/ci/orchestrate.sh secret
 
   # ============================================================================
   # Path filters: run frontend/backend jobs only when their paths change (or manual scope)
@@ -127,7 +127,7 @@ jobs:
           cache-dependency-path: hushh-webapp/package-lock.json
 
       - name: Run web check script (single source of truth)
-        run: bash scripts/ci/web-check.sh
+        run: bash scripts/ci/orchestrate.sh web
         env:
           WEB_LINT_WARNING_BUDGET: ${{ env.WEB_LINT_WARNING_BUDGET }}
           WEB_AUDIT_MODERATE_BUDGET: ${{ env.WEB_AUDIT_MODERATE_BUDGET }}
@@ -169,7 +169,7 @@ jobs:
 
       - name: Run protocol check script (single source of truth)
         timeout-minutes: 22
-        run: bash scripts/ci/protocol-check.sh
+        run: bash scripts/ci/orchestrate.sh protocol
         env:
           TESTING: "true"
           SECRET_KEY: "test_secret_key_for_ci_only_32chars_min"
@@ -195,7 +195,7 @@ jobs:
           cache-dependency-path: hushh-webapp/package-lock.json
 
       - name: Run integration check script (single source of truth)
-        run: bash scripts/ci/integration-check.sh
+        run: bash scripts/ci/orchestrate.sh integration
         env:
           CI_NATIVE_PARITY_REQUIRED: ${{ env.CI_NATIVE_PARITY_REQUIRED }}
           CI_DOCS_PARITY_REQUIRED: ${{ env.CI_DOCS_PARITY_REQUIRED }}

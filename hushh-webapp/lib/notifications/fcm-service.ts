@@ -190,6 +190,16 @@ async function initializeWebFCM(
 
     console.log("[FCM] ✅ Web initialization complete");
   } catch (error) {
+    const errorCode =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (errorCode === "installations/request-failed") {
+      console.warn(
+        "[FCM] Web push init skipped: Firebase Installations rejected config. Check Firebase web app keys, API key referrer restrictions, and VAPID key for this domain."
+      );
+      return;
+    }
     console.error("[FCM] ❌ Web initialization failed:", error);
   }
 }

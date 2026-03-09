@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
-import { RiaService } from "@/lib/services/ria-service";
+import { isIAMSchemaNotReadyError, RiaService } from "@/lib/services/ria-service";
 
 interface WorkspacePayload {
   workspace_ready: boolean;
@@ -22,6 +22,7 @@ export default function RiaWorkspacePage() {
   const [data, setData] = useState<WorkspacePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [iamUnavailable, setIamUnavailable] = useState(false);
 
   useEffect(() => {
     if (!user || !clientId) {
@@ -35,6 +36,7 @@ export default function RiaWorkspacePage() {
     async function load() {
       setLoading(true);
       setError(null);
+      setIamUnavailable(false);
       try {
         const idToken = await currentUser.getIdToken();
         const payload = await RiaService.getWorkspace(idToken, clientId);
@@ -42,6 +44,7 @@ export default function RiaWorkspacePage() {
       } catch (loadError) {
         if (!cancelled) {
           setData(null);
+          setIamUnavailable(isIAMSchemaNotReadyError(loadError));
           setError(loadError instanceof Error ? loadError.message : "Failed to load workspace");
         }
       } finally {
@@ -62,6 +65,11 @@ export default function RiaWorkspacePage() {
       <p className="mt-1 text-sm text-muted-foreground">Client: {clientId}</p>
 
       {loading ? <p className="mt-4 text-sm text-muted-foreground">Loading workspace…</p> : null}
+      {iamUnavailable ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          RIA workspace setup is in progress for this environment.
+        </p>
+      ) : null}
       {error ? <p className="mt-4 text-sm text-red-500">{error}</p> : null}
 
       {data ? (

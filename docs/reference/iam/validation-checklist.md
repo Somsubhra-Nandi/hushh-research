@@ -16,6 +16,9 @@ Provide the canonical verification gate for Investor + RIA IAM changes.
 2. Investor and RIA route trees enforce actor gates.
 3. Marketplace tabs render expected public-card data.
 4. Consent request/approve/deny/revoke flows complete end-to-end.
+5. Schema-missing compatibility:
+   `GET /api/iam/persona` returns investor-safe `200`,
+   `/api/ria/*` and `/api/marketplace/*` return `503 IAM_SCHEMA_NOT_READY`.
 
 ## Policy Checks
 

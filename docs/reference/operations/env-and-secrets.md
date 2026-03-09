@@ -32,6 +32,7 @@ bash scripts/env/bootstrap_profiles.sh
 
 This command creates and hydrates local profile files from templates plus current cloud secrets/runtime metadata.
 It does not print secret values and sets profile files to `chmod 600`.
+It also validates canonical identity keys per profile (`ENVIRONMENT`, `NEXT_PUBLIC_APP_ENV`) and reports missing required values.
 
 6. Activate the chosen profile:
 
@@ -146,6 +147,7 @@ Used by:
 | `BACKEND_URL` | Server-side api routes | No | Fallback for NEXT_PUBLIC_BACKEND_URL |
 | `SESSION_SECRET` | `lib/auth/session.ts` | If session API | Server-only |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `lib/firebase/admin.ts` | Server-side Firebase | Server-only |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | `lib/firebase/admin.ts` | Recommended for auth-split | Server-only; used for token verification when web auth project differs |
 
 ---
 
@@ -232,6 +234,7 @@ These are used by MCP modules (`mcp_modules/`) for MCP server functionality, not
 | `BACKEND_URL` | Server-side | No | Same as NEXT_PUBLIC_BACKEND_URL where used | |
 | `SESSION_SECRET` | If using session API | Yes | Server env only | Not in client |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Server-side Firebase | Yes | Server env only | |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | Auth-split token verification | Yes (for auth-split) | Server env only | Falls back to FIREBASE_SERVICE_ACCOUNT_JSON if unset |
 | `NEXT_PUBLIC_CONSENT_TIMEOUT_SECONDS` | No | No | Optional; sync with backend | |
 | `NEXT_PUBLIC_FRONTEND_URL` | No | No | Optional | |
 
@@ -269,7 +272,7 @@ Secret Manager must hold **exactly** the keys the code uses. No extra secrets; n
 
 **Strict parity:** `DATABASE_URL` is not used anywhere. Migrations (`db/migrate.py`) use **DB_*** only, via `db.connection.get_database_url()`. Do **not** create or keep `DATABASE_URL` in Secret Manager; delete it if present.
 
-### Frontend (16 centrally-managed values, build-time only) — all used by `deploy/frontend.cloudbuild.yaml`
+### Frontend (16 centrally-managed build-time values + runtime auth secrets)
 
 | Secret name | Build-arg / usage in code |
 |-------------|---------------------------|
@@ -289,6 +292,13 @@ Secret Manager must hold **exactly** the keys the code uses. No extra secrets; n
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION` | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION` |
 | `NEXT_PUBLIC_GTM_ID_STAGING` | `NEXT_PUBLIC_GTM_ID_STAGING` |
 | `NEXT_PUBLIC_GTM_ID_PRODUCTION` | `NEXT_PUBLIC_GTM_ID_PRODUCTION` |
+
+Cloud Run frontend runtime secrets (server-only Next.js API handlers):
+
+| Secret name | Runtime env usage in code |
+|-------------|---------------------------|
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | `lib/firebase/admin.ts` |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | `lib/firebase/admin.ts` (auth split verifier) |
 
 ### gcloud CLI: list and create only these secrets
 

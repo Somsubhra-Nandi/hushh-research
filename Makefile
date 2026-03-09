@@ -3,7 +3,7 @@
 # Usage: make <target>
 # Run `make help` for available targets.
 
-.PHONY: help dev dev-frontend dev-backend lint test verify-docs ci-local env-bootstrap env-use run-web run-backend
+.PHONY: help dev dev-frontend dev-backend lint test verify-docs ci-local env-bootstrap env-use run-web run-backend db-init-iam verify-iam-schema
 
 ENV ?= dev
 CONFIRM_PROD_LOCAL ?= 0
@@ -75,3 +75,9 @@ run-web: env-use ## Activate profile then run frontend dev server (ENV=dev|uat|p
 
 run-backend: env-use ## Activate profile then run backend dev server (ENV=dev|uat|prod)
 	cd consent-protocol && python3 -m uvicorn server:app --reload --port 8000
+
+db-init-iam: ## Apply IAM foundation migrations explicitly (020 + 021)
+	cd consent-protocol && PYTHONPATH=. .venv/bin/python db/migrate.py --iam
+
+verify-iam-schema: ## Verify IAM tables/templates readiness
+	cd consent-protocol && PYTHONPATH=. .venv/bin/python scripts/verify_iam_schema.py
