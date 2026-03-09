@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROUTES } from "@/lib/navigation/routes";
 import {
+  isIAMSchemaNotReadyError,
   RiaService,
   type MarketplaceInvestor,
   type MarketplaceRia,
@@ -18,12 +19,14 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(false);
   const [rias, setRias] = useState<MarketplaceRia[]>([]);
   const [investors, setInvestors] = useState<MarketplaceInvestor[]>([]);
+  const [iamUnavailable, setIamUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
+      setIamUnavailable(false);
       try {
         if (tab === "rias") {
           const data = await RiaService.searchRias({ query, limit: 20 });
@@ -37,8 +40,9 @@ export default function MarketplacePage() {
         if (!cancelled) {
           setInvestors(data);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
+          setIamUnavailable(isIAMSchemaNotReadyError(error));
           if (tab === "rias") setRias([]);
           else setInvestors([]);
         }
@@ -96,6 +100,11 @@ export default function MarketplacePage() {
       />
 
       {loading ? <p className="mt-4 text-sm text-muted-foreground">Loading…</p> : null}
+      {iamUnavailable ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Marketplace setup is in progress for this environment.
+        </p>
+      ) : null}
 
       {tab === "rias" ? (
         <section className="mt-4 space-y-3">
@@ -124,7 +133,7 @@ export default function MarketplacePage() {
             </article>
           ))}
 
-          {rias.length === 0 && !loading ? (
+          {rias.length === 0 && !loading && !iamUnavailable ? (
             <p className="text-sm text-muted-foreground">No RIA profiles found.</p>
           ) : null}
         </section>
@@ -142,7 +151,7 @@ export default function MarketplacePage() {
             </article>
           ))}
 
-          {investors.length === 0 && !loading ? (
+          {investors.length === 0 && !loading && !iamUnavailable ? (
             <p className="text-sm text-muted-foreground">No investor profiles found.</p>
           ) : null}
         </section>

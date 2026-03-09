@@ -43,7 +43,7 @@ echo ""
 # 3. Frontend Lint
 echo "▶ [3/12] Frontend Lint..."
 cd hushh-webapp
-npm run check-lint || { FAIL=1; echo "❌ Lint failed"; }
+npm run lint || { FAIL=1; echo "❌ Lint failed"; }
 cd "$REPO_ROOT"
 echo ""
 

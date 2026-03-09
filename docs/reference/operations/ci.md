@@ -4,9 +4,20 @@ This document describes the **Tri-Flow CI** workflow and how to stay aligned wit
 
 **Workflow file:** [.github/workflows/ci.yml](../../../.github/workflows/ci.yml)  
 **Local mirror:** [scripts/test-ci-local.sh](../../../scripts/test-ci-local.sh)  
-**Simulation (extended):** [scripts/test-ci-simulation.sh](../../../scripts/test-ci-simulation.sh)
+**Orchestrator:** [scripts/ci/orchestrate.sh](../../../scripts/ci/orchestrate.sh)
 
 ---
+
+## Fundamental Blocking Policy
+
+To prevent CI check-sprawl, only these checks are hard-blocking by default:
+
+1. `scripts/ci/secret-scan.sh`
+2. `scripts/ci/web-check.sh`
+3. `scripts/ci/protocol-check.sh`
+4. `scripts/ci/integration-check.sh`
+
+The `CI Status Gate` remains the single required status for branch protection and only aggregates the blocking checks above.
 
 ## When CI Runs
 
@@ -30,8 +41,29 @@ This document describes the **Tri-Flow CI** workflow and how to stay aligned wit
 | Gate | Purpose | Behavior |
 |------|---------|----------|
 | Secret Scan | Detect leaked credentials/tokens early | `gitleaks` OSS CLI (license-free) scans commit range for each event |
-| Upstream Sync | Detect monorepo/subtree drift | Warns when `consent-protocol/` tree differs from upstream `main` |
+| Upstream Sync | Detect monorepo/subtree drift | Advisory only; warnings are non-blocking |
 | CI Status Gate | Single required check for branch protection | Fails if any required job fails/cancels/times out; allows intentional `skipped` jobs |
+
+## Advisory Checks (Non-Blocking By Default)
+
+1. `scripts/ci/docs-parity-check.sh`
+2. `scripts/ci/subtree-sync-check.sh`
+3. Native parity checks (`verify:parity`, `verify:capacitor:*`) for native release lanes
+4. `scripts/ops/verify-env-secrets-parity.py` for release preflight and deployment readiness
+
+Do not add new CI/parity scripts without replacing or consolidating an existing check.
+
+### Script Lifecycle Policy
+
+1. Add a new CI/helper script only when it replaces or consolidates an existing one in the same PR.
+2. Every CI/helper script must have a clear owner (`frontend`, `backend`, or `platform`) in PR notes.
+3. Any CI scope expansion requires reviewer approval from the owning team.
+
+## Branch Divergence Clarity (UAT now, Prod later)
+
+1. `deploy_uat` currently carries newer analytics/auth-split expectations.
+2. Production branch rollout is intentionally deferred for those analytics keys until migration approval.
+3. CI should validate branch-local contracts; production analytics parity is handled as a separate migration packet, not mixed into day-to-day UAT delivery.
 
 ---
 
@@ -62,7 +94,7 @@ Using a different Node or Python locally can cause â€œpass locally, fail in CIâ€
 | Investor language | `npm run verify:investor-language` | Yes |
 | Build (web) | `npm run build` (Next.js) | Yes |
 | Security audit budget | `npm audit --json` + budget gate (`moderate/high/critical`) | Yes |
-| Tests | `npm run test:ci` (11 retained fundamental suites) | Yes |
+| Tests | `npm run test:ci` (manifest-driven curated suites) | Yes |
 
 **Build env (CI):** `NEXT_PUBLIC_BACKEND_URL` and all six `NEXT_PUBLIC_FIREBASE_*` vars are set to placeholders in the workflow so the build does not depend on real secrets.
 
@@ -150,10 +182,13 @@ This script:
 4. Runs **backend** checks: install, Ruff, mypy, pytest.
 5. Runs **integration**: route contract verification.
 
-If it exits 0, CI should pass. If it fails, fix the reported step before committing.
+To include advisory checks locally:
 
-**Alternative (extended simulation):**  
-`scripts/test-ci-simulation.sh` runs additional edge-case and validation steps; use when you want to stress-test the same setup as CI.
+```bash
+INCLUDE_ADVISORY_CHECKS=1 ./scripts/test-ci-local.sh
+```
+
+If it exits 0, CI should pass. If it fails, fix the reported step before committing.
 
 ---
 

@@ -5,7 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
 import { ROUTES } from "@/lib/navigation/routes";
-import { RiaService, type Persona, type PersonaState } from "@/lib/services/ria-service";
+import {
+  isIAMSchemaNotReadyError,
+  RiaService,
+  type Persona,
+  type PersonaState,
+} from "@/lib/services/ria-service";
 import { cn } from "@/lib/utils";
 
 function routeForPersona(persona: Persona): string {
@@ -33,9 +38,20 @@ export function PersonaSwitcher({ className }: { className?: string }) {
         if (!cancelled) {
           setState(next);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
-          setState(null);
+          if (isIAMSchemaNotReadyError(error)) {
+            setState({
+              user_id: user.uid,
+              personas: ["investor"],
+              last_active_persona: "investor",
+              investor_marketplace_opt_in: false,
+              iam_schema_ready: false,
+              mode: "compat_investor",
+            });
+          } else {
+            setState(null);
+          }
         }
       }
     }
@@ -51,8 +67,13 @@ export function PersonaSwitcher({ className }: { className?: string }) {
     return null;
   }
 
+  const riaAvailable = state.iam_schema_ready && state.personas.includes("ria");
+
   async function onSwitch(target: Persona) {
     const currentState = state;
+    if (target === "ria" && !riaAvailable) {
+      return;
+    }
     if (!user || !currentState || target === currentState.last_active_persona) {
       if (currentState && target !== currentState.last_active_persona) {
         router.push(routeForPersona(target));
@@ -94,13 +115,15 @@ export function PersonaSwitcher({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => void onSwitch("ria")}
-        disabled={switching !== null}
+        disabled={switching !== null || !riaAvailable}
         className={cn(
           "rounded-full px-2 py-1 text-[11px] font-medium transition-colors",
           state.last_active_persona === "ria"
             ? "bg-foreground text-background"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          !riaAvailable ? "cursor-not-allowed opacity-50" : undefined
         )}
+        title={riaAvailable ? undefined : "RIA setup is in progress for this environment"}
       >
         RIA
       </button>

@@ -3,13 +3,18 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
-import { RiaService, type RiaOnboardingStatus } from "@/lib/services/ria-service";
+import {
+  isIAMSchemaNotReadyError,
+  RiaService,
+  type RiaOnboardingStatus,
+} from "@/lib/services/ria-service";
 
 export default function RiaOnboardingPage() {
   const { user } = useAuth();
   const [status, setStatus] = useState<RiaOnboardingStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [iamUnavailable, setIamUnavailable] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
@@ -24,6 +29,7 @@ export default function RiaOnboardingPage() {
 
     async function loadStatus() {
       try {
+        setIamUnavailable(false);
         const idToken = await currentUser.getIdToken();
         const next = await RiaService.getOnboardingStatus(idToken);
         if (cancelled) return;
@@ -31,8 +37,11 @@ export default function RiaOnboardingPage() {
         if (next.display_name) setDisplayName(next.display_name);
         if (next.legal_name) setLegalName(next.legal_name);
         if (next.finra_crd) setFinraCrd(next.finra_crd);
-      } catch {
-        if (!cancelled) setStatus(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          setStatus(null);
+          setIamUnavailable(isIAMSchemaNotReadyError(loadError));
+        }
       }
     }
 
@@ -53,6 +62,7 @@ export default function RiaOnboardingPage() {
     setError(null);
     try {
       const idToken = await user.getIdToken();
+      setIamUnavailable(false);
       await RiaService.submitOnboarding(idToken, {
         display_name: displayName,
         legal_name: legalName || undefined,
@@ -63,6 +73,9 @@ export default function RiaOnboardingPage() {
       const refreshed = await RiaService.getOnboardingStatus(idToken);
       setStatus(refreshed);
     } catch (submitError) {
+      if (isIAMSchemaNotReadyError(submitError)) {
+        setIamUnavailable(true);
+      }
       setError(submitError instanceof Error ? submitError.message : "Failed to submit onboarding");
     } finally {
       setSaving(false);
@@ -82,43 +95,53 @@ export default function RiaOnboardingPage() {
       </div>
 
       <form className="mt-4 space-y-3" onSubmit={onSubmit}>
+        {iamUnavailable ? (
+          <p className="text-sm text-muted-foreground">
+            RIA onboarding setup is in progress for this environment.
+          </p>
+        ) : null}
         <input
           required
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
           placeholder="Display name"
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
         <input
           value={legalName}
           onChange={(event) => setLegalName(event.target.value)}
           placeholder="Legal name"
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
         <input
           value={finraCrd}
           onChange={(event) => setFinraCrd(event.target.value)}
           placeholder="FINRA CRD"
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
         <input
           value={firmName}
           onChange={(event) => setFirmName(event.target.value)}
           placeholder="Primary firm name"
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
         <textarea
           value={strategy}
           onChange={(event) => setStrategy(event.target.value)}
           placeholder="Advisory strategy summary"
           className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          disabled={iamUnavailable}
         />
 
         {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || iamUnavailable}
           className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background"
         >
           {saving ? "Submitting..." : "Submit onboarding"}

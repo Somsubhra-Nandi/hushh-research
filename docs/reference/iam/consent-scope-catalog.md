@@ -16,11 +16,9 @@ No broad cross-domain wildcard scopes are allowed by default.
 
 | Template ID | Actor Direction | Scope Set | Default Duration |
 | --- | --- | --- | --- |
-| `ria_client_read_basic` | RIA -> Investor | `attr.investor.profile.*`, `attr.investor.risk.*`, `attr.investor.goals.*` | `30d` |
-| `ria_client_portfolio_read` | RIA -> Investor | `attr.investor.portfolio.positions.*`, `attr.investor.portfolio.performance.*` | `30d` |
-| `ria_client_tax_planning` | RIA -> Investor | `attr.investor.tax.*` | `90d` |
-| `investor_ria_disclosures` | Investor -> RIA | `attr.ria.disclosures.*`, `attr.ria.fees.*` | `7d` |
-| `investor_ria_recommendation_context` | Investor -> RIA | `attr.ria.recommendations.rationale.*` | `7d` |
+| `ria_financial_summary_v1` | RIA -> Investor | `attr.financial.*`, `world_model.read` | `7d` |
+| `ria_risk_profile_v1` | RIA -> Investor | `attr.financial.risk.*`, `attr.professional.*` | `7d` |
+| `investor_advisor_disclosure_v1` | Investor -> RIA | `attr.ria.disclosures.*`, `attr.ria.strategy.*` | `7d` |
 
 ## Duration Policy
 
@@ -32,7 +30,7 @@ No broad cross-domain wildcard scopes are allowed by default.
 
 1. Actor direction must match template policy.
 2. Requested scopes must belong to allowed namespace family.
-3. Custom scope expansion requires audit metadata flag.
+3. Requested scope must be allowlisted in the template.
 4. Requests above duration cap are rejected.
 5. Unverified `ria` requester is rejected.
 

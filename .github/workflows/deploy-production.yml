@@ -53,6 +53,16 @@ jobs:
       - name: Set GCP project context
         run: gcloud config set project "${{ env.GCP_PROJECT_ID }}"
 
+      - name: Assert GCP project scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE_PROJECT="$(gcloud config get-value project 2>/dev/null)"
+          if [ "$ACTIVE_PROJECT" != "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "Refusing deploy: expected project '${{ env.GCP_PROJECT_ID }}' but got '$ACTIVE_PROJECT'."
+            exit 1
+          fi
+
       - name: Resolve deployment scope
         id: scope
         shell: bash

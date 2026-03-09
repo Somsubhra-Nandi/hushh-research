@@ -19,8 +19,8 @@ Recommended commands (from `hushh-webapp`):
 
 - Terminal A: `npm run dev`
 - Terminal B:
-  - Android: `npm run cap:android:dev:run`
-  - iOS: `npm run cap:ios:dev:run`
+  - Android: `npx cap run android --no-sync`
+  - iOS: `npx cap run ios --no-sync`
 
 Required env:
 

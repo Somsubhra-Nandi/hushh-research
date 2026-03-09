@@ -5,12 +5,17 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { ROUTES } from "@/lib/navigation/routes";
-import { RiaService, type RiaClientAccess } from "@/lib/services/ria-service";
+import {
+  isIAMSchemaNotReadyError,
+  RiaService,
+  type RiaClientAccess,
+} from "@/lib/services/ria-service";
 
 export default function RiaClientsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<RiaClientAccess[]>([]);
   const [loading, setLoading] = useState(true);
+  const [iamUnavailable, setIamUnavailable] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -24,11 +29,15 @@ export default function RiaClientsPage() {
     async function load() {
       try {
         setLoading(true);
+        setIamUnavailable(false);
         const idToken = await currentUser.getIdToken();
         const next = await RiaService.listClients(idToken);
         if (!cancelled) setItems(next);
-      } catch {
-        if (!cancelled) setItems([]);
+      } catch (error) {
+        if (!cancelled) {
+          setItems([]);
+          setIamUnavailable(isIAMSchemaNotReadyError(error));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -76,7 +85,13 @@ export default function RiaClientsPage() {
         ))}
       </section>
 
-      {!loading && items.length === 0 ? (
+      {!loading && iamUnavailable ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          RIA workspace setup is in progress for this environment. Investor flows remain available.
+        </p>
+      ) : null}
+
+      {!loading && !iamUnavailable && items.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">No client relationships yet.</p>
       ) : null}
     </main>

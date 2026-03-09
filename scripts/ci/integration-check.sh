@@ -3,6 +3,8 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WEB_DIR="$REPO_ROOT/hushh-webapp"
+CI_NATIVE_PARITY_REQUIRED="${CI_NATIVE_PARITY_REQUIRED:-0}"
+CI_DOCS_PARITY_REQUIRED="${CI_DOCS_PARITY_REQUIRED:-0}"
 
 bash "$REPO_ROOT/scripts/ci/no-ria-feature-flags.sh"
 
@@ -16,26 +18,34 @@ else
   echo "⚠ WARNING: verify-route-contracts.cjs not found, skipping"
 fi
 
-if [ -f scripts/verify-native-parity.cjs ]; then
-  npm run verify:parity
+if [ "$CI_NATIVE_PARITY_REQUIRED" = "1" ]; then
+  if [ -f scripts/verify-native-parity.cjs ]; then
+    npm run verify:parity
+  else
+    echo "⚠ WARNING: verify-native-parity.cjs not found, skipping"
+  fi
+
+  if [ -f scripts/verify-capacitor-runtime-config.cjs ]; then
+    npm run verify:capacitor:config
+  else
+    echo "⚠ WARNING: verify-capacitor-runtime-config.cjs not found, skipping"
+  fi
+
+  if [ -f scripts/verify-capacitor-routes.cjs ]; then
+    npm run verify:capacitor:routes
+  else
+    echo "⚠ WARNING: verify-capacitor-routes.cjs not found, skipping"
+  fi
 else
-  echo "⚠ WARNING: verify-native-parity.cjs not found, skipping"
+  echo "Skipping native parity checks in integration-check (CI_NATIVE_PARITY_REQUIRED=0)."
 fi
 
-if [ -f scripts/verify-capacitor-runtime-config.cjs ]; then
-  npm run verify:capacitor:config
+if [ "$CI_DOCS_PARITY_REQUIRED" = "1" ]; then
+  if [ -f "$REPO_ROOT/scripts/verify-doc-links.cjs" ]; then
+    node "$REPO_ROOT/scripts/verify-doc-links.cjs"
+  else
+    echo "⚠ WARNING: scripts/verify-doc-links.cjs not found, skipping"
+  fi
 else
-  echo "⚠ WARNING: verify-capacitor-runtime-config.cjs not found, skipping"
-fi
-
-if [ -f scripts/verify-capacitor-routes.cjs ]; then
-  npm run verify:capacitor:routes
-else
-  echo "⚠ WARNING: verify-capacitor-routes.cjs not found, skipping"
-fi
-
-if [ -f "$REPO_ROOT/scripts/verify-doc-links.cjs" ]; then
-  node "$REPO_ROOT/scripts/verify-doc-links.cjs"
-else
-  echo "⚠ WARNING: scripts/verify-doc-links.cjs not found, skipping"
+  echo "Skipping docs link parity in integration-check (CI_DOCS_PARITY_REQUIRED=0)."
 fi

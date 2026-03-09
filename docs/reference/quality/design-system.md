@@ -67,7 +67,6 @@ Use these commands from `hushh-webapp`:
 
 ```bash
 npm run verify:design-system
-npm run verify:shadcn-parity
 npm run verify:cache
 npm run verify:docs
 ```

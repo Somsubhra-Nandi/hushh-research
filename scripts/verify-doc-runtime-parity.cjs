@@ -84,6 +84,21 @@ const REQUIRED_OPERATIONAL_MARKERS = [
   },
 ];
 
+const REMOVED_SCRIPT_REFERENCES = [
+  "npm run check-lint",
+  "npm run ci:simulate",
+  "npm run verify:vault-schema",
+  "npm run sync:mobile-firebase:b64",
+  "npm run verify:shadcn-parity",
+  "npm run cap:android:dev:run",
+  "npm run cap:ios:dev:run",
+];
+
+const REMOVED_FILE_REFERENCES = [
+  "scripts/test-ci-simulation.sh",
+  "scripts/ci-simulate.sh",
+];
+
 function fail(message) {
   console.error(`ERROR: ${message}`);
   process.exitCode = 1;
@@ -187,6 +202,44 @@ function scanSpeculativeOperationalContent(files) {
     fail(`Speculative phrasing found in operational docs:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
   } else {
     ok("Operational docs contain no speculative roadmap phrasing");
+  }
+}
+
+function verifyNoRemovedScriptReferences(files) {
+  const offenders = [];
+
+  for (const file of files) {
+    const src = read(file);
+    for (const command of REMOVED_SCRIPT_REFERENCES) {
+      if (src.includes(command)) {
+        offenders.push(`${file}: stale command reference "${command}"`);
+      }
+    }
+  }
+
+  if (offenders.length) {
+    fail(`Stale script references found in docs:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
+  } else {
+    ok("Docs do not reference removed/stale package scripts");
+  }
+}
+
+function verifyNoRemovedFileReferences(files) {
+  const offenders = [];
+
+  for (const file of files) {
+    const src = read(file);
+    for (const removedPath of REMOVED_FILE_REFERENCES) {
+      if (src.includes(removedPath)) {
+        offenders.push(`${file}: stale file reference "${removedPath}"`);
+      }
+    }
+  }
+
+  if (offenders.length) {
+    fail(`Stale file references found in docs:\n${offenders.map((x) => `- ${x}`).join("\n")}`);
+  } else {
+    ok("Docs do not reference removed helper scripts");
   }
 }
 
@@ -355,6 +408,8 @@ function main() {
   scanLegacyRoutesInOperationalDocs(operationalDocs);
   scanUnresolvedMarkers(firstPartyDocs);
   scanSpeculativeOperationalContent(operationalDocs);
+  verifyNoRemovedScriptReferences(firstPartyDocs);
+  verifyNoRemovedFileReferences(firstPartyDocs);
   verifyDocPathReferences(operationalDocs);
   verifyCanonicalRouteContract(operationalDocs);
   verifyRequiredOperationalMarkers();

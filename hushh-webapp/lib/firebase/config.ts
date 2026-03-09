@@ -20,7 +20,7 @@ const firebaseMeasurementId =
     ? process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION
     : nonProdMeasurementId);
 
-// Firebase configuration - uses environment variables for production
+// Primary Firebase configuration (non-auth app behaviors).
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -29,6 +29,23 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
   ...(firebaseMeasurementId ? { measurementId: firebaseMeasurementId } : {}),
+};
+
+// Optional auth-only Firebase configuration (supports prod-auth on UAT web).
+// Falls back to primary config when auth-specific keys are not provided.
+const authFirebaseConfig = {
+  apiKey:
+    process.env.NEXT_PUBLIC_AUTH_FIREBASE_API_KEY ||
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain:
+    process.env.NEXT_PUBLIC_AUTH_FIREBASE_AUTH_DOMAIN ||
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId:
+    process.env.NEXT_PUBLIC_AUTH_FIREBASE_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  appId:
+    process.env.NEXT_PUBLIC_AUTH_FIREBASE_APP_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
 // Log warning if running with dummy or missing config (common in CI/builds)
@@ -41,7 +58,20 @@ if (
 
 // Initialize Firebase (singleton pattern for Next.js)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
+
+const shouldUseSeparateAuthApp =
+  !!authFirebaseConfig.projectId &&
+  !!authFirebaseConfig.appId &&
+  (authFirebaseConfig.projectId !== firebaseConfig.projectId ||
+    authFirebaseConfig.appId !== firebaseConfig.appId);
+
+const authApp = shouldUseSeparateAuthApp
+  ? getApps().find((candidate) => candidate.name === "auth")
+    ? getApp("auth")
+    : initializeApp(authFirebaseConfig, "auth")
+  : app;
+
+const auth = getAuth(authApp);
 
 // Store reCAPTCHA verifier
 let recaptchaVerifier: RecaptchaVerifier | null = null;

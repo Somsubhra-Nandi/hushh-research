@@ -18,6 +18,8 @@ Define environment policy for IAM changes without risking production behavior.
 2. UAT checklist must pass before production consideration.
 3. Production promotion requires explicit approval and rollback plan.
 4. Runtime behavior is environment-owned (`ENVIRONMENT` and `NEXT_PUBLIC_APP_ENV`), not RIA feature-flag-driven.
+5. IAM table activation requires explicit migration gate:
+   `python db/migrate.py --iam` and `python scripts/verify_iam_schema.py`.
 
 ## Branch and CI Rules
 
@@ -30,3 +32,4 @@ Define environment policy for IAM changes without risking production behavior.
 1. Existing investor routes remain backward compatible.
 2. New actor routes must be isolated and protected by auth + consent + scope policy.
 3. Consent audit semantics must remain append-only and traceable.
+4. If IAM schema is not ready, investor flows stay operational via compatibility mode.

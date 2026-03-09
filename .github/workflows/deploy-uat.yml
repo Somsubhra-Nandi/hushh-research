@@ -37,13 +37,23 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY_UAT != '' && secrets.GCP_SA_KEY_UAT || secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_UAT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Set GCP project context
         run: gcloud config set project "${{ env.GCP_PROJECT_ID }}"
+
+      - name: Assert GCP project scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE_PROJECT="$(gcloud config get-value project 2>/dev/null)"
+          if [ "$ACTIVE_PROJECT" != "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "Refusing deploy: expected project '${{ env.GCP_PROJECT_ID }}' but got '$ACTIVE_PROJECT'."
+            exit 1
+          fi
 
       - name: Resolve deployment scope
         id: scope
@@ -121,11 +131,48 @@ jobs:
       - name: Update backend CORS allowlist to UAT frontend
         if: steps.scope.outputs.deploy_frontend == 'true'
         run: |
-          FRONTEND_URL="${{ steps.frontend-url.outputs.url }}"
+          RUN_APP_FRONTEND_URL="${{ steps.frontend-url.outputs.url }}"
+          CUSTOM_FRONTEND_URL="$(gcloud secrets versions access latest \
+            --secret=FRONTEND_URL \
+            --project="${{ env.GCP_PROJECT_ID }}")"
+          BACKEND_SERVICE_JSON="$(gcloud run services describe "${{ env.BACKEND_SERVICE }}" \
+            --project="${{ env.GCP_PROJECT_ID }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --format=json)"
+          EXISTING_CORS="$(printf '%s' "${BACKEND_SERVICE_JSON}" | jq -r \
+            '.spec.template.spec.containers[0].env[]? | select(.name=="CORS_ALLOWED_ORIGINS") | .value' | head -n1)"
+
+          MERGED_CORS="$(python3 - <<'PY' "${EXISTING_CORS}" "${CUSTOM_FRONTEND_URL}" "${RUN_APP_FRONTEND_URL}"
+          import sys
+          from urllib.parse import urlparse
+
+          def normalize(origin: str) -> str:
+              raw = (origin or "").strip()
+              if not raw:
+                  return ""
+              parsed = urlparse(raw)
+              if parsed.scheme and parsed.netloc:
+                  return f"{parsed.scheme}://{parsed.netloc}"
+              return ""
+
+          seen = set()
+          ordered = []
+          for arg in sys.argv[1:]:
+              for item in (arg or "").split(","):
+                  origin = normalize(item)
+                  if origin and origin not in seen:
+                      seen.add(origin)
+                      ordered.append(origin)
+
+          print(",".join(ordered))
+          PY
+          )"
+
+          # Use a custom delimiter so comma-separated origins are treated as one env var value.
           gcloud run services update "${{ env.BACKEND_SERVICE }}" \
             --project="${{ env.GCP_PROJECT_ID }}" \
             --region="${{ env.GCP_REGION }}" \
-            --update-env-vars="CORS_ALLOWED_ORIGINS=${FRONTEND_URL}"
+            --update-env-vars "^##^CORS_ALLOWED_ORIGINS=${MERGED_CORS}"
 
       - name: Retain latest frontend revisions
         if: steps.scope.outputs.deploy_frontend == 'true'

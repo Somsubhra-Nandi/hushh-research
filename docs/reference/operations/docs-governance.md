@@ -30,6 +30,13 @@ Define one durable documentation model across:
 
 Both gates must pass in CI before merge.
 
+CI gate policy:
+
+1. Keep a minimal blocking set (secret scan, web, protocol, integration).
+2. Treat docs parity and subtree drift as advisory unless explicitly promoted.
+3. Do not add a new CI/parity script unless it replaces or consolidates an existing script in the same PR.
+4. Every new CI/helper script must declare owner team (`frontend`, `backend`, or `platform`) and get owner approval.
+
 ## One-Time Rules
 
 1. If a route/component/API is deleted, remove doc references in the same change.

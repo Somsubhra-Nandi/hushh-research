@@ -55,6 +55,8 @@ __pycache__/
 env/
 venv/
 .venv/
+!scripts/env/
+!scripts/env/*.sh
 Pipfile.lock
 .ruff_cache/
 .mypy_cache/

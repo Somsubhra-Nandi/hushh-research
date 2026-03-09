@@ -22,6 +22,7 @@ import { useTheme } from "next-themes";
 import { useVault } from "@/lib/vault/vault-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KaiPreferencesSheet } from "@/components/kai/onboarding/KaiPreferencesSheet";
+import { PersonaSwitcher } from "@/components/iam/persona-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useStepProgress } from "@/lib/progress/step-progress-context";
@@ -525,6 +526,9 @@ export default function ProfilePage() {
         <div>
           <h1 className="text-2xl font-bold">{user?.displayName || "User"}</h1>
           <p className="text-muted-foreground text-sm">{user?.email}</p>
+        </div>
+        <div className="flex justify-center">
+          <PersonaSwitcher />
         </div>
       </div>
 

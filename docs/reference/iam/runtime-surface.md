@@ -13,6 +13,18 @@ Describe the current implemented Investor + RIA runtime surface (backend + web +
 
 Compatibility fallback (temporary): frontend still accepts `NEXT_PUBLIC_OBSERVABILITY_ENV` and `NEXT_PUBLIC_ENVIRONMENT_MODE` if `NEXT_PUBLIC_APP_ENV` is unset.
 
+## IAM Schema Compatibility Mode
+
+1. IAM activation is migration-gated, not startup-mutated.
+2. Run explicit commands:
+   `python db/migrate.py --iam`
+   `python scripts/verify_iam_schema.py`
+3. If IAM schema is missing:
+4. `GET /api/iam/persona` returns `200` investor-safe payload with:
+   `iam_schema_ready=false`, `mode="compat_investor"`.
+5. `POST /api/iam/persona/switch` allows `investor` and returns `503 IAM_SCHEMA_NOT_READY` for `ria`.
+6. `/api/ria/*` and `/api/marketplace/*` return `503` with code `IAM_SCHEMA_NOT_READY`.
+
 ## Route Families
 
 1. Investor routes remain under existing `/kai/*`, `/consents`, `/profile`.
@@ -57,6 +69,7 @@ Compatibility fallback (temporary): frontend still accepts `NEXT_PUBLIC_OBSERVAB
 6. `advisor_investor_relationships`
 7. `consent_scope_templates`
 8. `marketplace_public_profiles`
+9. `runtime_persona_state`
 
 ## Consent Integration
 

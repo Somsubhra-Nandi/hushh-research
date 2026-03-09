@@ -1,17 +1,18 @@
 // lib/config.ts
 
+import { resolveAppEnvironment } from "./app-env";
+
 /**
  * Environment Configuration
  *
- * ENVIRONMENT_MODE controls consent validation behavior:
- * - "development": Auto-grant consent for smoother testing
- * - "production": Full consent validation required
+ * Runtime behavior is keyed off canonical frontend environment identity:
+ * NEXT_PUBLIC_APP_ENV=development|uat|production.
  *
- * Matches consent-protocol MCP server PRODUCTION_MODE pattern.
+ * Legacy compatibility fallback is preserved inside resolveAppEnvironment()
+ * for NEXT_PUBLIC_OBSERVABILITY_ENV and NEXT_PUBLIC_ENVIRONMENT_MODE.
  */
 
-const getEnvironmentMode = () =>
-  process.env.ENVIRONMENT_MODE || process.env.NODE_ENV || "production";
+const getEnvironmentMode = () => resolveAppEnvironment();
 
 export const ENVIRONMENT_MODE = getEnvironmentMode();
 

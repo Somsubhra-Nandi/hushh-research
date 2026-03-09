@@ -57,7 +57,6 @@ import { UserLocalStateService } from "@/lib/services/user-local-state-service";
 import { DashboardRouteTabs } from "@/components/kai/layout/dashboard-route-tabs";
 import { resolveTopShellMetrics } from "@/components/app-ui/top-shell-metrics";
 import { useKaiBottomChromeVisibility } from "@/lib/navigation/kai-bottom-chrome-visibility";
-import { PersonaSwitcher } from "@/components/iam/persona-switcher";
 
 /* ── Re-exports (backward compat) ─────────────────────────────────── */
 export {
@@ -157,7 +156,6 @@ export function TopAppBar({ className }: TopAppBarProps) {
             </div>
 
             <div className="flex min-w-0 items-center justify-center px-2">
-              <PersonaSwitcher className="mr-2" />
               {centerTitle ? (
                 <span className="truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
                   {centerTitle}
