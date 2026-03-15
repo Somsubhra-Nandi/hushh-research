@@ -73,7 +73,7 @@ export function RiskProfileView({
           <CardTitle className="text-2xl">Set Your Risk Profile</CardTitle>
           <CardDescription>
             This helps Kai tailor recommendations to your investment style.
-            You can change this anytime in settings.
+            You can change this anytime from your profile.
           </CardDescription>
         </CardHeader>
 

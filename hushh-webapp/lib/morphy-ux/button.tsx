@@ -110,6 +110,72 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ? "text-[var(--morphy-primary-start)]"
         : "text-inherit";
 
+    const content = (
+      <>
+        <span className="relative z-0 inline-flex items-center justify-center text-inherit">
+          {IconComponent ? (
+            <span
+              className={cn(
+                "mr-2.5 flex items-center justify-center rounded-lg border",
+                getIconBoxSize(),
+                iconBoxClass
+              )}
+            >
+              <IconComponent
+                className={cn(getIconSize(), iconColorClass)}
+                weight={icon?.weight || iconWeight}
+              />
+            </span>
+          ) : null}
+          {children}
+        </span>
+        {shouldShowRipple ? (
+          <MaterialRipple
+            variant={variant}
+            effect={effect}
+            disabled={isDisabled}
+            className="z-10"
+          />
+        ) : null}
+      </>
+    );
+
+    if (asChild) {
+      const child = React.Children.only(children) as React.ReactElement<{
+        children?: React.ReactNode;
+        className?: string;
+      }>;
+
+      return (
+        <StockButton
+          ref={ref}
+          asChild
+          variant={stockVariant}
+          size={stockSize}
+          disabled={isDisabled}
+          data-loading={loading || undefined}
+          aria-busy={loading || undefined}
+          className={cn(
+            "relative overflow-hidden transition-[border-color,box-shadow,background-color] duration-200",
+            variantStyles,
+            effect === "fill" && variant !== "none" && variant !== "link"
+              ? "border border-transparent"
+              : "border-transparent",
+            isXl ? "h-16 px-12 text-lg" : "",
+            fullWidth ? "w-full" : "",
+            loading ? "cursor-wait" : "",
+            className
+          )}
+          {...props}
+        >
+          {React.cloneElement(child, {
+            className: cn("relative overflow-hidden", child.props.className),
+            children: content,
+          })}
+        </StockButton>
+      );
+    }
+
     return (
       <StockButton
         ref={ref}
@@ -132,25 +198,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
         {...props}
       >
-        <span className="relative z-0 inline-flex items-center justify-center text-inherit">
-          {IconComponent ? (
-            <span className={cn("mr-2.5 flex items-center justify-center rounded-lg border", getIconBoxSize(), iconBoxClass)}>
-              <IconComponent
-                className={cn(getIconSize(), iconColorClass)}
-                weight={icon?.weight || iconWeight}
-              />
-            </span>
-          ) : null}
-          {children}
-        </span>
-        {shouldShowRipple ? (
-          <MaterialRipple
-            variant={variant}
-            effect={effect}
-            disabled={isDisabled}
-            className="z-10"
-          />
-        ) : null}
+        {content}
       </StockButton>
     );
   }

@@ -23,7 +23,7 @@ import { usePendingConsentCount } from "@/components/consent/notification-provid
 const domains = [
   {
     name: "Kai",
-    href: "/kai/dashboard",
+    href: "/kai/portfolio",
     icon: TrendingUp,
     status: "active",
   },

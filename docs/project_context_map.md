@@ -21,7 +21,7 @@ These are invariants. If a change violates one, it is the wrong change.
 3. **Tri-Flow (Web + iOS + Android)**
    - Every data feature must work on Web, iOS, and Android (or be explicitly marked platform-specific).
    - Components do not call `fetch()`; they call the service layer (`hushh-webapp/lib/services/*`).
-   - Keep route governance in sync (see `docs/reference/route_contracts.md`).
+   - Keep route governance in sync (see `docs/reference/architecture/route-contracts.md`).
 4. **Minimal Browser Storage**
    - Sensitive credentials and vault keys stay memory-only (React context / Zustand).
    - Only explicitly-approved non-sensitive cache/settings may use browser storage.
@@ -36,7 +36,7 @@ These are invariants. If a change violates one, it is the wrong change.
   - Routes: `consent-protocol/api/routes/`
   - Services (DB access): `consent-protocol/hushh_mcp/services/`
   - Agents/tools/operons: `consent-protocol/hushh_mcp/agents/`, `consent-protocol/hushh_mcp/operons/`, `consent-protocol/hushh_mcp/hushh_adk/`
-- `docs/`: system reference, guides, vision, and audits (start at `docs/readme.md`)
+- `docs/`: system reference, guides, vision, and audits (start at `docs/README.md`)
 - `deploy/`: Cloud Build/Cloud Run + App Store deployment docs
 - `scripts/`: local CI and repo tooling
 
@@ -48,8 +48,12 @@ The frontend route split is intentional and must remain stable unless route cont
 - `/login`: auth-only surface (Google/Apple + disabled phone)
 - `/kai/onboarding`: canonical onboarding questionnaire + persona
 - `/kai/import`: portfolio connection/import flow and vault introduction moment
+- `/kai/plaid/oauth/return`: Plaid OAuth callback/resume surface
 - `/kai`: signed-in live market home (token-gated, cache-first, degraded labels when providers are partial)
-- `/kai/dashboard`: portfolio analytics/dashboard (requires data, redirects to `/kai/import` when empty)
+- `/kai/portfolio`: portfolio analytics/dashboard (requires data, redirects to `/kai/import` when empty)
+- `/ria/*`: advisor workflow tree under the same product shell
+- `/marketplace`: shared discovery surface for investor + RIA
+- `/consents`: shared workflow hub for incoming/outgoing requests, grants, history, invites, and future MCP/developer access
 
 Guard invariants:
 - Incomplete onboarding cannot navigate to non-onboarding `/kai` routes.
@@ -71,9 +75,9 @@ Guard invariants:
 - Native: React component -> service -> Capacitor plugin (Swift/Kotlin) -> FastAPI
 - Backend: route -> service (validates consent) -> DB client -> Postgres (Supabase)
 
-System overview: `docs/reference/architecture.md`
-Kai interconnection map: `docs/reference/kai-interconnection-map.md`
-Kai blast radius matrix: `docs/reference/kai-change-impact-matrix.md`
+System overview: `docs/reference/architecture/architecture.md`
+Kai interconnection map: `docs/reference/kai/kai-interconnection-map.md`
+Kai blast radius matrix: `docs/reference/kai/kai-change-impact-matrix.md`
 
 ## Dynamic Domains & Scopes (World Model)
 
@@ -86,6 +90,20 @@ World-model storage is encrypted and domain-driven.
 Primary references:
 - `consent-protocol/docs/reference/world-model.md`
 - `consent-protocol/docs/reference/consent-protocol.md`
+
+Storage boundary:
+- Relational tables own identity, consent workflow, compliance, public discovery, and query-heavy shared market datasets.
+- `world_model_data` stores encrypted private user content only.
+- `world_model_index_v2` stores sanitized metadata only.
+- The same boundary applies to both Investor and RIA personas. RIA does not introduce a second private data plane.
+
+Persona state:
+- `actor_profiles.last_active_persona` is the canonical persisted persona state.
+- `runtime_persona_state` is transitional setup continuity only and should not become a second long-term source of truth.
+
+Shared market datasets:
+- `renaissance_*` tables remain the current system-curated benchmark dataset.
+- Future RIA stock templates should land behind a generic security-list abstraction, not by cloning Renaissance tables per advisor.
 
 Current onboarding/tour domain usage:
 - `kai_profile` (encrypted) is canonical for onboarding completion and nav-tour completion/skips.
@@ -101,15 +119,15 @@ Minimum definition of done:
 - Tri-flow implemented (or explicitly N/A) and tested on all platforms
 - Consent token validated at entry points
 - BYOK preserved (no plaintext-at-rest; if custom key is skipped, generate a secure default key)
-- API documented (`docs/reference/api-contracts.md`)
+- API documented (`docs/reference/architecture/api-contracts.md`)
 - Route contracts updated (`hushh-webapp/route-contracts.json` + `cd hushh-webapp && npm run verify:routes`)
-- PR impact map included (`docs/reference/pr-impact-checklist.md`)
+- PR impact map included (`docs/reference/quality/pr-impact-checklist.md`)
 - Tests updated (`TESTING.md`)
 
 ## Trust/Compliance Reality Check
 
 Compliance and readiness tracking references:
 - `consent-protocol/COMPLIANCE_PROGRESS.md`
-- `docs/reference/kai-runtime-smoke-checklist.md`
+- `docs/reference/kai/kai-runtime-smoke-checklist.md`
 
 If you're shipping anything investor-facing, read it and close critical findings first.

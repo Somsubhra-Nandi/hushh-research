@@ -2,28 +2,93 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Launch Chrome for Debug",
+      "label": "Profile: Local",
       "type": "shell",
-      "command": ".\\chrome-launch.ps1 -WorkspaceRoot '${workspaceFolder}'; Start-Sleep -s 2",
+      "command": "make profile-use PROFILE=local-uatdb",
       "options": {
-        "cwd": "${workspaceFolder}/.vscode"
+        "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "never",
-        "panel": "shared"
-      }
-    },
-    {
-      "label": "Kill Next.js Port",
-      "type": "shell",
-      "command": "Stop-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess -Force -ErrorAction SilentlyContinue",
       "problemMatcher": []
     },
     {
-      "label": "Kill FastAPI Port",
+      "label": "Profile: UAT",
       "type": "shell",
-      "command": "Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess -Force -ErrorAction SilentlyContinue",
+      "command": "make profile-use PROFILE=uat-remote",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Profile: Production",
+      "type": "shell",
+      "command": "make profile-use PROFILE=prod-remote",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Runtime: Local Stack",
+      "type": "shell",
+      "command": "make local",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Runtime: UAT Stack",
+      "type": "shell",
+      "command": "make uat",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Runtime: Production Stack",
+      "type": "shell",
+      "command": "make prod",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Runtime: Local Web",
+      "type": "shell",
+      "command": "make local-web",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Runtime: Local Backend",
+      "type": "shell",
+      "command": "make local-backend",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Native: Android Local",
+      "type": "shell",
+      "command": "cd hushh-webapp && npm run cap:android:run -- --profile local-uatdb --fresh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Native: iOS Local",
+      "type": "shell",
+      "command": "cd hushh-webapp && npm run cap:ios:run -- --profile local-uatdb --fresh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     }
   ]

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
 
 import { HushhLoader } from "@/components/app-ui/hushh-loader";
 import { KaiPersonaScreen } from "@/components/kai/onboarding/KaiPersonaScreen";
 import { KaiPreferencesWizard } from "@/components/kai/onboarding/KaiPreferencesWizard";
+import { KaiInviteHandshake } from "@/components/kai/onboarding/kai-invite-handshake";
 import {
   KaiProfileService,
   computeRiskScore,
@@ -26,12 +27,16 @@ import { PreVaultUserStateService } from "@/lib/services/pre-vault-user-state-se
 import { VaultService } from "@/lib/services/vault-service";
 import { useAuth } from "@/hooks/use-auth";
 import { useVault } from "@/lib/vault/vault-context";
+import { usePersonaState } from "@/lib/persona/persona-context";
+import { ROUTES } from "@/lib/navigation/routes";
 import {
   setOnboardingFlowActiveCookie,
   setOnboardingRequiredCookie,
 } from "@/lib/services/onboarding-route-cookie";
+import { trackEvent } from "@/lib/observability/client";
+import { MaterialRipple } from "@/lib/morphy-ux/material-ripple";
 
-type Stage = "loading" | "wizard" | "persona";
+type Stage = "loading" | "entry" | "wizard" | "persona";
 type OnboardingSource = "pre_vault" | "vault";
 
 type WizardAnswers = {
@@ -64,8 +69,10 @@ function computePersona(answers: WizardAnswers, explicit?: RiskProfile | null): 
 
 export default function KaiOnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { vaultKey, vaultOwnerToken, isVaultUnlocked } = useVault();
+  const { activePersona, loading: personaLoading, riaCapability, switchPersona } = usePersonaState();
 
   const [source, setSource] = useState<OnboardingSource | null>(null);
   const [stage, setStage] = useState<Stage>("loading");
@@ -74,15 +81,22 @@ export default function KaiOnboardingPage() {
   const [profile, setProfile] = useState<KaiProfileV2 | null>(null);
   const [preVaultState, setPreVaultState] = useState<PreVaultOnboardingState | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
+  const onboardingStartedRef = useRef(false);
+  const inviteToken = searchParams.get("invite");
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      if (authLoading) return;
+      if (authLoading || personaLoading) return;
 
       if (!user) {
         router.replace("/login?redirect=%2Fkai%2Fonboarding");
+        return;
+      }
+
+      if (inviteToken) {
+        setLoadError(null);
         return;
       }
 
@@ -111,9 +125,13 @@ export default function KaiOnboardingPage() {
           const pending = await PreVaultOnboardingService.load(user.uid);
           if (cancelled) return;
           setPreVaultState(pending);
+          if (activePersona === "ria" && riaCapability !== "disabled") {
+            router.replace(ROUTES.RIA_HOME);
+            return;
+          }
           // Always start from the questionnaire flow on reload until onboarding is completed.
           // We keep draft answers, but do not auto-jump to persona.
-          setStage("wizard");
+          setStage(pending ? "wizard" : "entry");
           return;
         }
 
@@ -157,7 +175,20 @@ export default function KaiOnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user, user?.uid, isVaultUnlocked, vaultKey, vaultOwnerToken, router, retryNonce]);
+  }, [
+    authLoading,
+    activePersona,
+    inviteToken,
+    personaLoading,
+    riaCapability,
+    user,
+    user?.uid,
+    isVaultUnlocked,
+    vaultKey,
+    vaultOwnerToken,
+    router,
+    retryNonce,
+  ]);
 
   const wizardAnswers: WizardAnswers = useMemo(() => {
     if (source === "vault") return profileToAnswers(profile);
@@ -171,12 +202,24 @@ export default function KaiOnboardingPage() {
     return computePersona(wizardAnswers, preVaultState?.risk_profile ?? null);
   }, [source, wizardAnswers, profile?.preferences.risk_profile, preVaultState?.risk_profile]);
 
+  useEffect(() => {
+    if (!source || stage !== "wizard" || onboardingStartedRef.current) return;
+    onboardingStartedRef.current = true;
+    trackEvent("onboarding_started", {
+      source,
+    });
+  }, [source, stage]);
+
   if (authLoading) {
     return <HushhLoader label="Loading onboarding..." variant="fullscreen" />;
   }
 
   if (!user) {
     return <HushhLoader label="Redirecting..." variant="fullscreen" />;
+  }
+
+  if (inviteToken) {
+    return <KaiInviteHandshake inviteToken={inviteToken} />;
   }
 
   if (loadError) {
@@ -198,6 +241,114 @@ export default function KaiOnboardingPage() {
 
   if (stage === "loading" || !source) {
     return <HushhLoader label="Loading onboarding..." variant="fullscreen" />;
+  }
+
+  if (stage === "entry") {
+    return (
+      <div className="mx-auto flex min-h-[calc(100dvh-var(--top-shell-reserved-height,0px))] w-full max-w-4xl items-start px-5 pb-8 pt-[calc(var(--top-shell-reserved-height,0px)+16px)] sm:pt-[calc(var(--top-shell-reserved-height,0px)+20px)]">
+        <div className="w-full space-y-6">
+          <div className="text-center space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">
+              Choose your starting path
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              Start as an investor or set up RIA first
+            </h1>
+            <p className="mx-auto max-w-2xl text-sm leading-7 text-muted-foreground">
+              You can add the other profile later from Profile. This choice only sets the first
+              workflow we open right now.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={async () => {
+                if (saving) return;
+                try {
+                  setSaving(true);
+                  const nextState =
+                    preVaultState || (await PreVaultOnboardingService.saveDraft(user.uid, {}));
+                  setPreVaultState(nextState);
+                  setStage("wizard");
+                  trackEvent("onboarding_step_completed", {
+                    action: "persona",
+                    result: "success",
+                  });
+                } catch (error) {
+                  console.error("[KaiOnboardingPage] Failed to start investor onboarding:", error);
+                  trackEvent("onboarding_step_completed", {
+                    action: "persona",
+                    result: "error",
+                  });
+                  toast.error("Couldn't start investor onboarding. Please retry.");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="relative overflow-hidden rounded-[28px] border border-border bg-card/80 p-6 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-card"
+            >
+              <MaterialRipple variant="blue" effect="fade" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">
+                Investor
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-foreground">
+                Build your Kai profile first
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                Answer your risk and preference questions, then connect accounts and start using
+                Kai.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              disabled={saving || riaCapability === "disabled"}
+              onClick={async () => {
+                if (saving || riaCapability === "disabled") return;
+                try {
+                  setSaving(true);
+                  await switchPersona("ria");
+                  trackEvent("onboarding_step_completed", {
+                    action: "persona",
+                    result: "success",
+                  });
+                  router.replace(ROUTES.RIA_HOME);
+                } catch (error) {
+                  console.error("[KaiOnboardingPage] Failed to enter RIA setup:", error);
+                  trackEvent("onboarding_step_completed", {
+                    action: "persona",
+                    result: "error",
+                  });
+                  toast.error("Couldn't enter RIA setup. Please retry.");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="relative overflow-hidden rounded-[28px] border border-border bg-card/80 p-6 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <MaterialRipple variant="blue" effect="fade" disabled={saving || riaCapability === "disabled"} />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">
+                RIA
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-foreground">
+                Verify the advisor workspace
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                Set up your advisor identity, verification, firm details, and marketplace trust
+                profile before sending consent requests.
+              </p>
+              {riaCapability === "disabled" ? (
+                <p className="mt-4 text-xs font-medium text-muted-foreground">
+                  RIA mode is unavailable in this environment until IAM is active.
+                </p>
+              ) : null}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (stage === "persona") {
@@ -250,9 +401,17 @@ export default function KaiOnboardingPage() {
             toast.success("Preferences saved. Next step: connect your portfolio or Plaid.");
             setOnboardingRequiredCookie(false);
             setOnboardingFlowActiveCookie(true);
+            trackEvent("onboarding_completed", {
+              action: "complete",
+              result: "success",
+            });
             router.replace("/kai/import");
           } catch (error) {
             console.error("[KaiOnboardingPage] Failed to finalize onboarding:", error);
+            trackEvent("onboarding_completed", {
+              action: "complete",
+              result: "error",
+            });
             toast.error("Couldn't complete onboarding. Please retry.");
           } finally {
             setSaving(false);
@@ -316,9 +475,17 @@ export default function KaiOnboardingPage() {
           toast.info("Preferences skipped. You can edit them later.");
           setOnboardingRequiredCookie(false);
           setOnboardingFlowActiveCookie(false);
+          trackEvent("onboarding_completed", {
+            action: "skip",
+            result: "success",
+          });
           router.replace("/kai");
         } catch (error) {
           console.error("[KaiOnboardingPage] Skip failed:", error);
+          trackEvent("onboarding_completed", {
+            action: "skip",
+            result: "error",
+          });
           toast.error("Couldn't skip onboarding. Please retry.");
         } finally {
           setSaving(false);
@@ -360,8 +527,16 @@ export default function KaiOnboardingPage() {
           }
 
           setStage("persona");
+          trackEvent("onboarding_step_completed", {
+            action: "preferences",
+            result: "success",
+          });
         } catch (error) {
           console.error("[KaiOnboardingPage] Failed to save preferences:", error);
+          trackEvent("onboarding_step_completed", {
+            action: "preferences",
+            result: "error",
+          });
           toast.error("Couldn't save preferences. Please retry.");
         } finally {
           setSaving(false);

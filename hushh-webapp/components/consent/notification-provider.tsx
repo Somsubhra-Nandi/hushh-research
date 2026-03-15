@@ -14,17 +14,29 @@
  * - NO interval-based polling anywhere
  */
 
-import { useEffect, useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Icon } from "@/lib/morphy-ux/ui";
 import { useVault } from "@/lib/vault/vault-context";
 import { useConsentActions, type PendingConsent } from "@/lib/consent";
 import { ApiService } from "@/lib/services/api-service";
 import { useAuth } from "@/hooks/use-auth";
-import { initializeFCM, FCM_MESSAGE_EVENT } from "@/lib/notifications";
-import { getAuth } from "firebase/auth";
+import {
+  initializeFCM,
+  FCM_MESSAGE_EVENT,
+  type FCMInitStatus,
+} from "@/lib/notifications";
 import { CacheService, CACHE_KEYS, CACHE_TTL } from "@/lib/services/cache-service";
+import { parseSSEBlocks } from "@/lib/streaming/sse-parser";
 
 // ============================================================================
 // Helpers
@@ -58,6 +70,7 @@ function consentFromFCMPayload(
     scope: data.scope || "",
     scopeDescription: data.scope_description || undefined,
     requestedAt: Date.now(),
+    bundleId: data.bundle_id || undefined,
   };
 }
 
@@ -92,6 +105,24 @@ async function loadPendingConsentsOnce(
   return request;
 }
 
+export type ConsentNotificationDeliveryMode =
+  | "push_active"
+  | "push_blocked"
+  | "push_failed_fallback_active"
+  | "inbox_only";
+
+type ConsentNotificationStateValue = {
+  deliveryMode: ConsentNotificationDeliveryMode;
+  deliveryDetail: string | null;
+  pendingCount: number;
+};
+
+const ConsentNotificationStateContext = createContext<ConsentNotificationStateValue>({
+  deliveryMode: "inbox_only",
+  deliveryDetail: null,
+  pendingCount: 0,
+});
+
 // ============================================================================
 // Main Provider
 // ============================================================================
@@ -102,7 +133,11 @@ export function ConsentNotificationProvider({
   children: React.ReactNode;
 }) {
   const { isVaultUnlocked, getVaultOwnerToken } = useVault();
-  const [, setPendingCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [deliveryMode, setDeliveryMode] =
+    useState<ConsentNotificationDeliveryMode>("inbox_only");
+  const [deliveryDetail, setDeliveryDetail] = useState<string | null>(null);
+  const [fcmInitStatus, setFcmInitStatus] = useState<FCMInitStatus | null>(null);
   const { user } = useAuth();
   const fcmInitializedRef = useRef(false);
   // Track which request IDs we've already toasted this session
@@ -120,13 +155,15 @@ export function ConsentNotificationProvider({
   // Show interactive toast for a consent request
   const showConsentToast = useCallback(
     (consent: PendingConsent) => {
+      const toastKey = consent.bundleId || consent.id;
       // De-duplicate: don't show the same toast twice in one session
-      if (toastedIdsRef.current.has(consent.id)) return;
-      toastedIdsRef.current.add(consent.id);
+      if (toastedIdsRef.current.has(toastKey)) return;
+      toastedIdsRef.current.add(toastKey);
 
       const { label, emoji } = consent.scopeDescription
         ? { label: consent.scopeDescription, emoji: "📋" }
         : formatScope(consent.scope);
+      const isBundle = Boolean(consent.bundleId);
 
       toast(
         <div className="flex flex-col gap-3">
@@ -136,29 +173,44 @@ export function ConsentNotificationProvider({
             <div>
               <p className="font-semibold text-sm">{consent.developer}</p>
               <p className="text-xs text-muted-foreground">
-                Wants access to your {label}
+                {isBundle
+                  ? "Requested a bundled portfolio review. Open your consent center to choose durations and approve."
+                  : `Wants access to your ${label}`}
               </p>
             </div>
           </div>
 
           {/* Action buttons */}
           <div className="flex gap-2 justify-center">
-            <button
-              onClick={() => handleApprove(consent)}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Icon icon={Check} size="sm" /> Approve
-            </button>
-            <button
-              onClick={() => handleDeny(consent.id)}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
-            >
-              <Icon icon={X} size="sm" /> Deny
-            </button>
+            {isBundle ? (
+              <button
+                onClick={() => {
+                  window.location.href = "/consents?view=pending";
+                }}
+                className="px-4 py-2 bg-foreground text-background text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+              >
+                Review request
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleApprove(consent)}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Icon icon={Check} size="sm" /> Approve
+                </button>
+                <button
+                  onClick={() => handleDeny(consent.id)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+                >
+                  <Icon icon={X} size="sm" /> Deny
+                </button>
+              </>
+            )}
           </div>
         </div>,
         {
-          id: consent.id,
+          id: toastKey,
           duration: Infinity,
           position: "top-center",
         }
@@ -167,30 +219,155 @@ export function ConsentNotificationProvider({
     [handleApprove, handleDeny]
   );
 
-  // Initialize FCM when user logs in (stable dependency: user?.uid)
+  // Initialize FCM when user logs in (stable dependency: user?.uid).
+  // Important: use the authenticated user object from our auth context.
+  // This app can sign into a dedicated Firebase auth app, so `getAuth().currentUser`
+  // may be null even while `useAuth()` is correctly authenticated.
   useEffect(() => {
-    if (fcmInitializedRef.current) return;
-
-    const uid = user?.uid;
-    if (!uid) return;
-
-    fcmInitializedRef.current = true;
-
-    // Get fresh currentUser inside the effect to avoid stale object reference
-    const currentUser = getAuth().currentUser;
-    if (!currentUser) {
+    if (!user) {
       fcmInitializedRef.current = false;
+      setFcmInitStatus(null);
+      setDeliveryMode("inbox_only");
+      setDeliveryDetail(null);
+      setPendingCount(0);
       return;
     }
+    if (fcmInitializedRef.current) return;
 
-    currentUser
+    let cancelled = false;
+    fcmInitializedRef.current = true;
+
+    user
       .getIdToken()
-      .then((idToken) => initializeFCM(uid, idToken))
+      .then(async (idToken) => {
+        const result = await initializeFCM(user.uid, idToken);
+        if (cancelled) return;
+        setFcmInitStatus(result.status);
+        setDeliveryDetail(result.detail ?? null);
+        if (result.status === "push_active") {
+          setDeliveryMode("push_active");
+        } else if (result.status === "push_blocked") {
+          setDeliveryMode("push_blocked");
+        } else {
+          setDeliveryMode("inbox_only");
+        }
+        console.info("[NotificationProvider] Delivery init:", result);
+      })
       .catch((err) => {
+        if (cancelled) return;
         console.error("[NotificationProvider] FCM initialization failed:", err);
         fcmInitializedRef.current = false;
+        setFcmInitStatus("push_failed");
+        setDeliveryMode("inbox_only");
+        setDeliveryDetail(err instanceof Error ? err.message : "fcm_init_failed");
       });
-  }, [user?.uid]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || Capacitor.isNativePlatform()) return;
+    const initStatus = fcmInitStatus;
+    if (!initStatus || initStatus === "push_active") return;
+
+    let cancelled = false;
+    let reconnectTimer: number | null = null;
+    const abortController = new AbortController();
+
+    const connect = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        console.info("[NotificationProvider] Opening consent SSE fallback...");
+        const response = await ApiService.apiFetchStream(
+          `/api/consent/events/${encodeURIComponent(user.uid)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
+            signal: abortController.signal,
+            cache: "no-store",
+          }
+        );
+
+        if (!response.ok || !response.body) {
+          const detail = await response.text().catch(() => "");
+          throw new Error(detail || `consent_sse_${response.status}`);
+        }
+
+        if (cancelled) return;
+
+        setDeliveryMode(
+          initStatus === "push_blocked"
+            ? "push_blocked"
+            : "push_failed_fallback_active"
+        );
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let remainder = "";
+
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const parsed = parseSSEBlocks(
+            decoder.decode(value, { stream: true }),
+            remainder
+          );
+          remainder = parsed.remainder;
+
+          for (const frame of parsed.events) {
+            if (frame.event !== "consent_update") continue;
+            try {
+              const payload = JSON.parse(frame.data) as Record<string, string>;
+              const type =
+                payload.action === "REQUESTED"
+                  ? "consent_request"
+                  : "consent_resolved";
+              window.dispatchEvent(
+                new CustomEvent(FCM_MESSAGE_EVENT, {
+                  detail: {
+                    data: {
+                      ...payload,
+                      type,
+                    },
+                  },
+                })
+              );
+            } catch (error) {
+              console.warn("[NotificationProvider] Failed to parse SSE payload:", error);
+            }
+          }
+        }
+
+        if (!cancelled) {
+          throw new Error("consent_sse_stream_closed");
+        }
+      } catch (error) {
+        if (cancelled || abortController.signal.aborted) return;
+        console.warn("[NotificationProvider] Consent SSE fallback failed:", error);
+        setDeliveryMode("inbox_only");
+        setDeliveryDetail(
+          error instanceof Error ? error.message : "consent_sse_failed"
+        );
+        reconnectTimer = window.setTimeout(() => {
+          void connect();
+        }, 3000);
+      }
+    };
+
+    void connect();
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+    };
+  }, [fcmInitStatus, user]);
 
   // Listen for FCM messages -- extract consent data directly from payload (no HTTP fetch)
   useEffect(() => {
@@ -216,9 +393,10 @@ export function ConsentNotificationProvider({
       } else if (msgType === "consent_resolved") {
         // A consent was resolved (approved/denied/revoked) -- dismiss any matching toast
         const requestId = data.request_id;
-        if (requestId) {
-          toast.dismiss(requestId);
-          toastedIdsRef.current.delete(requestId);
+        const toastKey = data.bundle_id || requestId;
+        if (toastKey) {
+          toast.dismiss(toastKey);
+          toastedIdsRef.current.delete(toastKey);
           setPendingCount((prev) => Math.max(0, prev - 1));
         }
       }
@@ -259,7 +437,17 @@ export function ConsentNotificationProvider({
     };
   }, [isVaultUnlocked, user?.uid, showConsentToast, getVaultOwnerToken]);
 
-  return <>{children}</>;
+  return (
+    <ConsentNotificationStateContext.Provider
+      value={{
+        deliveryMode,
+        deliveryDetail,
+        pendingCount,
+      }}
+    >
+      {children}
+    </ConsentNotificationStateContext.Provider>
+  );
 }
 
 // ============================================================================
@@ -272,9 +460,14 @@ export function ConsentNotificationProvider({
  * NO interval-based polling.
  */
 export function usePendingConsentCount() {
-  const [count, setCount] = useState(0);
+  const context = useContext(ConsentNotificationStateContext);
+  const [count, setCount] = useState(context.pendingCount);
   const { isVaultUnlocked, getVaultOwnerToken } = useVault();
   const { user } = useAuth();
+
+  useEffect(() => {
+    setCount(context.pendingCount);
+  }, [context.pendingCount]);
 
   // One-time fetch on vault unlock
   useEffect(() => {
@@ -322,4 +515,8 @@ export function usePendingConsentCount() {
   }, []);
 
   return count;
+}
+
+export function useConsentNotificationState() {
+  return useContext(ConsentNotificationStateContext);
 }

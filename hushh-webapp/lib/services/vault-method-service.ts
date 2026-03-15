@@ -6,6 +6,7 @@ import type { GeneratedVaultKeyMode } from "@/lib/services/vault-bootstrap-servi
 import { VaultBootstrapService } from "@/lib/services/vault-bootstrap-service";
 import { VaultService, type VaultMethod } from "@/lib/services/vault-service";
 import { rewrapVaultKeyWithPassphrase } from "@/lib/vault/rewrap-vault-key";
+import { trackEvent } from "@/lib/observability/client";
 
 export type { VaultMethod } from "@/lib/services/vault-service";
 
@@ -135,6 +136,9 @@ export class VaultMethodService {
         });
 
         await VaultService.setPrimaryVaultMethod(params.userId, "passphrase");
+        trackEvent("profile_method_switch_result", {
+          result: "success",
+        });
         return { method: "passphrase" };
       }
 
@@ -180,6 +184,9 @@ export class VaultMethodService {
           material.mode,
           material.passkeyCredentialId ?? "default"
         );
+        trackEvent("profile_method_switch_result", {
+          result: "success",
+        });
         return { method: material.mode };
       } catch (error) {
         if (
@@ -194,6 +201,9 @@ export class VaultMethodService {
         throw error;
       }
     } catch (error) {
+      trackEvent("profile_method_switch_result", {
+        result: "error",
+      });
       throw normalizeVaultMethodError(error);
     }
   }

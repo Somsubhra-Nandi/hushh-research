@@ -1,0 +1,891 @@
+f<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HUSHH - Master Engineering Specification - Updated Current-State Edition</title>
+  <style>
+    :root {
+      --text: #171717;
+      --muted: #525252;
+      --line: #d4d4d4;
+      --soft: #f5f5f5;
+      --table: #e5e5e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.52;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 64px 72px 86px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 31px;
+      line-height: 1.14;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 17px;
+      font-weight: 680;
+      line-height: 1.35;
+      margin: 0 0 18px;
+    }
+    .quote {
+      border-left: 4px solid var(--line);
+      color: #6b7280;
+      font-style: italic;
+      margin: 0 0 22px;
+      padding: 4px 0 4px 16px;
+    }
+    hr {
+      border: 0;
+      border-top: 1px solid var(--line);
+      margin: 18px 0 24px;
+    }
+    h2 {
+      font-size: 22px;
+      line-height: 1.22;
+      margin: 30px 0 16px;
+      font-weight: 760;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 17px;
+      line-height: 1.3;
+      margin: 22px 0 10px;
+      font-weight: 720;
+      page-break-after: avoid;
+    }
+    p {
+      margin: 0 0 14px;
+      font-size: 15.5px;
+    }
+    ul, ol {
+      margin: 0 0 14px 24px;
+      padding: 0;
+      font-size: 15.5px;
+    }
+    li { margin: 0 0 8px; }
+    .lead {
+      font-size: 16.5px;
+      color: #262626;
+    }
+    .small {
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+    code {
+      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    pre {
+      margin: 0 0 18px;
+      padding: 14px 16px;
+      overflow: hidden;
+      background: #f7f7f7;
+      border: 1px solid var(--table);
+      border-radius: 10px;
+      white-space: pre-wrap;
+      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 20px;
+      font-size: 14.5px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid var(--table);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #fafafa;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>HUSHH - Master Engineering Specification</h1>
+    <p class="subtitle">Updated Current-State Edition for Salesforce Review | March 2026 | Hushh Research | CONFIDENTIAL</p>
+    <p class="quote">This edition keeps the founder's engineering structure and intended platform language intact while aligning the document to the current Hushh runtime and the platform direction now visible in the repository.</p>
+    <p class="small"><strong>Document rule:</strong> implemented code and canonical repository docs govern present-tense statements. Platform pillars that are important to the architecture but not yet the default runtime remain in place as target-state engineering language.</p>
+    <hr>
+
+    <h2>1. System Overview</h2>
+
+    <h3>1.1 What We Are Building</h3>
+    <p class="lead">Hushh is being built as a consent-first personal-agent platform in which the individual owns the private data layer, governs access through explicit scoped approvals, and carries that authority across product surfaces, counterparties, and agents.</p>
+    <p>In the current release train, that architecture is already visible in concrete form. Kai is the flagship product surface, the world model is the private data backbone, VAULT_OWNER and scoped consent tokens form the control plane, and the Investor plus RIA rollout provides the first multi-actor workflow expression of the platform. The broader Hushh ambition extends beyond finance into a cross-domain personal-agent system, but the core principles are already operating as runtime facts rather than aspirational language.</p>
+    <p>From an engineering standpoint, Hushh should be understood as three cooperating planes: an encrypted private-data plane, a relational workflow and public-discovery plane, and an agent and service plane above both. That separation is the design center for everything else in this specification.</p>
+
+    <h3>1.2 Platform Stack (Immutable)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Platform Layer</th>
+          <th>Hushh Architecture</th>
+          <th>Enterprise Alignment</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Consumer shell</td>
+          <td>Next.js 16, React 19, and Capacitor 8 across web, iOS, and Android.</td>
+          <td>One governed product shell with explicit route and plugin parity.</td>
+        </tr>
+        <tr>
+          <td>Identity bootstrap</td>
+          <td>Firebase Auth establishes authenticated user identity.</td>
+          <td>Identity is a bootstrap step only and does not stand in for consent authority.</td>
+        </tr>
+        <tr>
+          <td>Control plane</td>
+          <td>VAULT_OWNER tokens, scoped consent tokens, audit records, and export flows.</td>
+          <td>Permission is explicit, time-bounded, and scope-aware.</td>
+        </tr>
+        <tr>
+          <td>Private data system</td>
+          <td><code>world_model_data</code>, <code>world_model_index_v2</code>, and <code>domain_registry</code>.</td>
+          <td>This is the current personal data backbone and remains the reference point for any Salesforce mapping.</td>
+        </tr>
+        <tr>
+          <td>Workflow and discovery plane</td>
+          <td>IAM, RIA, firm, invite, marketplace, and consent tables in Postgres.</td>
+          <td>This is the CRM-shaped portion of the platform and the natural place for enterprise workflow alignment.</td>
+        </tr>
+        <tr>
+          <td>Agent runtime</td>
+          <td>Google ADK-oriented Kai services with MCP and A2A support surfaces.</td>
+          <td>Agent behavior already runs inside governed service boundaries and can be projected into broader enterprise orchestration later.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The present runtime is Cloud Run and Postgres centered. Salesforce and MuleSoft matter here as architectural alignment targets and partner-facing operating models, not as literal descriptions of the currently deployed backend stack.</p>
+
+    <h3>1.3 Architecture Diagram (Logical)</h3>
+    <pre>CLIENT LAYER
+  Next.js 16 / React 19 / Capacitor 8
+    -> Kai onboarding, import, market home, dashboard, analysis
+    -> Marketplace, Consents, Profile
+    -> Investor and RIA route trees
+
+SERVICE / PROXY LAYER
+  Web: Next.js app/api/* proxies
+  Native: Swift / Kotlin Capacitor plugins
+  Shared route governance, request IDs, parity verification
+
+BACKEND LAYER
+  FastAPI routes
+    -> Consent
+    -> World Model
+    -> Kai
+    -> IAM / RIA / Marketplace
+  Service layer
+  ADK-oriented agent runtime
+  MCP server and A2A support
+
+DATA LAYERS
+  Private plane
+    -> world_model_data
+    -> world_model_index_v2
+    -> domain_registry
+
+  Workflow / public plane
+    -> actor_profiles
+    -> ria_profiles / ria_firms / memberships / verification
+    -> advisor_investor_relationships / invites
+    -> marketplace_public_profiles
+    -> consent_audit / consent_scope_templates / consent_exports</pre>
+    <p>Every sensitive feature passes through the service layer. Web surfaces rely on governed proxy routes. Native surfaces rely on governed plugin bridges. Backend routes do not bypass consent validation to touch storage directly, and private encrypted data never collapses into the relational workflow plane.</p>
+
+    <h2>2. Salesforce CRM Data Model</h2>
+
+    <h3>2.1 Core Objects</h3>
+    <p>The engineering model described in Salesforce terms should be read as a mapping specification rather than a claim that private Hushh data already lives inside Salesforce CRM records. Hushh currently maintains a split architecture in which encrypted private content remains in the world model while CRM-shaped workflow, verification, and discovery state remains in relational tables.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Object</th>
+          <th>Current Hushh Representation</th>
+          <th>Intended Mapping</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>User / Contact</td>
+          <td><code>actor_profiles</code> backed by Firebase identity bootstrap.</td>
+          <td>Canonical actor record for persona state, opt-in state, and workflow ownership.</td>
+        </tr>
+        <tr>
+          <td>Advisor</td>
+          <td><code>ria_profiles</code>, <code>ria_firms</code>, and <code>ria_firm_memberships</code>.</td>
+          <td>RIA identity and firm context form the advisor-side relationship graph.</td>
+        </tr>
+        <tr>
+          <td>Consent</td>
+          <td><code>consent_audit</code>, <code>consent_exports</code>, and <code>consent_scope_templates</code>.</td>
+          <td>Approval history, scope envelope, export evidence, and revocation status already exist as first-class control-plane objects.</td>
+        </tr>
+        <tr>
+          <td>Relationship</td>
+          <td><code>advisor_investor_relationships</code> and <code>ria_client_invites</code>.</td>
+          <td>Advisor access is a consent-backed workflow relationship, not a generic account link.</td>
+        </tr>
+        <tr>
+          <td>Private profile / preference state</td>
+          <td><code>world_model_data</code> plus summarized metadata in <code>world_model_index_v2</code>.</td>
+          <td>Private user-owned facts remain in the encrypted personal data plane and should not be flattened into CRM storage.</td>
+        </tr>
+        <tr>
+          <td>Domain metadata</td>
+          <td><code>domain_registry</code>.</td>
+          <td>Provides the domain vocabulary used by discovery, scoping, and future enterprise mappings.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The same mapping leaves room for a future value ledger on top of consent. In the Hushh model, a handshake does not just authorize access; over time it can also carry economic metadata so that whenever Kai or another approved agent retrieves a governed slice of the user's world model, the event can be priced, audited, and settled without relocating the user's private record into CRM storage.</p>
+
+    <h3>2.2 Object Relationships</h3>
+    <p>Hushh's relationship model is best understood as a user-owned private core surrounded by actor, firm, consent, and marketplace relationships. The engineering benefit of this separation is that private encrypted content can evolve independently from workflow and public-discovery contracts.</p>
+    <pre>actor_profiles (1) ---- (0..1) ria_profiles
+actor_profiles (1) ---- (many) consent_audit
+actor_profiles (1) ---- (many) world_model_data / world_model_index_v2
+ria_profiles   (many) -- (many) ria_firms via ria_firm_memberships
+ria_profiles   (many) -- (many) investors via advisor_investor_relationships
+actor_profiles (1) ---- (0..1) marketplace_public_profiles
+ria_profiles   (1) ---- (0..1) marketplace_public_profiles</pre>
+    <p>That structure is what allows Salesforce-facing workflow concepts to be modeled cleanly without eroding the encrypted private-data boundary that defines the Hushh platform.</p>
+
+    <h3>2.3 Preference JSON Schemas</h3>
+    <p>Preference state in Hushh is domain-scoped rather than monolithic. The active product path currently stores onboarding continuity and persona-relevant state under encrypted <code>financial.profile</code>, with safe summaries and counters maintained in the world-model index. Additional actor and marketplace preferences that belong to trust or discovery surfaces remain relational.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Schema Family</th>
+          <th>Current Form</th>
+          <th>Engineering Rule</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Private domain payloads</td>
+          <td>Encrypted world-model blob</td>
+          <td>Private content is written only to <code>world_model_data</code>.</td>
+        </tr>
+        <tr>
+          <td>Sanitized summaries</td>
+          <td>Per-domain metadata in <code>world_model_index_v2.domain_summaries</code></td>
+          <td>No sensitive financial details or key material may be written into the index.</td>
+        </tr>
+        <tr>
+          <td>Domain discovery</td>
+          <td><code>available_domains</code>, <code>computed_tags</code>, and registry metadata</td>
+          <td>Dynamic scope generation relies on this discovery layer.</td>
+        </tr>
+        <tr>
+          <td>Trust and workflow settings</td>
+          <td>Actor, RIA, and marketplace tables</td>
+          <td>These settings do not belong in the encrypted private blob unless they are truly private user-owned facts.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3. Agent Architecture (ADK)</h2>
+
+    <h3>3.1 Agent Hierarchy</h3>
+    <p>Kai is implemented as a hub-and-spoke ADK-oriented runtime with explicit layering between agents, tools, operons, and services. The hierarchy matters because it keeps consent validation and private-data access from being casually bypassed by convenience code.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Responsibility</th>
+          <th>Engineering Constraint</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Agent</td>
+          <td>Coordinates behavior, role selection, and entry-point authorization assumptions.</td>
+          <td>No direct database access.</td>
+        </tr>
+        <tr>
+          <td>Tool</td>
+          <td>Presents bounded operations to the agent layer.</td>
+          <td>Must preserve consent and delegation context.</td>
+        </tr>
+        <tr>
+          <td>Operon</td>
+          <td>Executes business logic, analysis, fetchers, and storage mediation.</td>
+          <td>Impure operons require validated authority context.</td>
+        </tr>
+        <tr>
+          <td>Service</td>
+          <td>Owns database and storage access.</td>
+          <td>Routes and agents do not bypass the service layer.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>This structure is already sufficient for partner-facing agent architecture discussions because it gives Hushh a clear execution model, clear policy boundaries, and a reproducible way to extend into additional agent families over time.</p>
+
+    <h3>3.2 Sub-Agent Specifications</h3>
+    <p>Kai currently expresses the most mature specialist-agent design in the repository. Its financial committee is implemented as a three-specialist debate framework backed by structured storage and streaming diagnostics.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Specialist</th>
+          <th>Role</th>
+          <th>Current Input Surface</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Fundamental Agent</td>
+          <td>Analyzes filings, fundamentals, and company quality.</td>
+          <td>World-model context plus filing and financial inputs in hybrid paths.</td>
+        </tr>
+        <tr>
+          <td>Sentiment Agent</td>
+          <td>Analyzes news flow and market narrative.</td>
+          <td>News and context signals with explicit degraded-state behavior when providers are partial.</td>
+        </tr>
+        <tr>
+          <td>Valuation Agent</td>
+          <td>Assesses metrics, relative pricing, and investability.</td>
+          <td>Financial domain context plus market data inputs.</td>
+        </tr>
+        <tr>
+          <td>Debate Engine</td>
+          <td>Synthesizes specialist output into explainable decisions.</td>
+          <td>Produces typed decision payloads, transcript views, and observability diagnostics.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>3.3 Agent Deployment on MuleSoft</h3>
+    <p>The present Hushh runtime executes within FastAPI services and related Python processes, and that remains the operative deployment model. MuleSoft belongs in this document because it is the appropriate future enterprise orchestration layer for taking governed Hushh workflows into broader partner environments without redesigning the private-data model.</p>
+    <p>That alignment works precisely because the current system already separates agent logic, workflow state, and private data. In other words, the engineering precondition for MuleSoft alignment exists today, even though MuleSoft is not yet the active production host of the agent stack.</p>
+
+    <h2>4. MCP Server Specifications</h2>
+
+    <h3>4.1 MCP Server Registry</h3>
+    <p>Hushh already exposes a working MCP server over stdio JSON-RPC 2.0. It is not a conceptual placeholder. The current server exposes consent, discovery, domain, delegation, and IAM-related read surfaces that allow external tools to interact with Hushh without bypassing policy.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Current Capability Family</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Consent tools</td>
+          <td><code>request_consent</code>, <code>validate_token</code>, <code>check_consent_status</code></td>
+          <td>Drive approval and validity checks for external hosts.</td>
+        </tr>
+        <tr>
+          <td>Scope discovery tools</td>
+          <td><code>discover_user_domains</code>, <code>list_scopes</code>, <code>/api/world-model/scopes/{user_id}</code>, and <code>/api/v1/user-scopes/{user_id}</code></td>
+          <td>Return the user-specific scope catalog derived from <code>available_domains</code>, <code>domain_summaries</code>, and <code>domain_registry</code>.</td>
+        </tr>
+        <tr>
+          <td>Domain access tools</td>
+          <td>Generic read surfaces bound to approved scope strings rather than a fixed domain catalog</td>
+          <td>Return only the approved branch of user data for the exact dynamic scope that was granted.</td>
+        </tr>
+        <tr>
+          <td>Delegation tools</td>
+          <td><code>delegate_to_agent</code> and TrustLink creation surfaces</td>
+          <td>Create TrustLinks for controlled agent-to-agent delegation.</td>
+        </tr>
+        <tr>
+          <td>MCP resources</td>
+          <td><code>hushh://info/server</code>, <code>hushh://info/protocol</code>, <code>hushh://info/connector</code></td>
+          <td>Provide self-description and machine-readable usage guidance.</td>
+        </tr>
+        <tr>
+          <td>RIA read-only tools</td>
+          <td><code>list_ria_profiles</code>, <code>get_ria_profile</code>, <code>get_ria_client_access_summary</code></td>
+          <td>Support the Investor and RIA runtime surface without granting write authority.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>4.2 MCP Server Implementation Standard</h3>
+    <p>MCP access in Hushh is deliberately dynamic. Hosts do not request against a hard-coded universal permission list and they do not assume a fixed set of domains. They discover actual scope strings for a specific user through <code>discover_user_domains(user_id)</code>, <code>/api/world-model/scopes/{user_id}</code>, or <code>/api/v1/user-scopes/{user_id}</code>, where the backend derives scope availability from <code>world_model_index_v2.available_domains</code>, sanitized domain metadata, and <code>domain_registry</code>.</p>
+    <ol>
+      <li>Discover the user's current domain and path vocabulary from the world-model index and registry rather than from a baked-in client list.</li>
+      <li>Request explicit consent for the exact scope family needed: <code>attr.{domain}.*</code>, <code>attr.{domain}.{subintent}.*</code>, <code>attr.{domain}.{path}</code>, <code>world_model.read</code>, <code>world_model.write</code>, or an appropriate <code>agent.*</code> authority when the operation is agent-executed.</li>
+      <li>Approve through the Hushh product surface, where the user authorizes the export path.</li>
+      <li>Consume only the encrypted scoped export created for that approval and time window.</li>
+      <li>Respect revocation, expiry, and policy failure as first-class outcomes.</li>
+    </ol>
+    <p><code>vault.owner</code> remains the owner-authority control-plane scope used for protected vault and world-model operations. It is not a replacement for narrow third-party data scopes.</p>
+    <p>Production delivery is FCM-first, which keeps the approval step tied to the Hushh app rather than an ungoverned polling experience.</p>
+
+    <h2>5. A2A Protocol Implementation</h2>
+
+    <h3>5.1 Hushh Agent Card Specification</h3>
+    <p>Hushh's A2A surface is anchored by concrete agent metadata, not by vague delegation claims. Kai already exposes a manifest with identity, required scopes, optional hybrid scopes, capabilities, and compliance posture.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Agent Card Element</th>
+          <th>Current Kai Definition</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Identity</td>
+          <td><code>agent_kai</code>, version, description</td>
+          <td>Stable machine-readable identity for discovery and routing.</td>
+        </tr>
+        <tr>
+          <td>Required scopes</td>
+          <td><code>world_model.read</code>, <code>world_model.write</code>, <code>agent.kai.analyze</code></td>
+          <td>Kai operates only with explicit private-data and agent authority.</td>
+        </tr>
+        <tr>
+          <td>Optional hybrid scopes</td>
+          <td><code>external.sec.filings</code>, <code>external.market.data</code>, <code>external.news.api</code></td>
+          <td>Live external data remains optional, named, and consent-aware.</td>
+        </tr>
+        <tr>
+          <td>Capabilities</td>
+          <td>Hybrid, real-time, historical, and on-device-compatible capability metadata</td>
+          <td>Signals the intended execution envelope of the agent architecture.</td>
+        </tr>
+        <tr>
+          <td>Compliance</td>
+          <td>Educational-only, disclaimer-required, audit-trail-aware</td>
+          <td>Bounds how Kai should be represented in product and partner contexts.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>5.2 A2A Request/Response Flow</h3>
+    <pre>1. An originating agent or host requests a delegated action.
+2. Hushh creates a TrustLink containing user, source agent, target agent, scope, and TTL.
+3. The target agent verifies the TrustLink cryptographically.
+4. Operons execute only if the inherited authority satisfies the requested scope.
+5. The action completes without enlarging the original user's approved boundary.</pre>
+    <p>That last point is the operative A2A rule in Hushh. Delegation carries authority forward; it does not manufacture new authority.</p>
+    <p>As the trust fabric matures, the same handshake can become value-carrying. A delegated access event can eventually attach bid or settlement metadata so that every approved retrieval of personal information from the world model can resolve into a background user credit, including minimum micro-credit patterns such as 0.01 cents to a future Hushh coin ledger, without turning the consent flow into a visible marketplace ceremony.</p>
+
+    <h2>6. Apple Integration Specifications</h2>
+
+    <h3>6.1 App Intents (Siri Integration)</h3>
+    <p>Apple remains an important expression layer for the Hushh platform, and App Intents belong in the architecture as the natural future control surface for voice- and action-oriented interactions. The current repository does not yet make Siri the primary operating surface of Hushh, but the broader platform design continues to assume that Apple-native invocation models should sit cleanly on top of the same consent, vault, and world-model primitives already in place.</p>
+
+    <h3>6.2 MLX On-Device Configuration</h3>
+    <p>On-device execution is part of Hushh's designed capability envelope, especially for privacy-sensitive and low-latency agent experiences. The current repository already contains preparatory hooks and capability signals for hybrid and local-agent paths, while the operational baseline remains cloud-first. As downloadable model packs and runtime packaging mature, MLX and related on-device execution paths can sit alongside the existing cloud architecture without changing the core consent or world-model contracts.</p>
+
+    <h3>6.3 iOS App Architecture</h3>
+    <p>The current mobile architecture is already stronger than a web wrapper. Hushh uses a Capacitor 8 shell with a Next.js static export in WebView and ten verified native plugins across iOS and Android for security-critical operations.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>iOS Capability</th>
+          <th>Current Form</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Native auth</td>
+          <td>Google and Apple sign-in through native plugin surfaces.</td>
+        </tr>
+        <tr>
+          <td>Vault and consent</td>
+          <td>Dedicated plugins handle vault setup, wrapper management, token issuance, approvals, and TrustLinks.</td>
+        </tr>
+        <tr>
+          <td>World-model access</td>
+          <td>Metadata and domain access flow through governed native bridges.</td>
+        </tr>
+        <tr>
+          <td>Passkeys and secure storage</td>
+          <td>Production association files, passkey support, and native secure storage are part of the delivery model.</td>
+        </tr>
+        <tr>
+          <td>Notifications</td>
+          <td>Push registration supports consent and workflow delivery.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>7. Security Architecture</h2>
+
+    <h3>7.1 Authentication Flow</h3>
+    <p>Hushh does not treat authentication as equivalent to authorization. A signed-in user still needs explicit owner authority before the platform will perform protected data or agent operations.</p>
+    <pre>Firebase Sign-In
+  -> /api/consent/vault-owner-token
+  -> VAULT_OWNER token
+      -> world model operations
+      -> Kai operations
+      -> consent approval and revocation
+      -> scoped delegation into MCP and A2A paths</pre>
+    <p>This token hierarchy is one of the key architectural truths to preserve in any external systems conversation.</p>
+
+    <h3>7.2 Encryption Standards</h3>
+    <p>Hushh stores private user content as AES-256-GCM ciphertext only. The backend never persists plaintext private data. Vault wrappers represent alternate unlock methods for the same underlying DEK rather than alternate data protection models.</p>
+    <ul>
+      <li><code>world_model_data</code> stores ciphertext, IV, tag, and algorithm metadata.</li>
+      <li><code>world_model_index_v2</code> stores sanitized discovery and summary metadata only.</li>
+      <li>Passphrase and recovery wrappers are mandatory. Quick methods add wrappers; they do not weaken storage rules.</li>
+      <li>Zero-knowledge exports are created per consented slice and do not expose the full private blob.</li>
+    </ul>
+    <p>This split is the engineering reason Hushh can discuss Salesforce-readable workflow alignment without conceding the private data system of record.</p>
+
+    <h3>7.3 Zero-Trust Principles</h3>
+    <ol>
+      <li>BYOK is mandatory; the backend stores ciphertext only.</li>
+      <li>Signed in is not consent. Every protected operation requires valid scope and token context.</li>
+      <li>Tri-flow parity prevents insecure platform-specific shortcuts.</li>
+      <li>Public discovery, verification, and workflow data remain separate from encrypted private data.</li>
+      <li>Dynamic scope generation favors least privilege over broad static grants and is resolved from runtime metadata, not a fixed domain enum.</li>
+      <li><code>attr.{domain}.*</code> grants only that domain branch, and <code>attr.{domain}.{subintent}.*</code> grants only that sub-branch.</li>
+      <li><code>world_model.read</code> is full read authority across domains, while <code>world_model.write</code> is write authority for governed world-model operations.</li>
+      <li><code>vault.owner</code> remains owner authority; <code>agent.*</code> scopes remain action authority; neither should be confused with generic third-party read permission.</li>
+      <li>Delegation inherits scope; it does not expand scope.</li>
+    </ol>
+    <p>The current scope vocabulary already reflects this discipline: <code>attr.{domain}.*</code>, <code>attr.{domain}.{subintent}.*</code>, <code>attr.{domain}.{path}</code>, <code>world_model.read</code>, <code>world_model.write</code>, <code>vault.owner</code>, and relevant <code>agent.*</code> scopes.</p>
+    <p>The same rule set also governs future economic handshakes. Any credit, bid, or Hushh coin settlement must remain downstream of consent, bound to the approved scope, and attributable to the exact access event that touched the user's private data.</p>
+
+    <h2>8. Coding Standards</h2>
+
+    <h3>8.1 Language Standards</h3>
+    <p>Frontend work targets Next.js 16, React 19, Node 20+, and governed service-layer access patterns. Backend work targets Python 3.13, FastAPI, Ruff, and mypy. The coding standard that matters most is not syntax style; it is architectural discipline. Components do not casually reach into <code>fetch()</code> when a governed service exists, and backend routes do not bypass services to talk to storage directly.</p>
+
+    <h3>8.2 Naming Conventions</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Convention</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Domains</td>
+          <td>Canonical lowercase keys normalized from runtime registry and index metadata; the document does not define a fixed global domain catalog.</td>
+        </tr>
+        <tr>
+          <td>Scopes</td>
+          <td><code>attr.{domain}.*</code>, <code>attr.{domain}.{subintent}.*</code>, <code>attr.{domain}.{path}</code>, <code>world_model.read</code>, <code>world_model.write</code>, <code>vault.owner</code>, and relevant <code>agent.*</code> authorities.</td>
+        </tr>
+        <tr>
+          <td>Persona state</td>
+          <td><code>actor_profiles.last_active_persona</code> is canonical; transitional runtime state does not replace it.</td>
+        </tr>
+        <tr>
+          <td>Route families</td>
+          <td>Investor flows remain under <code>/kai/*</code>; advisor flows remain under <code>/ria/*</code>; shared surfaces remain under <code>/marketplace</code>, <code>/consents</code>, and <code>/profile</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>8.3 Git Workflow</h3>
+    <p>Repo governance is tied directly to platform integrity. Route contracts, docs, parity rules, and CI behavior are expected to move in the same change when runtime behavior changes. New governed routes or plugin methods must be declared. New CI scripts are expected to replace or consolidate existing checks rather than expand drift by default.</p>
+
+    <h3>8.4 Testing Requirements</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Expected Checks</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Frontend</td>
+          <td>TypeScript, lint, design-system verification, investor-language verification, build, curated test suites.</td>
+        </tr>
+        <tr>
+          <td>Backend</td>
+          <td>Ruff, mypy, pytest, consent-token fixture correctness, and streaming-path coverage.</td>
+        </tr>
+        <tr>
+          <td>Integration</td>
+          <td>Route contract verification and native parity verification when relevant.</td>
+        </tr>
+        <tr>
+          <td>Release gate</td>
+          <td>Routes, parity, cache, docs, system audit, secrets parity, and pre-launch checks.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>9. CI/CD Pipeline</h2>
+
+    <h3>9.1 Pipeline Architecture</h3>
+    <p>Hushh uses a path-filtered tri-flow CI pipeline with a single aggregate status gate. The intent is to keep the delivery system strict enough to protect the platform while avoiding a sprawl of semi-duplicated checks. Secret scanning, web checks, backend protocol checks, and integration checks are the default blocking lanes. Advisory lanes cover docs parity, subtree drift, native release readiness, and environment parity.</p>
+
+    <h3>9.2 Deployment Environments</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Environment</th>
+          <th>Role</th>
+          <th>Engineering Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Development</td>
+          <td>Local backend and local or staged client profiles</td>
+          <td>Backend starts first; native plugins call the Python backend directly for parity.</td>
+        </tr>
+        <tr>
+          <td>UAT / staging</td>
+          <td>Primary branch-level verification surface</td>
+          <td>Current observability model splits staging and production cleanly.</td>
+        </tr>
+        <tr>
+          <td>Production</td>
+          <td>Cloud Run deployed services with DB governance and backup posture gates</td>
+          <td>Developer API and consent SSE defaults tighten under regulated production settings.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>9.3 Deployment Checklist (Every Release)</h3>
+    <ol>
+      <li>Verify routes, parity, cache, docs, and pre-launch audit behavior.</li>
+      <li>Verify secrets parity and environment configuration.</li>
+      <li>Run backup freshness and migration governance checks for production deploys.</li>
+      <li>Deploy backend, then frontend, then align CORS and service configuration.</li>
+      <li>Run health checks and smoke the core investor, consent, and IAM flows.</li>
+    </ol>
+
+    <h2>10. Monitoring &amp; Observability</h2>
+
+    <h3>10.1 Key Metrics (SLIs)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric Family</th>
+          <th>Current Signal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Request quality</td>
+          <td><code>x-request-id</code>, status buckets, route templates, durations, and outcome classes.</td>
+        </tr>
+        <tr>
+          <td>Streaming health</td>
+          <td>Lifecycle logs, degraded-state markers, retry counts, and provider-call counts.</td>
+        </tr>
+        <tr>
+          <td>Data integrity</td>
+          <td>World-model coherence, market-cache freshness drift, consent activity summaries.</td>
+        </tr>
+        <tr>
+          <td>Release posture</td>
+          <td>Backup manifests, migration evidence, and deployment governance artifacts.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The observability baseline is intentionally metadata-only. Hushh tracks route, status, latency, environment, and bounded event semantics rather than leaking raw sensitive content into analytics systems.</p>
+
+    <h3>10.2 Observability Stack</h3>
+    <ul>
+      <li>GTM data layer on web and Firebase Analytics on native for product telemetry.</li>
+      <li>Structured backend request summaries with request correlation and environment tagging.</li>
+      <li>OpenTelemetry bootstrap hooks for backend instrumentation.</li>
+      <li>Scheduled Supabase data-health checks for world-model, cache, and consent coherence.</li>
+      <li>Two-environment analytics separation for staging and production.</li>
+    </ul>
+
+    <h2>11. Error Handling Standards</h2>
+
+    <h3>11.1 Error Categories</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Error Class</th>
+          <th>Handling Standard</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Identity and bootstrap failure</td>
+          <td>Protected operations remain blocked until owner authority is established.</td>
+        </tr>
+        <tr>
+          <td>Consent denial, expiry, or revocation</td>
+          <td>Access ends immediately and does not silently fall back to unauthorized data.</td>
+        </tr>
+        <tr>
+          <td>IAM compatibility failure</td>
+          <td>Return compatibility-safe investor payloads or explicit <code>IAM_SCHEMA_NOT_READY</code> behavior.</td>
+        </tr>
+        <tr>
+          <td>Provider degradation</td>
+          <td>Serve cache-aware or degraded responses with explicit labels rather than pretending freshness.</td>
+        </tr>
+        <tr>
+          <td>Import or analysis validation failure</td>
+          <td>Emit diagnostics and terminal failure states instead of soft success.</td>
+        </tr>
+        <tr>
+          <td>World-model drift</td>
+          <td>Use reconciliation and audit tools, not ad hoc record mutation.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>11.2 Retry Policy</h3>
+    <p>Retry behavior is allowed only where idempotence and policy permit it. Cache-backed reads and provider fetches may retry under cooldown rules. Consent approvals, vault writes, actor-state transitions, and export creation are not treated as blind retry candidates. Stream paths may degrade or terminate with diagnostics rather than replaying hidden operations behind the user's back.</p>
+
+    <h2>12. Repository Structure</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>hushh-webapp/</code></td>
+          <td>Next.js, React, and Capacitor product shell for web, iOS, and Android.</td>
+        </tr>
+        <tr>
+          <td><code>consent-protocol/</code></td>
+          <td>FastAPI backend, consent protocol, Kai agents, MCP server, services, and migrations.</td>
+        </tr>
+        <tr>
+          <td><code>docs/</code></td>
+          <td>Canonical architecture, IAM, operations, quality, and vision documentation.</td>
+        </tr>
+        <tr>
+          <td><code>deploy/</code></td>
+          <td>Cloud Run, observability, backup, and deployment references.</td>
+        </tr>
+        <tr>
+          <td><code>scripts/</code></td>
+          <td>CI orchestration, audits, parity verification, and release tooling.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>13. Engineer Onboarding (Day 0 Setup)</h2>
+    <p>Day 0 onboarding assumes Node 20+, Python 3.13, Firebase credentials, and Supabase or local Postgres connectivity. Engineers are expected to run <code>make setup</code>, use a Python <code>.venv</code>, configure backend <code>DB_*</code> and auth secrets, configure frontend Firebase and backend URL values, and bring up the backend before starting client surfaces. The setup path is intentionally documented as a governed environment, not as a loose local sandbox.</p>
+    <ol>
+      <li>Clone the repository and run setup hooks.</li>
+      <li>Install frontend and backend dependencies.</li>
+      <li>Configure backend environment and client environment values.</li>
+      <li>Initialize schema and start backend first.</li>
+      <li>Start web or native clients.</li>
+      <li>Verify health, login, vault creation, and owner-token issuance.</li>
+    </ol>
+
+    <h2>14. Operational Runbooks</h2>
+
+    <h3>14.1 Incident Response</h3>
+    <p>Operational triage begins by locating the affected route, request ID, environment, and product plane: auth, consent, world model, provider, IAM, or marketplace. Because the platform is intentionally divided into private, workflow, and agent layers, incident response can usually isolate failures to a much tighter subsystem than would be possible in a flat application architecture.</p>
+
+    <h3>14.2 On-Call Rotation</h3>
+    <p>The current repository documents ownership expectations, release gates, observability, and recovery posture, even though it does not yet encode a large-team formal rota within the codebase itself. The present operating model is disciplined and evidence-driven, with a clear path toward more formal enterprise rotation practices as the platform surface expands.</p>
+
+    <h3>14.3 Rollback Procedure</h3>
+    <p>Rollback follows the same governance path as deployment. Cloud Run service history, route and parity integrity, secrets parity, migration release manifests, and backup posture checks determine whether a rollback is safe. Backend rollback is never treated as a code-only concern when schema drift or production data posture is involved.</p>
+
+    <h3>14.4 Data Recovery</h3>
+    <p>Production recovery posture is based on daily logical backups, freshness gates, release evidence manifests, and restore drills. The current documented recovery profile targets an effective RPO of no more than 24 hours, an RTO of no more than 2 hours, and 14 days of retained backup history.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Recovery Parameter</th>
+          <th>Current Target</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>RPO</td>
+          <td><code>&lt;= 24 hours</code></td>
+        </tr>
+        <tr>
+          <td>RTO</td>
+          <td><code>&lt;= 2 hours</code></td>
+        </tr>
+        <tr>
+          <td>Retention</td>
+          <td>14 days</td>
+        </tr>
+        <tr>
+          <td>Governance</td>
+          <td>Freshness checks, migration guard, release manifests, and monthly restore drills.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>15. Glossary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Term</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BYOK</td>
+          <td>Bring Your Own Key; client-side key ownership with ciphertext-only backend storage.</td>
+        </tr>
+        <tr>
+          <td>World Model</td>
+          <td>The private user-owned data architecture split between encrypted blobs and sanitized metadata.</td>
+        </tr>
+        <tr>
+          <td>Dynamic Scope</td>
+          <td>A runtime-generated permission string derived from user-visible domains, optional nested paths, and registry metadata, using canonical forms such as <code>attr.{domain}.*</code>, <code>attr.{domain}.{subintent}.*</code>, or <code>attr.{domain}.{path}</code>.</td>
+        </tr>
+        <tr>
+          <td>VAULT_OWNER</td>
+          <td>The owner-level token used for protected world-model, vault, and agent operations.</td>
+        </tr>
+        <tr>
+          <td>Consent Scope Template</td>
+          <td>A reusable actor-aware scope envelope for common workflow requests.</td>
+        </tr>
+        <tr>
+          <td>TrustLink</td>
+          <td>A cryptographically verifiable delegation artifact used in A2A flows.</td>
+        </tr>
+        <tr>
+          <td>Consent Handshake</td>
+          <td>A governed request-and-approval exchange that can authorize scoped data movement and, in future platform economics, carry value metadata for user credit settlement.</td>
+        </tr>
+        <tr>
+          <td>Tri-Flow</td>
+          <td>The engineering requirement that governed features remain aligned across web, iOS, and Android.</td>
+        </tr>
+        <tr>
+          <td>Kai</td>
+          <td>The flagship Hushh investing agent and current proof point for the platform.</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

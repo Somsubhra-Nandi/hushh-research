@@ -1,11 +1,7 @@
 /**
  * World Model Web Implementation
  *
- * Fallback for web platform - uses standard fetch to Next.js API routes.
- * This plugin provides the web implementation for HushhWorldModel.
- * 
- * SECURITY: Token must be passed explicitly via vaultOwnerToken parameter.
- * Never reads from sessionStorage (XSS protection).
+ * Web fallback for the supported world-model proxy surface.
  */
 
 import { WebPlugin } from "@capacitor/core";
@@ -16,7 +12,6 @@ export class HushhWorldModelWeb
   implements HushhWorldModelPlugin
 {
   private async getAuthHeader(overrideToken?: string): Promise<string> {
-    // SECURITY: Only use explicitly passed token, no sessionStorage fallback
     return overrideToken ? `Bearer ${overrideToken}` : "";
   }
 
@@ -52,7 +47,6 @@ export class HushhWorldModelWeb
 
     const data = await response.json();
 
-    // Transform snake_case to camelCase
     return {
       userId: data.user_id,
       domains: (data.domains || []).map((d: Record<string, unknown>) => ({
@@ -69,189 +63,6 @@ export class HushhWorldModelWeb
       modelCompleteness: data.model_completeness || 0,
       suggestedDomains: data.suggested_domains || [],
       lastUpdated: data.last_updated,
-    };
-  }
-
-  async getIndex(options: {
-    userId: string;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    userId: string;
-    domainSummaries: Record<string, Record<string, unknown>>;
-    availableDomains: string[];
-    computedTags: string[];
-    activityScore: number | null;
-    lastActiveAt: string | null;
-    totalAttributes: number;
-    modelVersion: number;
-  }> {
-    const response = await fetch(`/api/world-model/index/${options.userId}`, {
-      headers: {
-        Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get index: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return {
-      userId: data.user_id,
-      domainSummaries: data.domain_summaries || {},
-      availableDomains: data.available_domains || [],
-      computedTags: data.computed_tags || [],
-      activityScore: data.activity_score,
-      lastActiveAt: data.last_active_at,
-      totalAttributes: data.total_attributes || 0,
-      modelVersion: data.model_version || 2,
-    };
-  }
-
-  async getAttributes(options: {
-    userId: string;
-    domain?: string;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    attributes: Array<{
-      domain: string;
-      attributeKey: string;
-      ciphertext: string;
-      iv: string;
-      tag: string;
-      algorithm: string;
-      source: string;
-      confidence: number | null;
-      displayName: string | null;
-      dataType: string;
-    }>;
-  }> {
-    const url = options.domain
-      ? `/api/world-model/attributes/${options.userId}?domain=${options.domain}`
-      : `/api/world-model/attributes/${options.userId}`;
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get attributes: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return {
-      attributes: (data.attributes || []).map((a: Record<string, unknown>) => ({
-        domain: a.domain,
-        attributeKey: a.attribute_key,
-        ciphertext: a.ciphertext,
-        iv: a.iv,
-        tag: a.tag,
-        algorithm: a.algorithm || "aes-256-gcm",
-        source: a.source,
-        confidence: a.confidence,
-        displayName: a.display_name,
-        dataType: a.data_type || "string",
-      })),
-    };
-  }
-
-  async deleteAttribute(options: {
-    userId: string;
-    domain: string;
-    attributeKey: string;
-    vaultOwnerToken?: string;
-  }): Promise<{ success: boolean }> {
-    const response = await fetch(
-      `/api/world-model/attributes/${options.userId}/${options.domain}/${options.attributeKey}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-        },
-      }
-    );
-
-    return { success: response.ok };
-  }
-
-  async getUserDomains(options: {
-    userId: string;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    domains: Array<{
-      key: string;
-      displayName: string;
-      icon: string;
-      color: string;
-      attributeCount: number;
-    }>;
-  }> {
-    const response = await fetch(`/api/world-model/domains/${options.userId}`, {
-      headers: {
-        Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get user domains: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return {
-      domains: (data.domains || []).map((d: Record<string, unknown>) => ({
-        key: (d.domain_key || d.key) as string,
-        displayName: (d.display_name || d.displayName) as string,
-        icon: (d.icon_name || d.icon) as string,
-        color: (d.color_hex || d.color) as string,
-        attributeCount: (d.attribute_count || d.attributeCount) as number,
-      })),
-    };
-  }
-
-  async listDomains(options: {
-    includeEmpty?: boolean;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    domains: Array<{
-      key: string;
-      displayName: string;
-      description: string | null;
-      icon: string;
-      color: string;
-      attributeCount: number;
-      userCount: number;
-    }>;
-  }> {
-    const response = await fetch(
-      `/api/world-model/domains?include_empty=${options.includeEmpty || false}`,
-      {
-        headers: {
-          Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to list domains: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return {
-      domains: (data.domains || []).map((d: Record<string, unknown>) => ({
-        key: (d.domain_key || d.key) as string,
-        displayName: (d.display_name || d.displayName) as string,
-        description: d.description as string | null,
-        icon: (d.icon_name || d.icon) as string,
-        color: (d.color_hex || d.color) as string,
-        attributeCount: (d.attribute_count || d.attributeCount) as number,
-        userCount: (d.user_count || d.userCount) as number,
-      })),
     };
   }
 
@@ -286,52 +97,6 @@ export class HushhWorldModelWeb
       allScopes: data.all_scopes || [],
       wildcardScopes: data.wildcard_scopes || [],
     };
-  }
-
-  async getPortfolio(options: {
-    userId: string;
-    portfolioName?: string;
-    vaultOwnerToken?: string;
-  }): Promise<{ portfolio: Record<string, unknown> | null }> {
-    const portfolioName = options.portfolioName || "Main Portfolio";
-    const response = await fetch(
-      `/api/world-model/portfolio/${options.userId}?portfolio_name=${encodeURIComponent(portfolioName)}`,
-      {
-        headers: {
-          Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to get portfolio: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { portfolio: data.portfolio };
-  }
-
-  async listPortfolios(options: {
-    userId: string;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    portfolios: Record<string, unknown>[];
-  }> {
-    const response = await fetch(
-      `/api/world-model/portfolios/${options.userId}`,
-      {
-        headers: {
-          Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to list portfolios: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { portfolios: data.portfolios || [] };
   }
 
   async getEncryptedData(options: {
@@ -440,32 +205,5 @@ export class HushhWorldModelWeb
     );
 
     return { success: response.ok };
-  }
-
-  async getInitialChatState(options: {
-    userId: string;
-    vaultOwnerToken?: string;
-  }): Promise<{
-    is_new_user: boolean;
-    has_portfolio: boolean;
-    has_financial_data?: boolean;
-    welcome_type: string;
-    total_attributes: number;
-    available_domains: string[];
-  }> {
-    const response = await fetch(
-      `/api/kai/chat/initial-state/${options.userId}`,
-      {
-        headers: {
-          Authorization: await this.getAuthHeader(options.vaultOwnerToken),
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to get initial chat state: ${response.status}`);
-    }
-
-    return response.json();
   }
 }

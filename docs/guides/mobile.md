@@ -15,17 +15,18 @@ The Hushh mobile app uses **Next.js static export** in a native WebView, with **
 - **Native plugins must always call the Python backend** (FastAPI) via `NEXT_PUBLIC_BACKEND_URL` for parity with production.
 - Next.js `app/api/**` routes are treated as **web-only proxy routes**; native plugins are the proxy layer on mobile.
 
-Recommended commands (from `hushh-webapp`):
+Recommended commands:
 
-- Terminal A: `npm run dev`
-- Terminal B:
-  - Android: `npm run cap:android:dev:run`
-  - iOS: `npm run cap:ios:dev:run`
+- Terminal A (repo root): `make local-backend`
+- Terminal B (repo root):
+  - Android: `cd hushh-webapp && npm run cap:android:run -- --profile local-uatdb --fresh`
+  - iOS: `cd hushh-webapp && npm run cap:ios:run -- --profile local-uatdb --fresh`
 
 Required env:
 
 - `NEXT_PUBLIC_BACKEND_URL` must point to your dev/staging Python backend.
   - If you use a local backend on your host machine, remember Android emulator needs `10.0.2.2` instead of `localhost`.
+  - The runtime profile launcher handles that rewrite automatically in `capacitor.config.ts` for Android when the active profile uses localhost.
 
 ### Passkey domain association (production)
 
@@ -571,7 +572,7 @@ The app follows a **Layered Navigation** model:
 | Level  | Description | Examples                      | Back Button        |
 | ------ | ----------- | ----------------------------- | ------------------ |
 | **1**  | Root Tabs   | `/kai`, `/consents`, `/profile` | Exit/Lock Dialog |
-| **2+** | Sub Pages   | `/kai/onboarding`, `/kai/import`, `/kai/dashboard` | Navigate to Parent |
+| **2+** | Sub Pages   | `/kai/onboarding`, `/kai/import`, `/kai/portfolio` | Navigate to Parent |
 
 ### Exit Dialog Security
 
@@ -642,7 +643,7 @@ For Server-Sent Events (SSE) streaming on native:
 
 Before releasing mobile updates:
 
-- [ ] All required plugins registered on both platforms (see `docs/reference/mobile-kai-parity-map.md`)
+- [ ] All required plugins registered on both platforms (see `docs/reference/kai/mobile-kai-parity-map.md`)
 - [ ] Firebase authentication works (Google Sign-In)
 - [ ] Apple Sign-In works on iOS
 - [ ] Vault operations work end-to-end
@@ -661,7 +662,7 @@ For `CAPACITOR_BUILD=true` (`output: "export"`), treat App Router files as the o
 
 Required rule:
 - Do not depend on legacy alias redirects for mobile navigation.
-- Keep only canonical pages: `/`, `/login`, `/kai`, `/kai/onboarding`, `/kai/import`, `/kai/dashboard`.
+- Keep only canonical pages: `/`, `/login`, `/kai`, `/kai/onboarding`, `/kai/import`, `/kai/plaid/oauth/return`, `/kai/portfolio`.
 - Any removed alias route must stay removed from both `app/` and `next.config.ts`.
 
 ---

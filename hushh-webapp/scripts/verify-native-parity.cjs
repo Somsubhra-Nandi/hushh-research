@@ -230,6 +230,30 @@ function checkBackendResolverUsage() {
   ok("Android network plugins resolve backend URL via BackendUrl.resolve");
 }
 
+function checkFirebaseAnalyticsNativeParity() {
+  const packageJson = readText("hushh-webapp/package.json");
+  if (!packageJson.includes("\"@capacitor-firebase/analytics\"")) {
+    fail("package.json missing @capacitor-firebase/analytics dependency");
+  }
+
+  const iosSpm = readText("hushh-webapp/ios/App/CapApp-SPM/Package.swift");
+  if (!iosSpm.includes("CapacitorFirebaseAnalytics")) {
+    fail("iOS Package.swift missing CapacitorFirebaseAnalytics package/product linkage");
+  }
+
+  const androidSettings = readText("hushh-webapp/android/capacitor.settings.gradle");
+  if (!androidSettings.includes(":capacitor-firebase-analytics")) {
+    fail("android/capacitor.settings.gradle missing capacitor-firebase-analytics include");
+  }
+
+  const androidPlugins = readText("hushh-webapp/android/app/src/main/assets/capacitor.plugins.json");
+  if (!androidPlugins.includes("@capacitor-firebase/analytics")) {
+    fail("android capacitor.plugins.json missing @capacitor-firebase/analytics registration");
+  }
+
+  ok("Firebase Analytics plugin is present in native iOS/Android Capacitor manifests");
+}
+
 function checkMethodLevelParity() {
   assertMethodsPresent(
     "HushhVault multi-wrapper parity",
@@ -304,6 +328,7 @@ function main() {
   checkTsRegistrations();
   checkIosRegistration();
   checkAndroidRegistrationAndNames();
+  checkFirebaseAnalyticsNativeParity();
   checkBackendResolverUsage();
   checkMethodLevelParity();
 

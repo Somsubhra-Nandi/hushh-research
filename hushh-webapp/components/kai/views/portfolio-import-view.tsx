@@ -37,8 +37,12 @@ interface PortfolioImportViewProps {
   onFileSelect: (file: File) => void;
   onSkip: () => void;
   onPreloadSchema?: () => void;
+  onConnectPlaid?: () => void;
   isUploading?: boolean;
   isPreloadingSchema?: boolean;
+  isConnectingPlaid?: boolean;
+  plaidConfigured?: boolean;
+  plaidConnectedInstitutionCount?: number;
 }
 
 // =============================================================================
@@ -49,8 +53,12 @@ export function PortfolioImportView({
   onFileSelect,
   onSkip,
   onPreloadSchema,
+  onConnectPlaid,
   isUploading = false,
   isPreloadingSchema = false,
+  isConnectingPlaid = false,
+  plaidConfigured = true,
+  plaidConnectedInstitutionCount = 0,
 }: PortfolioImportViewProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -129,6 +137,19 @@ export function PortfolioImportView({
     onPreloadSchema();
   }, [onPreloadSchema, isPreloadingSchema, isUploading]);
 
+  const handleConnectPlaid = useCallback(() => {
+    if (!onConnectPlaid || isUploading || isPreloadingSchema || isConnectingPlaid || plaidConfigured === false) {
+      return;
+    }
+    onConnectPlaid();
+  }, [
+    isConnectingPlaid,
+    isPreloadingSchema,
+    isUploading,
+    onConnectPlaid,
+    plaidConfigured,
+  ]);
+
   return (
     <div className="w-full max-w-md mx-auto space-y-3.5 px-4 pt-3 pb-6 md:max-w-2xl md:px-6 lg:max-w-3xl">
       {/* Header */}
@@ -166,13 +187,44 @@ export function PortfolioImportView({
             </div>
             <div className="shrink-0 flex flex-col items-end gap-2">
               <Badge className="border border-[var(--brand-200)] bg-[var(--brand-50)] text-[var(--brand-700)]">
-                Best results
+                Read-only sync
               </Badge>
-              <Badge variant="outline">Coming soon</Badge>
+              {plaidConnectedInstitutionCount > 0 ? (
+                <Badge variant="outline">
+                  {plaidConnectedInstitutionCount} connection{plaidConnectedInstitutionCount === 1 ? "" : "s"}
+                </Badge>
+              ) : plaidConfigured === false ? (
+                <Badge variant="outline">Not configured</Badge>
+              ) : (
+                <Badge variant="outline">Broker-sourced</Badge>
+              )}
             </div>
           </div>
           <p className="text-[12px] text-muted-foreground">
-            Best for richer context and cleaner portfolio normalization.
+            Best for brokerage-sourced holdings, refreshable sync status, and non-editable portfolio context.
+          </p>
+          <MorphyButton
+            variant="blue-gradient"
+            effect="fill"
+            size="lg"
+            className="w-full border-none font-black shadow-xl"
+            disabled={!onConnectPlaid || isUploading || isPreloadingSchema || isConnectingPlaid || plaidConfigured === false}
+            onClick={handleConnectPlaid}
+            icon={{
+              icon: isConnectingPlaid ? Loader2 : Link2,
+              gradient: false,
+            }}
+          >
+            {plaidConfigured === false
+              ? "Plaid unavailable"
+              : isConnectingPlaid
+                ? "Opening Plaid..."
+                : plaidConnectedInstitutionCount > 0
+                  ? "Connect Another Brokerage"
+                  : "Connect Brokerage With Plaid"}
+          </MorphyButton>
+          <p className="text-[11px] text-muted-foreground">
+            Plaid data stays read-only in Kai. Statements remain your editable source.
           </p>
         </CardContent>
       </Card>

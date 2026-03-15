@@ -6,7 +6,7 @@
  * - financial.analytics (FinancialAnalyticsV2)
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type AnyObj = Record<string, any>;
 
 const CASH_EQUIVALENT_SYMBOLS = new Set(["CASH", "MMF", "SWEEP", "QACDS"]);

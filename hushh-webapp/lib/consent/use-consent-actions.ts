@@ -28,6 +28,8 @@ export interface PendingConsent {
   scopeDescription?: string;
   requestedAt: number;
   expiryHours?: number;
+  durationHours?: number;
+  bundleId?: string;
 }
 
 type RequestStatus = "pending" | "handling" | "handled";
@@ -141,7 +143,7 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
    * Approve a consent request with zero-knowledge export
    */
   const handleApprove = useCallback(
-    async (consent: PendingConsent): Promise<void> => {
+    async (consent: PendingConsent, options?: { quiet?: boolean }): Promise<void> => {
       const toastId = consent.id;
 
       // Mark as handling immediately to block re-showing
@@ -361,6 +363,7 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
           encryptedData: encrypted.ciphertext,
           encryptedIv: encrypted.iv,
           encryptedTag: encrypted.tag,
+          durationHours: consent.durationHours,
         });
 
         if (!response.ok) {
@@ -372,13 +375,15 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
         return "Consent approved!";
       })();
 
-      toast.promise(promise, {
-        id: toastId,
-        loading: "Approving consent...",
-        success: (data) => `✅ ${data}`,
-        error: (err) => `❌ ${err.message}`,
-        duration: 3000,
-      });
+      if (!options?.quiet) {
+        toast.promise(promise, {
+          id: toastId,
+          loading: "Approving consent...",
+          success: (data) => `✅ ${data}`,
+          error: (err) => `❌ ${err.message}`,
+          duration: 3000,
+        });
+      }
 
       try {
         await promise;
@@ -395,16 +400,19 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
       } catch (err) {
         console.error("Error approving consent:", err);
         markAsPending(consent.id);
+        if (options?.quiet) {
+          throw (err instanceof Error ? err : new Error("Failed to approve consent"));
+        }
       }
     },
-    [userId, vaultKey, markAsHandling, markAsHandled, markAsPending, onActionComplete]
+    [userId, vaultKey, getVaultOwnerToken, markAsHandling, markAsHandled, markAsPending, onActionComplete]
   );
 
   /**
    * Deny a consent request
    */
   const handleDeny = useCallback(
-    async (requestId: string): Promise<void> => {
+    async (requestId: string, options?: { quiet?: boolean }): Promise<void> => {
       const toastId = requestId;
 
       if (!userId) return;
@@ -431,13 +439,15 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
         return "Consent denied";
       })();
 
-      toast.promise(promise, {
-        id: toastId,
-        loading: "Denying consent...",
-        success: (data) => `❌ ${data}`,
-        error: (err) => `❌ ${err.message}`,
-        duration: 3000,
-      });
+      if (!options?.quiet) {
+        toast.promise(promise, {
+          id: toastId,
+          loading: "Denying consent...",
+          success: (data) => `❌ ${data}`,
+          error: (err) => `❌ ${err.message}`,
+          duration: 3000,
+        });
+      }
 
       try {
         await promise;
@@ -454,9 +464,66 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
       } catch (err) {
         console.error("Error denying consent:", err);
         markAsPending(requestId);
+        if (options?.quiet) {
+          throw (err instanceof Error ? err : new Error("Failed to deny consent"));
+        }
       }
     },
-    [userId, markAsHandling, markAsHandled, markAsPending, onActionComplete]
+    [userId, getVaultOwnerToken, markAsHandling, markAsHandled, markAsPending, onActionComplete]
+  );
+
+  const handleApproveBundle = useCallback(
+    async (
+      consents: PendingConsent[],
+      options?: { bundleId?: string; bundleLabel?: string }
+    ): Promise<void> => {
+      if (!userId || consents.length === 0) return;
+      const toastId = options?.bundleId || `bundle-${consents[0]?.id || "approve"}`;
+      const promise = (async () => {
+        for (const consent of consents) {
+          await handleApprove(consent, { quiet: true });
+        }
+        return "Consent bundle approved";
+      })();
+
+      toast.promise(promise, {
+        id: toastId,
+        loading: `Approving ${options?.bundleLabel || "request bundle"}...`,
+        success: "✅ Request bundle approved",
+        error: (err) => `❌ ${err.message}`,
+        duration: 3000,
+      });
+
+      await promise;
+    },
+    [handleApprove, userId]
+  );
+
+  const handleDenyBundle = useCallback(
+    async (
+      requestIds: string[],
+      options?: { bundleId?: string; bundleLabel?: string }
+    ): Promise<void> => {
+      if (!userId || requestIds.length === 0) return;
+      const toastId = options?.bundleId || `bundle-${requestIds[0] || "deny"}`;
+      const promise = (async () => {
+        for (const requestId of requestIds) {
+          await handleDeny(requestId, { quiet: true });
+        }
+        return "Consent bundle denied";
+      })();
+
+      toast.promise(promise, {
+        id: toastId,
+        loading: `Denying ${options?.bundleLabel || "request bundle"}...`,
+        success: "❌ Request bundle denied",
+        error: (err) => `❌ ${err.message}`,
+        duration: 3000,
+      });
+
+      await promise;
+    },
+    [handleDeny, userId]
   );
 
   /**
@@ -521,7 +588,9 @@ export function useConsentActions(options: UseConsentActionsOptions = {}) {
   return {
     // Actions
     handleApprove,
+    handleApproveBundle,
     handleDeny,
+    handleDenyBundle,
     handleRevoke,
 
     // Status management

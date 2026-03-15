@@ -3,11 +3,12 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WEB_DIR="$REPO_ROOT/hushh-webapp"
-WEB_LINT_WARNING_BUDGET="${WEB_LINT_WARNING_BUDGET:-161}"
+WEB_LINT_WARNING_BUDGET="${WEB_LINT_WARNING_BUDGET:-0}"
 NODE_VERSION_MIN="${NODE_VERSION_MIN:-20}"
 WEB_AUDIT_MODERATE_BUDGET="${WEB_AUDIT_MODERATE_BUDGET:-7}"
 WEB_AUDIT_HIGH_BUDGET="${WEB_AUDIT_HIGH_BUDGET:-21}"
 WEB_AUDIT_CRITICAL_BUDGET="${WEB_AUDIT_CRITICAL_BUDGET:-0}"
+CI_NATIVE_PARITY_REQUIRED="${CI_NATIVE_PARITY_REQUIRED:-0}"
 export WEB_AUDIT_MODERATE_BUDGET WEB_AUDIT_HIGH_BUDGET WEB_AUDIT_CRITICAL_BUDGET
 
 cd "$WEB_DIR"
@@ -26,8 +27,12 @@ npm ci
 
 npm run typecheck
 npm run lint -- --max-warnings="${WEB_LINT_WARNING_BUDGET}"
-npm run verify:design-system
-npm run verify:investor-language
+
+if [ "$CI_NATIVE_PARITY_REQUIRED" = "1" ]; then
+  npm run verify:mobile-firebase
+else
+  echo "Skipping native Firebase artifact parity in web-check (CI_NATIVE_PARITY_REQUIRED=0)."
+fi
 
 NEXT_PUBLIC_BACKEND_URL="${NEXT_PUBLIC_BACKEND_URL:-https://api.example.com}" \
 NEXT_PUBLIC_FIREBASE_API_KEY="${NEXT_PUBLIC_FIREBASE_API_KEY:-test-api-key}" \

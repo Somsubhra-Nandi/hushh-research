@@ -39,7 +39,7 @@ describe("🔐 Protocol Compliance Audit", () => {
   describe("Identity Endpoints (require Firebase auth)", () => {
     describe("GET /api/vault/get", () => {
       it("should reject without Authorization header", async () => {
-        process.env.ENVIRONMENT_MODE = "production";
+        process.env.NEXT_PUBLIC_APP_ENV = "production";
 
         const request = createMockGET("/api/vault/get", {
           userId: "test_user",
@@ -48,13 +48,13 @@ describe("🔐 Protocol Compliance Audit", () => {
         const response = await vaultGetRoute.GET(request);
         await expectError(response, 401, "AUTH_REQUIRED");
 
-        process.env.ENVIRONMENT_MODE = "development";
+        process.env.NEXT_PUBLIC_APP_ENV = "development";
       });
     });
 
     describe("GET /api/vault/check", () => {
       it("should reject without Authorization header", async () => {
-        process.env.ENVIRONMENT_MODE = "production";
+        process.env.NEXT_PUBLIC_APP_ENV = "production";
 
         const request = createMockGET("/api/vault/check", {
           userId: "test_user",
@@ -63,7 +63,7 @@ describe("🔐 Protocol Compliance Audit", () => {
         const response = await vaultCheckRoute.GET(request);
         await expectError(response, 401, "AUTH_REQUIRED");
 
-        process.env.ENVIRONMENT_MODE = "development";
+        process.env.NEXT_PUBLIC_APP_ENV = "development";
       });
     });
   });
@@ -71,9 +71,9 @@ describe("🔐 Protocol Compliance Audit", () => {
   // =========================================================================
   // DEVELOPMENT MODE - Auto-grant behavior
   // =========================================================================
-  describe("ENVIRONMENT_MODE=development (auto-grant)", () => {
+  describe("NEXT_PUBLIC_APP_ENV=development (auto-grant)", () => {
     beforeEach(() => {
-      process.env.ENVIRONMENT_MODE = "development";
+      process.env.NEXT_PUBLIC_APP_ENV = "development";
     });
 
     it("should allow vault get in dev mode when route exists", async () => {

@@ -325,7 +325,7 @@ export async function registerWithPrf(
   }
 
   // Get PRF output from extension results
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const extResults = credential.getClientExtensionResults() as any;
   const prfResult = extResults?.prf?.results?.first;
 
@@ -407,7 +407,7 @@ export async function authenticateWithPrf(
   }
 
   // Get PRF output
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const extResults2 = credential.getClientExtensionResults() as any;
   const prfResult = extResults2?.prf?.results?.first;
 

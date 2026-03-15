@@ -32,6 +32,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { toInvestorStreamText } from "@/lib/copy/investor-language";
+import type { PortfolioSource } from "@/lib/kai/brokerage/portfolio-sources";
 
 type LoserInput = {
   symbol: string;
@@ -169,6 +170,9 @@ export default function PortfolioHealthPage() {
       }
     >;
     forceOptimize?: boolean;
+    portfolioSource?: PortfolioSource;
+    portfolioContext?: Record<string, unknown> | null;
+    sourceMetadata?: Record<string, unknown> | null;
   } | null;
 
   useEffect(() => {
@@ -238,6 +242,12 @@ export default function PortfolioHealthPage() {
       sectorCount,
     };
   }, [input]);
+
+  const sourceLabel = useMemo(() => {
+    const raw = String(input?.portfolioSource || "").trim().toLowerCase();
+    if (raw === "plaid") return "Plaid";
+    return "Statement";
+  }, [input?.portfolioSource]);
   
   const radarData = useMemo(() => {
     if (!result?.analytics?.health_radar) return [];
@@ -262,13 +272,13 @@ export default function PortfolioHealthPage() {
       
       if (!input) {
         setLoading(false);
-        setError("No Optimize Portfolio context found. Please start from the Kai dashboard.");
+        setError("No Optimize Portfolio context found. Please start from the Kai portfolio.");
         return;
       }
 
       if (!user) {
         setLoading(false);
-        setError("Missing session context. Please return to Kai dashboard.");
+        setError("Missing session context. Please return to Kai portfolio.");
         return;
       }
 
@@ -320,6 +330,7 @@ export default function PortfolioHealthPage() {
           top3_concentration_pct: Number(contextStats.top3WeightPct.toFixed(2)),
           sector_count: contextStats.sectorCount,
           force_optimize: Boolean(input.forceOptimize),
+          portfolio_source: input.portfolioSource ?? "statement",
         };
 
         let effectiveToken = await resolveToken(false);
@@ -591,6 +602,7 @@ export default function PortfolioHealthPage() {
       <Card variant="none" effect="glass" showRipple={false} className="border-border/40">
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline">Source: {sourceLabel}</Badge>
             <Badge variant="secondary">{contextStats.holdingsCount} holdings</Badge>
             <Badge variant="secondary">{contextStats.losersCount} flagged losers</Badge>
             <Badge variant="secondary">Top 3 concentration {contextStats.top3WeightPct.toFixed(1)}%</Badge>
@@ -602,6 +614,9 @@ export default function PortfolioHealthPage() {
               <Badge variant="outline">Horizon: {kaiProfile.preferences.investment_horizon}</Badge>
             )}
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Optimize is using the active {sourceLabel.toLowerCase()} portfolio context selected from the Kai portfolio.
+          </p>
         </CardContent>
       </Card>
 
@@ -690,9 +705,9 @@ export default function PortfolioHealthPage() {
                 size="default"
                 variant="blue-gradient"
                 effect="fade"
-                onClick={() => router.push("/kai/dashboard")}
+                onClick={() => router.push("/kai/portfolio")}
               >
-                Back to dashboard
+                Back to portfolio
               </Button>
             </div>
           </CardContent>

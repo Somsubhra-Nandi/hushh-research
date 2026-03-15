@@ -1,124 +1,90 @@
-// hushh-webapp/app/api/world-model/[...path]/route.ts
-/**
- * World Model API Proxy
- * 
- * Proxies requests to the Python backend for world model operations.
- * Supports GET, POST, DELETE methods.
- */
+import { NextRequest } from "next/server";
 
-import { NextRequest, NextResponse } from "next/server";
+import { getPythonApiUrl } from "@/app/api/_utils/backend";
+import {
+  createUpstreamHeaders,
+  resolveRequestId,
+  withRequestIdJson,
+} from "@/app/api/_utils/request-id";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+export const dynamic = "force-dynamic";
+
+async function proxyWorldModelRequest(
+  request: NextRequest,
+  paramsPromise: Promise<{ path: string[] }>,
+  method: "GET" | "POST" | "PUT" | "DELETE"
+) {
+  const requestId = resolveRequestId(request);
+
+  try {
+    const { path } = await paramsPromise;
+    const pathStr = path.join("/");
+    const query = request.nextUrl.search;
+    const backendUrl = `${getPythonApiUrl()}/api/world-model/${pathStr}${query}`;
+
+    const authHeader = request.headers.get("Authorization") || "";
+    const headers = createUpstreamHeaders(requestId, {
+      ...(authHeader ? { Authorization: authHeader } : {}),
+      ...(method === "POST" || method === "PUT"
+        ? { "Content-Type": "application/json" }
+        : {}),
+    });
+
+    const body =
+      method === "POST" || method === "PUT"
+        ? JSON.stringify(await request.json().catch(() => ({})))
+        : undefined;
+
+    const response = await fetch(backendUrl, {
+      method,
+      headers,
+      body,
+    });
+
+    const payload = await response
+      .json()
+      .catch(async () => ({ detail: await response.text().catch(() => "") }));
+
+    return withRequestIdJson(requestId, payload, {
+      status: response.status,
+    });
+  } catch (error) {
+    console.error(
+      `[WorldModel API] request_id=${requestId} method=${method} proxy_error`,
+      error
+    );
+    return withRequestIdJson(
+      requestId,
+      { error: "Failed to proxy request to backend" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  try {
-    const { path } = await params;
-    const pathStr = path.join("/");
-    const searchParams = request.nextUrl.searchParams.toString();
-    const url = `${BACKEND_URL}/api/world-model/${pathStr}${searchParams ? `?${searchParams}` : ""}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: request.headers.get("Authorization") || "",
-        "Content-Type": "application/json",
-      },
-    });
-
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error("World model proxy GET error:", error);
-    return NextResponse.json(
-      { error: "Failed to proxy request to backend" },
-      { status: 500 }
-    );
-  }
+  return proxyWorldModelRequest(request, params, "GET");
 }
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  try {
-    const { path } = await params;
-    const pathStr = path.join("/");
-    const body = await request.json();
-
-    const response = await fetch(`${BACKEND_URL}/api/world-model/${pathStr}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: request.headers.get("Authorization") || "",
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error("World model proxy POST error:", error);
-    return NextResponse.json(
-      { error: "Failed to proxy request to backend" },
-      { status: 500 }
-    );
-  }
+  return proxyWorldModelRequest(request, params, "POST");
 }
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  try {
-    const { path } = await params;
-    const pathStr = path.join("/");
-
-    const response = await fetch(`${BACKEND_URL}/api/world-model/${pathStr}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: request.headers.get("Authorization") || "",
-      },
-    });
-
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error("World model proxy DELETE error:", error);
-    return NextResponse.json(
-      { error: "Failed to proxy request to backend" },
-      { status: 500 }
-    );
-  }
+  return proxyWorldModelRequest(request, params, "DELETE");
 }
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  try {
-    const { path } = await params;
-    const pathStr = path.join("/");
-    const body = await request.json();
-
-    const response = await fetch(`${BACKEND_URL}/api/world-model/${pathStr}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: request.headers.get("Authorization") || "",
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error("World model proxy PUT error:", error);
-    return NextResponse.json(
-      { error: "Failed to proxy request to backend" },
-      { status: 500 }
-    );
-  }
+  return proxyWorldModelRequest(request, params, "PUT");
 }

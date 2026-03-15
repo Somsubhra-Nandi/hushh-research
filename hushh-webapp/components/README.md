@@ -59,6 +59,6 @@ npm run lint
 ```
 
 ## References
-1. `docs/reference/design-system.md`
-2. `docs/reference/frontend-pattern-catalog.md`
-3. `docs/reference/cache-coherence.md`
+1. `docs/reference/quality/design-system.md`
+2. `docs/reference/quality/frontend-pattern-catalog.md`
+3. `docs/reference/architecture/cache-coherence.md`

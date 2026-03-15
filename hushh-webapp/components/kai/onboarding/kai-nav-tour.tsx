@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  Compass,
+  LayoutDashboard,
+  LineChart,
+  MenuSquare,
+  Store,
   UserRound,
-  Shield,
   Command,
-  Layers3,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -24,10 +25,10 @@ import { getKaiChromeState } from "@/lib/navigation/kai-chrome-state";
 
 const TOUR_STEPS = [
   {
-    id: "kai-route-tabs",
-    title: "Top Route Tabs",
-    description: "Swipe left or right to switch between Market, Dashboard, and Analysis.",
-    icon: Layers3,
+    id: "nav-role-switch",
+    title: "Role Menu",
+    description: "Switch between Investor and RIA from the top app bar without leaving the page.",
+    icon: MenuSquare,
   },
   {
     id: "kai-command-bar",
@@ -37,21 +38,27 @@ const TOUR_STEPS = [
     icon: Command,
   },
   {
-    id: "nav-kai",
-    title: "Kai",
-    description: "Your market intelligence home and navigation anchor.",
-    icon: Compass,
+    id: "nav-market",
+    title: "Market",
+    description: "Return to the market home, watchlists, and discovery flow.",
+    icon: Store,
   },
   {
-    id: "nav-consents",
-    title: "Consents",
-    description: "Review and control every active data consent.",
-    icon: Shield,
+    id: "nav-portfolio",
+    title: "Portfolio",
+    description: "Jump straight to your portfolio view, sources, and current state.",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "nav-analysis",
+    title: "Analysis",
+    description: "Open your analysis history and deeper Kai reasoning surfaces.",
+    icon: LineChart,
   },
   {
     id: "nav-profile",
     title: "Profile",
-    description: "Manage vault security, identity, and personal settings.",
+    description: "Open settings, privacy, consents, and vault controls from one place.",
     icon: UserRound,
   },
 ] as const;

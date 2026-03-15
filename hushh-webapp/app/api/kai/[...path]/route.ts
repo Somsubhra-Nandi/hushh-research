@@ -1,8 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 import { getPythonApiUrl } from "@/app/api/_utils/backend";
+import {
+  createUpstreamHeaders,
+  resolveRequestId,
+  withRequestIdJson,
+} from "@/app/api/_utils/request-id";
 
 /**
  * Kai Catch-All Proxy
@@ -38,6 +43,7 @@ export async function DELETE(
 }
 
 async function proxyRequest(request: NextRequest, params: { path: string[] }) {
+  const requestId = resolveRequestId(request);
   const path = params.path.join("/");
   // Forward query string to backend
   const queryString = request.nextUrl.search;
@@ -47,12 +53,12 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
   const authHeader = request.headers.get("authorization");
   const acceptHeader = request.headers.get("accept");
   const contentType = request.headers.get("content-type") || "";
-  console.log(`[Kai API] Proxying ${request.method} ${path}`);
-  console.log(`[Kai API] Authorization header present: ${!!authHeader}`);
-  console.log(`[Kai API] Content-Type: ${contentType}`);
+  console.log(
+    `[Kai API] request_id=${requestId} method=${request.method} path=${path} auth=${Boolean(authHeader)} content_type=${contentType || "none"}`
+  );
 
   try {
-    const headers = new Headers();
+    const headers = createUpstreamHeaders(requestId);
     
     // Copy authorization header
     if (authHeader) {
@@ -88,7 +94,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     // Check for SSE stream response
     const responseContentType = response.headers.get("content-type");
     if (responseContentType?.includes("text/event-stream")) {
-      console.log(`[Kai API] SSE stream detected, passing through`);
+      console.log(`[Kai API] request_id=${requestId} sse_pass_through=true`);
       // Return SSE stream directly without parsing
       return new Response(response.body, {
         status: response.status,
@@ -98,6 +104,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
           "Connection": "keep-alive",
           "Content-Encoding": "none",
           "X-Accel-Buffering": "no",
+          "x-request-id": requestId,
         },
       });
     }
@@ -114,18 +121,22 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
         (data as { detail: { code: string } }).detail.code === "ANALYZE_RUN_NOT_FOUND";
       if (expectedAnalyzeRunMiss) {
         console.info(
-          `[Kai API] No active analyze run for current session (${response.status}).`
+          `[Kai API] request_id=${requestId} no_active_analyze_run status=${response.status}`
         );
       } else {
-        console.error(`[Kai API] Error calling ${url}: ${response.status}`, data);
+        console.error(
+          `[Kai API] request_id=${requestId} upstream_status=${response.status} path=${path}`,
+          data
+        );
       }
-      return NextResponse.json(data, { status: response.status });
+      return withRequestIdJson(requestId, data, { status: response.status });
     }
 
-    return NextResponse.json(data);
+    return withRequestIdJson(requestId, data);
   } catch (error) {
-    console.error(`[Kai API] Internal Error proxying to ${url}:`, error);
-    return NextResponse.json(
+    console.error(`[Kai API] request_id=${requestId} proxy_error path=${path}`, error);
+    return withRequestIdJson(
+      requestId,
       { error: "Internal Proxy Error", details: String(error) },
       { status: 500 }
     );

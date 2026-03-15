@@ -2,7 +2,8 @@
 
 import { ExternalLink } from "lucide-react";
 
-import { Card, CardContent } from "@/lib/morphy-ux/card";
+import { Badge } from "@/components/ui/badge";
+import { SettingsGroup, SettingsRow } from "@/components/profile/settings-ui";
 import type { KaiHomeNewsItem } from "@/lib/services/api-service";
 
 interface NewsTapeProps {
@@ -21,49 +22,43 @@ function formatPublished(value: string): string {
 }
 
 export function NewsTape({ rows }: NewsTapeProps) {
+  const openHeadline = (url: string) => {
+    if (typeof window === "undefined") return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   if (!rows.length) {
     return (
-      <Card variant="muted" effect="fill" className="rounded-xl p-0">
-        <CardContent className="p-4 text-sm text-muted-foreground">
+      <SettingsGroup>
+        <div className="px-4 py-4 text-sm text-muted-foreground">
           No recent market headlines are available right now.
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsGroup>
     );
   }
 
   return (
-    <div className="-mx-4 overflow-x-auto overflow-y-visible px-8 py-4">
-      <div className="flex min-w-0 gap-3">
-        {rows.slice(0, 8).map((row, index) => (
-          <a
-            key={`${row.symbol}-${index}-${row.url}`}
-            href={row.url}
-            target="_blank"
-            rel="noreferrer"
-            className="w-[260px] shrink-0"
-          >
-            <Card
-              variant="none"
-              effect="glass"
-              className="h-full rounded-xl p-0 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-            >
-              <CardContent className="space-y-2 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="rounded-full bg-background/70 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                    {row.symbol}
-                  </span>
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <p className="line-clamp-3 text-sm font-semibold leading-snug">{row.title}</p>
-                <div className="text-[11px] text-muted-foreground">
-                  <p>{row.source_name}</p>
-                  <p>{formatPublished(row.published_at)}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
-        ))}
-      </div>
-    </div>
+    <SettingsGroup>
+      {rows.slice(0, 6).map((row, index) => (
+        <SettingsRow
+          key={`${row.symbol}-${index}-${row.url}`}
+          title={row.title}
+          description={
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="border-border/70 bg-background/80 text-[10px] font-semibold text-muted-foreground">
+                  {row.symbol}
+                </Badge>
+                <span>{row.source_name}</span>
+              </div>
+              <p className="mt-1">{formatPublished(row.published_at)}</p>
+            </>
+          }
+          trailing={<ExternalLink className="h-4 w-4 text-muted-foreground" />}
+          chevron
+          onClick={() => openHeadline(row.url)}
+        />
+      ))}
+    </SettingsGroup>
   );
 }

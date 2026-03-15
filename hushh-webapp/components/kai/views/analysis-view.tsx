@@ -122,7 +122,7 @@ export function AnalysisView({
               size="icon"
               onClick={onBack}
               className="h-10 w-10 rounded-full bg-background/50 hover:bg-background/80"
-              aria-label="Back to Dashboard"
+              aria-label="Back to Portfolio"
               icon={{ icon: ArrowLeft }}
             />
 
@@ -299,7 +299,7 @@ export function AnalysisView({
           effect="glass" 
           onClick={onBack}
         >
-          Back to Dashboard
+          Back to Portfolio
         </MorphyButton>
       </div>
 

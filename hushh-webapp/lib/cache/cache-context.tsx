@@ -62,11 +62,33 @@ export interface PortfolioData {
     quantity: number;
     price: number;
     market_value: number;
+    weight_pct?: number;
     cost_basis?: number;
     unrealized_gain_loss?: number;
     unrealized_gain_loss_pct?: number;
+    position_side?: "long" | "short" | "liability";
+    is_short_position?: boolean;
+    is_liability_position?: boolean;
+    source_type?: string;
+    item_id?: string;
+    account_id?: string;
+    institution_name?: string;
+    last_synced_at?: string;
+    is_editable?: boolean;
+    sync_status?: string;
   }>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source_metadata?: {
+    source_type?: string;
+    source_label?: string;
+    is_editable?: boolean;
+    sync_status?: string;
+    last_synced_at?: string | null;
+    institution_names?: string[];
+    item_count?: number;
+    account_count?: number;
+    requires_explicit_source_selection_for_analysis?: boolean;
+  };
+   
   [key: string]: any;
 }
 

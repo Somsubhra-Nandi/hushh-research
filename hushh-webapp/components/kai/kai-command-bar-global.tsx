@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
 import { KaiSearchBar } from "@/components/kai/kai-search-bar";
+import { StockComparisonPreview } from "@/components/kai/cards/stock-comparison-preview";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useKaiSession } from "@/lib/stores/kai-session-store";
 import { CacheService, CACHE_KEYS } from "@/lib/services/cache-service";
 import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
@@ -12,6 +14,8 @@ import { ROUTES } from "@/lib/navigation/routes";
 import { useVault } from "@/lib/vault/vault-context";
 import { getKaiChromeState } from "@/lib/navigation/kai-chrome-state";
 import { WorldModelService } from "@/lib/services/world-model-service";
+import { ApiService, type KaiStockPreviewResponse } from "@/lib/services/api-service";
+import { getKaiActivePickSource } from "@/lib/kai/pick-source-selection";
 
 function toBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
@@ -50,7 +54,12 @@ export function KaiCommandBarGlobal() {
   const busyOperations = useKaiSession((s) => s.busyOperations);
   const cache = useMemo(() => CacheService.getInstance(), []);
   const [hasPortfolioData, setHasPortfolioData] = useState(false);
+  const [previewSymbol, setPreviewSymbol] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<KaiStockPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const chromeState = useMemo(() => getKaiChromeState(pathname), [pathname]);
+  const userId = user?.uid ?? "";
 
   useEffect(() => {
     if (!user?.uid) {
@@ -188,8 +197,50 @@ export function KaiCommandBarGlobal() {
     return Array.from(deduped.values());
   }, [cache, user?.uid]);
 
+  useEffect(() => {
+    if (!previewSymbol || !vaultOwnerToken || !userId) {
+      setPreviewData(null);
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    void (async () => {
+      try {
+        const payload = await ApiService.getKaiStockPreview({
+          userId,
+          symbol: previewSymbol,
+          vaultOwnerToken,
+          pickSource: getKaiActivePickSource(userId),
+        });
+        if (!cancelled) {
+          setPreviewData(payload);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPreviewData(null);
+          setPreviewError(
+            error instanceof Error ? error.message : "Failed to load stock preview"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewSymbol, userId, vaultOwnerToken]);
+
   // Command palette is hidden only during loading/review overlays.
-  if (loading || !user || reviewScreenActive) {
+  if (loading || !user || reviewScreenActive || !isVaultUnlocked) {
     return null;
   }
 
@@ -197,78 +248,104 @@ export function KaiCommandBarGlobal() {
     return null;
   }
 
-  const userId = user.uid;
+  const openFullAnalysisForSymbol = (symbol: string) => {
+    setPreviewSymbol(null);
+    router.push(`${ROUTES.KAI_ANALYSIS}?ticker=${encodeURIComponent(symbol)}`);
+  };
+
+  const startDebateForSymbol = (symbol: string) => {
+    setPreviewSymbol(null);
+    setAnalysisParams({
+      ticker: symbol,
+      userId,
+      riskProfile: "balanced",
+    });
+    router.push(`${ROUTES.KAI_ANALYSIS}?ticker=${encodeURIComponent(symbol)}`);
+  };
 
   return (
-    <KaiSearchBar
-      onCommand={(command, params) => {
-        if (
-          reviewDirty &&
-          !window.confirm(
-            "You have unsaved portfolio changes. Leaving now will discard them."
-          )
-        ) {
-          return;
-        }
+    <>
+      <KaiSearchBar
+        onCommand={(command, params) => {
+          if (
+            reviewDirty &&
+            !window.confirm(
+              "You have unsaved portfolio changes. Leaving now will discard them."
+            )
+          ) {
+            return;
+          }
 
-        if (
-          !hasPortfolioData &&
-          (command === "analyze" || command === "history")
-        ) {
-          toast.info("Import your portfolio to unlock this command.");
-          router.push(ROUTES.KAI_IMPORT);
-          return;
-        }
+          if (
+            !hasPortfolioData &&
+            (command === "analyze" || command === "history")
+          ) {
+            toast.info("Import your portfolio to unlock this command.");
+            router.push(ROUTES.KAI_IMPORT);
+            return;
+          }
 
-        if (command === "analyze" && params?.symbol) {
-          if (busyOperations["stock_analysis_active"]) {
-            toast.error("A debate is already running.", {
-              description: "Open analysis to continue with the active run.",
-            });
+          if (command === "analyze" && params?.symbol) {
+            if (busyOperations["stock_analysis_active"]) {
+              toast.error("A debate is already running.", {
+                description: "Open analysis to continue with the active run.",
+              });
+              router.push(ROUTES.KAI_ANALYSIS);
+              return;
+            }
+            setPreviewSymbol(String(params.symbol).toUpperCase());
+            return;
+          }
+
+          if (command === "optimize") {
+            toast.info("Optimize Portfolio is coming soon.");
+            return;
+          }
+
+          if (command === "history") {
             router.push(ROUTES.KAI_ANALYSIS);
             return;
           }
-          const symbol = String(params.symbol).toUpperCase();
-          setAnalysisParams({
-            ticker: symbol,
-            userId,
-            riskProfile: "balanced",
-          });
-          router.push(ROUTES.KAI_ANALYSIS);
-          return;
-        }
 
-        if (command === "optimize") {
-          toast.info("Optimize Portfolio is coming soon.");
-          return;
-        }
+          if (command === "dashboard") {
+            router.push(ROUTES.KAI_DASHBOARD);
+            return;
+          }
 
-        if (command === "history") {
-          router.push(ROUTES.KAI_ANALYSIS);
-          return;
-        }
+          if (command === "home") {
+            router.push(ROUTES.KAI_HOME);
+            return;
+          }
 
-        if (command === "dashboard") {
-          router.push(ROUTES.KAI_DASHBOARD);
-          return;
-        }
+          if (command === "consent") {
+            router.push(ROUTES.CONSENTS);
+            return;
+          }
 
-        if (command === "home") {
-          router.push(ROUTES.KAI_HOME);
-          return;
-        }
+          if (command === "profile") {
+            router.push(ROUTES.PROFILE);
+          }
+        }}
+        hasPortfolioData={hasPortfolioData}
+        portfolioTickers={portfolioTickers}
+      />
 
-        if (command === "consent") {
-          router.push(ROUTES.CONSENTS);
-          return;
-        }
-
-        if (command === "profile") {
-          router.push(ROUTES.PROFILE);
-        }
-      }}
-      hasPortfolioData={hasPortfolioData}
-      portfolioTickers={portfolioTickers}
-    />
+      <Dialog open={Boolean(previewSymbol)} onOpenChange={(open) => !open && setPreviewSymbol(null)}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto p-0">
+          <DialogTitle className="sr-only">Stock comparison preview</DialogTitle>
+          <div className="p-1">
+            <StockComparisonPreview
+              preview={previewData}
+              loading={previewLoading}
+              error={previewError}
+              onStartDebate={() => previewSymbol && startDebateForSymbol(previewSymbol)}
+              onOpenFullAnalysis={() =>
+                previewSymbol && openFullAnalysisForSymbol(previewSymbol)
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

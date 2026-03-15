@@ -19,6 +19,21 @@ import { ROUTES } from "@/lib/navigation/routes";
 // Event name for FCM messages (both web and native dispatch this)
 export const FCM_MESSAGE_EVENT = "fcm-message";
 
+export type FCMInitStatus =
+  | "push_active"
+  | "push_blocked"
+  | "push_failed"
+  | "unsupported";
+
+export interface FCMInitResult {
+  status: FCMInitStatus;
+  detail?: string;
+}
+
+let nativeListenersConfigured = false;
+let webListenerConfigured = false;
+let lastKnownSession: { userId: string; idToken: string } | null = null;
+
 function hasValidWebMessagingConfig(app: {
   options?: {
     appId?: string;
@@ -42,14 +57,14 @@ function hasValidWebMessagingConfig(app: {
 export async function initializeFCM(
   userId: string,
   idToken: string
-): Promise<void> {
+): Promise<FCMInitResult> {
   const isNative = Capacitor.isNativePlatform();
+  lastKnownSession = { userId, idToken };
 
   if (isNative) {
-    await initializeNativeFCM(userId, idToken);
-  } else {
-    await initializeWebFCM(userId, idToken);
+    return initializeNativeFCM(userId, idToken);
   }
+  return initializeWebFCM(userId, idToken);
 }
 
 /**
@@ -58,7 +73,7 @@ export async function initializeFCM(
 async function initializeNativeFCM(
   userId: string,
   idToken: string
-): Promise<void> {
+): Promise<FCMInitResult> {
   try {
     console.log("[FCM] Initializing for native platform...");
 
@@ -70,7 +85,10 @@ async function initializeNativeFCM(
 
     if (permissionResult.receive !== "granted") {
       console.warn("[FCM] Notification permission not granted");
-      return;
+      return {
+        status: "push_blocked",
+        detail: `native_permission_${permissionResult.receive}`,
+      };
     }
 
     // Step 2: Get FCM token
@@ -89,15 +107,25 @@ async function initializeNativeFCM(
     if (response.ok) {
       console.log("[FCM] ✅ Token registered with backend");
     } else {
-      console.error("[FCM] ❌ Failed to register token:", response.status);
+      const detail = await response.text().catch(() => "");
+      console.error("[FCM] ❌ Failed to register token:", response.status, detail);
+      return {
+        status: "push_failed",
+        detail: `backend_register_${response.status}`,
+      };
     }
 
     // Step 4: Set up message listeners
     setupNativeListeners();
 
     console.log("[FCM] ✅ Native initialization complete");
+    return { status: "push_active" };
   } catch (error) {
     console.error("[FCM] ❌ Native initialization failed:", error);
+    return {
+      status: "push_failed",
+      detail: error instanceof Error ? error.message : "native_init_failed",
+    };
   }
 }
 
@@ -107,7 +135,7 @@ async function initializeNativeFCM(
 async function initializeWebFCM(
   userId: string,
   idToken: string
-): Promise<void> {
+): Promise<FCMInitResult> {
   try {
     console.log("[FCM] Initializing for web platform...");
 
@@ -115,25 +143,25 @@ async function initializeWebFCM(
     const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
     if (!vapidKey) {
       console.warn("[FCM] NEXT_PUBLIC_FIREBASE_VAPID_KEY not set");
-      return;
+      return { status: "push_failed", detail: "missing_vapid_key" };
     }
 
     // Request notification permission
     if (!("Notification" in window)) {
       console.warn("[FCM] Notifications not supported");
-      return;
+      return { status: "unsupported", detail: "notification_unsupported" };
     }
 
     if (Notification.permission === "denied") {
       console.warn("[FCM] Notification permission denied");
-      return;
+      return { status: "push_blocked", detail: "permission_denied" };
     }
 
     if (Notification.permission !== "granted") {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         console.warn("[FCM] Notification permission not granted");
-        return;
+        return { status: "push_blocked", detail: `permission_${permission}` };
       }
     }
 
@@ -149,15 +177,35 @@ async function initializeWebFCM(
       console.warn(
         "[FCM] Missing required Firebase Messaging config (appId/apiKey/messagingSenderId). Skipping web FCM init."
       );
-      return;
+      return {
+        status: "push_failed",
+        detail: "missing_firebase_messaging_config",
+      };
     }
 
+    if (!("serviceWorker" in navigator)) {
+      console.warn("[FCM] Service workers not supported for web push");
+      return { status: "unsupported", detail: "service_worker_unsupported" };
+    }
+
+    const registration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js"
+    );
+    await navigator.serviceWorker.ready;
+    console.log(
+      "[FCM] Service worker ready:",
+      registration.scope
+    );
+
     const messaging = getMessaging(app);
-    const token = await getToken(messaging, { vapidKey });
+    const token = await getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration: registration,
+    });
 
     if (!token) {
       console.warn("[FCM] Failed to get token");
-      return;
+      return { status: "push_failed", detail: "empty_push_token" };
     }
 
     console.log("[FCM] Got token:", token.substring(0, 20) + "...");
@@ -173,24 +221,60 @@ async function initializeWebFCM(
     if (response.ok) {
       console.log("[FCM] ✅ Token registered with backend");
     } else {
-      console.error("[FCM] ❌ Failed to register token:", response.status);
+      const detail = await response.text().catch(() => "");
+      console.error("[FCM] ❌ Failed to register token:", response.status, detail);
+      return {
+        status: "push_failed",
+        detail: `backend_register_${response.status}`,
+      };
     }
 
     // Set up foreground message listener
-    onMessage(messaging, (payload) => {
-      console.log("[FCM] 📬 Foreground message received:", payload);
-
-      // Dispatch custom event
-      window.dispatchEvent(
-        new CustomEvent(FCM_MESSAGE_EVENT, {
-          detail: payload,
-        })
-      );
-    });
+    if (!webListenerConfigured) {
+      onMessage(messaging, (payload) => {
+        console.log("[FCM] 📬 Foreground message received:", payload);
+        window.dispatchEvent(
+          new CustomEvent(FCM_MESSAGE_EVENT, {
+            detail: payload,
+          })
+        );
+      });
+      webListenerConfigured = true;
+    }
 
     console.log("[FCM] ✅ Web initialization complete");
+    return { status: "push_active" };
   } catch (error) {
+    const errorCode =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    const errorMessage =
+      error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    if (errorCode === "installations/request-failed") {
+      console.warn(
+        "[FCM] Web push init skipped: Firebase Installations rejected config. Check Firebase web app keys, API key referrer restrictions, and VAPID key for this domain."
+      );
+      return {
+        status: "push_failed",
+        detail: "installations_request_failed",
+      };
+    }
+    if (errorCode === "messaging/token-subscribe-failed") {
+      console.warn(
+        "[FCM] Web push subscribe failed. Check FCM Registration API, API key restrictions, and VAPID/project alignment.",
+        errorMessage
+      );
+      return {
+        status: "push_failed",
+        detail: "token_subscribe_failed",
+      };
+    }
     console.error("[FCM] ❌ Web initialization failed:", error);
+    return {
+      status: "push_failed",
+      detail: errorCode || errorMessage || "web_init_failed",
+    };
   }
 }
 
@@ -198,6 +282,9 @@ async function initializeWebFCM(
  * Set up message listeners for native platforms
  */
 function setupNativeListeners(): void {
+  if (nativeListenersConfigured) return;
+  nativeListenersConfigured = true;
+
   import("@capacitor-firebase/messaging").then(({ FirebaseMessaging }) => {
     // Foreground message handler
     FirebaseMessaging.addListener("notificationReceived", (notification) => {
@@ -246,15 +333,12 @@ function setupNativeListeners(): void {
       const platform = Capacitor.getPlatform() as "ios" | "android" | "web";
       // Re-register silently; if it fails the next app launch will fix it
       try {
-        const { getAuth } = await import("firebase/auth");
-        const currentUser = getAuth().currentUser;
-        if (currentUser) {
-          const idToken = await currentUser.getIdToken();
+        if (lastKnownSession) {
           await ApiService.registerPushToken(
-            currentUser.uid,
+            lastKnownSession.userId,
             event.token,
             platform,
-            idToken
+            lastKnownSession.idToken
           );
           console.log("[FCM] Refreshed token re-registered with backend");
         }
@@ -292,7 +376,13 @@ export async function getFCMToken(): Promise<string | null> {
       }
 
       const messaging = getMessaging(app);
-      const token = await getToken(messaging, { vapidKey });
+      const registration = await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js"
+      );
+      const token = await getToken(messaging, {
+        vapidKey,
+        serviceWorkerRegistration: registration,
+      });
       return token || null;
     }
   } catch (error) {

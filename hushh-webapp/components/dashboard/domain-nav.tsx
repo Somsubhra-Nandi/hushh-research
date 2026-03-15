@@ -12,7 +12,7 @@ import { Icon } from "@/lib/morphy-ux/ui";
 const domains = [
   {
     name: "Kai",
-    href: "/kai/dashboard",
+    href: "/kai/portfolio",
     icon: TrendingUp,
     status: "active" as const,
     color: "text-primary",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Trash2, Sparkles } from "lucide-react";
+import { BarChart3, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/lib/morphy-ux/button";
 import { Card, CardContent } from "@/lib/morphy-ux/card";
@@ -102,7 +102,7 @@ export function HoldingPositionCard({ holding, onAnalyze, onManage }: HoldingPos
               size="sm"
               onClick={() => onAnalyze(holding.symbol)}
             >
-              <Icon icon={Sparkles} size="sm" className="mr-1.5" />
+              <Icon icon={BarChart3} size="sm" className="mr-1.5" />
               Connect Kai
             </Button>
           </div>

@@ -3,7 +3,9 @@
 # Usage: make <target>
 # Run `make help` for available targets.
 
-.PHONY: help dev dev-frontend dev-backend lint test verify-docs ci-local
+.PHONY: help local uat prod local-web uat-web prod-web local-backend stack web backend profile-use env-bootstrap lint test verify-docs ci-local db-init-iam verify-iam-schema
+
+PROFILE ?= $(if $(ENV),$(ENV),local-uatdb)
 
 # === Help ==================================================================
 
@@ -17,19 +19,40 @@ ifneq ("$(wildcard consent-protocol/ops/monorepo/protocol.mk)","")
 include consent-protocol/ops/monorepo/protocol.mk
 endif
 
-# === Development ===========================================================
+# === Runtime Profiles ======================================================
 
-dev: ## Start frontend + backend (backend backgrounded)
-	@echo "Starting backend on :8000..."
-	@cd consent-protocol && python3 -m uvicorn server:app --reload --port 8000 &
-	@echo "Starting frontend on :3000..."
-	@cd hushh-webapp && npm run dev
+local: ## Start local frontend + local backend against UAT-backed resources
+	@$(MAKE) stack PROFILE=local-uatdb
 
-dev-frontend: ## Start frontend only
-	cd hushh-webapp && npm run dev
+uat: ## Start local frontend pointed at deployed UAT backend
+	@$(MAKE) stack PROFILE=uat-remote
 
-dev-backend: ## Start backend only
-	cd consent-protocol && python3 -m uvicorn server:app --reload --port 8000
+prod: ## Start local frontend pointed at deployed production backend
+	@$(MAKE) stack PROFILE=prod-remote
+
+local-web: ## Start local frontend only with local-uatdb profile active
+	@$(MAKE) web PROFILE=local-uatdb
+
+uat-web: ## Start local frontend only with uat-remote profile active
+	@$(MAKE) web PROFILE=uat-remote
+
+prod-web: ## Start local frontend only with prod-remote profile active
+	@$(MAKE) web PROFILE=prod-remote
+
+local-backend: ## Start local backend only for local-uatdb
+	@$(MAKE) backend PROFILE=local-uatdb
+
+profile-use: ## Activate runtime profile into consent-protocol/.env and hushh-webapp/.env.local (PROFILE=local-uatdb|uat-remote|prod-remote)
+	@bash scripts/env/use_profile.sh "$(PROFILE)"
+
+stack: ## Launch the canonical stack for a runtime profile (PROFILE=local-uatdb|uat-remote|prod-remote)
+	@bash scripts/runtime/launch_stack.sh "$(PROFILE)"
+
+web: profile-use ## Activate runtime profile then start local frontend only
+	cd hushh-webapp && npm run dev:next
+
+backend: ## Activate runtime profile then start local backend only (local-uatdb only)
+	@bash scripts/runtime/run_backend_local.sh "$(PROFILE)"
 
 # === Quality ===============================================================
 
@@ -52,3 +75,14 @@ verify-docs: ## Verify docs/runtime parity and route documentation truth
 
 ci-local: ## Full local CI simulation (mirrors GitHub Actions)
 	./scripts/test-ci-local.sh
+
+# === Environment Profiles ====================================================
+
+env-bootstrap: ## Create/hydrate local runtime profiles from templates + cached/cloud config
+	bash scripts/env/bootstrap_profiles.sh
+
+db-init-iam: ## Apply IAM foundation migrations explicitly (020 + 021)
+	cd consent-protocol && PYTHONPATH=. .venv/bin/python db/migrate.py --iam
+
+verify-iam-schema: ## Verify IAM tables/templates readiness
+	cd consent-protocol && PYTHONPATH=. .venv/bin/python scripts/verify_iam_schema.py

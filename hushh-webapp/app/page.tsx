@@ -10,6 +10,7 @@ import { isOnboardingFlowActiveCookieEnabled } from "@/lib/services/onboarding-r
 import { IntroStep } from "@/components/onboarding/IntroStep";
 import { PreviewCarouselStep } from "@/components/onboarding/PreviewCarouselStep";
 import { ROUTES } from "@/lib/navigation/routes";
+import { resolveAppEnvironment } from "@/lib/app-env";
 
 type HomeStep = "intro" | "preview";
 
@@ -21,23 +22,20 @@ function HomeContent() {
   const { user, loading } = useAuth();
   const [step, setStep] = useState<HomeStep | null>(null);
 
-  const forceOnboardingInDev =
-    process.env.NODE_ENV !== "production" &&
-    (process.env.NEXT_PUBLIC_ENVIRONMENT_MODE ?? "").toLowerCase() ===
-      "development";
+  const forceOnboardingInDev = resolveAppEnvironment() === "development";
 
   // Debug helper (browser console): resets Steps 1-2 visibility flag.
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     if (typeof window === "undefined") return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (window as any).resetOnboardingMarketing = async () => {
       await OnboardingLocalService.clearMarketingSeen();
       window.location.href = "/";
     };
 
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       delete (window as any).resetOnboardingMarketing;
     };
   }, []);

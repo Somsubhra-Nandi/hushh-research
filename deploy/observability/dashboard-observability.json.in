@@ -1,0 +1,139 @@
+{
+  "name": "projects/__PROJECT_ID__/dashboards/hushh-observability-managed",
+  "displayName": "Hushh Observability (Managed)",
+  "labels": {
+    "managed_by": "repo_observability"
+  },
+  "gridLayout": {
+    "columns": 2,
+    "widgets": [
+      {
+        "title": "Backend Request Rate (req/s)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "legendTemplate": "__BACKEND_SERVICE__",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND resource.label.\"service_name\"=\"__BACKEND_SERVICE__\" AND metric.type=\"run.googleapis.com/request_count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                },
+                "unitOverride": "1/s"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Backend 5xx Rate (req/s)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "legendTemplate": "5xx",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND resource.label.\"service_name\"=\"__BACKEND_SERVICE__\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.label.\"response_code_class\"=\"5xx\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                },
+                "unitOverride": "1/s"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Backend P95 Latency (s)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "legendTemplate": "p95",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND resource.label.\"service_name\"=\"__BACKEND_SERVICE__\" AND metric.type=\"run.googleapis.com/request_latencies\"",
+                  "aggregation": {
+                    "alignmentPeriod": "300s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                  }
+                },
+                "unitOverride": "s"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Frontend Request Rate (req/s)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "legendTemplate": "__FRONTEND_SERVICE__",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND resource.label.\"service_name\"=\"__FRONTEND_SERVICE__\" AND metric.type=\"run.googleapis.com/request_count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                },
+                "unitOverride": "1/s"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Unexpected Error Rate (log metric)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "legendTemplate": "unexpected",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/obs_unexpected_error_count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "300s",
+                    "perSeriesAligner": "ALIGN_RATE",
+                    "crossSeriesReducer": "REDUCE_SUM"
+                  }
+                },
+                "unitOverride": "1/s"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Data Health Anomaly Count",
+        "xyChart": {
+          "dataSets": [
+            {
+              "plotType": "STACKED_BAR",
+              "legendTemplate": "anomaly",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/obs_data_health_anomaly_count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "900s",
+                    "perSeriesAligner": "ALIGN_DELTA",
+                    "crossSeriesReducer": "REDUCE_SUM"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

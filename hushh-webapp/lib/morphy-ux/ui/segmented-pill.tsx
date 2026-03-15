@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { MaterialRipple } from "@/lib/morphy-ux/material-ripple";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/lib/morphy-ux/ui/icon";
 
@@ -11,17 +12,21 @@ export type SegmentedPillOption = {
   label: string;
   icon?: LucideIcon;
   badge?: number;
+  tone?: "default" | "accent";
   disabled?: boolean;
   dataTourId?: string;
 };
 
 type SegmentedPillSize = "compact" | "default";
+type SegmentedPillLayout = "inline" | "stacked";
 
 type SegmentedPillProps = {
   value: string;
   options: SegmentedPillOption[];
   onValueChange: (value: string) => void;
   size?: SegmentedPillSize;
+  layout?: SegmentedPillLayout;
+  hitArea?: "segment" | "content";
   className?: string;
   ariaLabel?: string;
 };
@@ -34,6 +39,10 @@ const SIZE_STYLES: Record<
     icon: "xs" | "sm" | "md";
     label: string;
     gap: string;
+    stackedContainer: string;
+    stackedButton: string;
+    stackedLabel: string;
+    stackedGap: string;
   }
 > = {
   compact: {
@@ -42,6 +51,10 @@ const SIZE_STYLES: Record<
     icon: "sm",
     label: "text-[11px] font-medium leading-none",
     gap: "gap-1",
+    stackedContainer: "min-h-[58px] p-1",
+    stackedButton: "px-1.5 py-1.5",
+    stackedLabel: "text-[10px] font-medium leading-[1.05]",
+    stackedGap: "gap-1",
   },
   default: {
     container: "min-h-[45px] p-1",
@@ -49,6 +62,10 @@ const SIZE_STYLES: Record<
     icon: "sm",
     label: "text-sm font-medium",
     gap: "gap-1.5",
+    stackedContainer: "min-h-[66px] p-1",
+    stackedButton: "px-2 py-2",
+    stackedLabel: "text-xs font-medium leading-tight",
+    stackedGap: "gap-1.5",
   },
 };
 
@@ -59,12 +76,15 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
       options,
       onValueChange,
       size = "default",
+      layout = "inline",
+      hitArea = "segment",
       className,
       ariaLabel = "Segmented selector",
     },
     ref
   ) => {
     const styles = SIZE_STYLES[size];
+    const isStacked = layout === "stacked";
     const activeIndex = Math.max(
       0,
       options.findIndex((option) => option.value === value)
@@ -77,8 +97,8 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
         role="radiogroup"
         aria-label={ariaLabel}
         className={cn(
-          "relative grid items-center rounded-full bg-muted/80 backdrop-blur-3xl shadow-2xl ring-1 ring-black/5 border border-white/10 dark:border-white/5",
-          styles.container,
+          "pointer-events-none relative grid items-center rounded-full border border-border/70 bg-muted/75 shadow-sm backdrop-blur-xl",
+          isStacked ? styles.stackedContainer : styles.container,
           className
         )}
         style={{
@@ -88,7 +108,7 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
         <div
           aria-hidden
           data-segment-indicator
-          className="pointer-events-none absolute left-1 top-1 bottom-1 rounded-full bg-zinc-900 text-zinc-50 shadow-sm ring-1 ring-black/10 dark:bg-zinc-50 dark:text-zinc-900 dark:ring-white/20 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
+          className="pointer-events-none absolute left-1 top-1 bottom-1 rounded-full bg-foreground text-background shadow-sm ring-1 ring-border/70 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
           style={{
             width: `calc((100% - 0.5rem) / ${Math.max(options.length, 1)})`,
             transform: `translateX(calc(${activeIndex * 100}% + var(--segment-drag-x, 0px)))`,
@@ -97,7 +117,8 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
         {options.map((option) => {
           const isActive = option.value === value;
           const isDisabled = !!option.disabled;
-          return (
+          const isAccent = option.tone === "accent";
+          const button = (
             <button
               key={option.value}
               type="button"
@@ -111,12 +132,17 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
                 onValueChange(option.value);
               }}
               className={cn(
-                "relative z-10 flex min-w-0 items-center justify-center rounded-full transition-[color,opacity,transform] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] disabled:cursor-not-allowed",
-                styles.button,
-                styles.gap,
+                "relative z-10 flex min-w-0 items-center justify-center overflow-hidden rounded-full text-center transition-[color,opacity,transform] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] disabled:cursor-not-allowed",
+                "pointer-events-auto",
+                hitArea === "content" ? "w-fit flex-none self-center" : "w-full",
+                isStacked ? "flex-col" : "flex-row",
+                isStacked ? styles.stackedButton : styles.button,
+                isStacked ? styles.stackedGap : styles.gap,
                 isActive
-                  ? "text-zinc-50 dark:text-zinc-900"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "text-background"
+                  : isAccent
+                    ? "text-primary/85 hover:text-primary"
+                    : "text-foreground/75 hover:text-foreground",
                 isDisabled && "opacity-45"
               )}
             >
@@ -139,9 +165,38 @@ export const SegmentedPill = React.forwardRef<HTMLDivElement, SegmentedPillProps
                   ) : null}
                 </span>
               ) : null}
-              <span className={cn("whitespace-nowrap", styles.label)}>{option.label}</span>
+              <span
+                className={cn(
+                  isStacked ? "max-w-full whitespace-normal" : "whitespace-nowrap",
+                  isStacked ? styles.stackedLabel : styles.label
+                )}
+              >
+                {option.label}
+              </span>
+              <MaterialRipple
+                variant={isAccent ? "link" : "none"}
+                effect={isAccent ? "glass" : "fade"}
+                disabled={isDisabled}
+                className="z-0"
+              />
             </button>
           );
+
+          if (hitArea === "content") {
+            return (
+              <div
+                key={option.value}
+                className={cn(
+                  "relative z-10 flex min-w-0 items-center justify-center",
+                  isStacked && "py-0.5"
+                )}
+              >
+                {button}
+              </div>
+            );
+          }
+
+          return button;
         })}
       </div>
     );

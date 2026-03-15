@@ -52,7 +52,7 @@ export function KaiPersonaScreen(props: {
   const icon = cfg.icon;
 
   return (
-    <main className="min-h-[100dvh] w-full bg-transparent flex flex-col px-8 pt-[calc(12px+env(safe-area-inset-top))] pb-[var(--app-screen-footer-pad)]">
+    <main className="min-h-[100dvh] w-full bg-transparent flex flex-col px-8 pt-[calc(var(--top-shell-reserved-height,0px)+12px)] pb-[var(--app-screen-footer-pad)]">
       <div className="w-full max-w-md mx-auto flex-1 min-h-0 flex items-start sm:items-center">
         <section className="relative w-full py-4">
           <div className="relative z-10 space-y-6 text-left">
@@ -82,7 +82,7 @@ export function KaiPersonaScreen(props: {
             </p>
 
             <Button size="lg" fullWidth onClick={props.onLaunchDashboard} showRipple>
-              Launch Dashboard
+              Open Portfolio
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
 

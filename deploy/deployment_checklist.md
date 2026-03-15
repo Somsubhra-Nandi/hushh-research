@@ -24,7 +24,8 @@
   - Cloud Build API
   - Container Registry API
   - Secret Manager API
-  - Cloud SQL Admin API
+  - Cloud Scheduler API
+  - Cloud Storage API
 
 ---
 
@@ -67,6 +68,32 @@
   - [x] `MCP_DEVELOPER_TOKEN`
   
   **Note:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, `SYNC_REMOTE_ENABLED`, `DEVELOPER_API_ENABLED`, and `CORS_ALLOWED_ORIGINS` are Cloud Run env vars (not secrets). Do not use `DATABASE_URL`; migrations use DB_* only. Delete `DATABASE_URL` from Secret Manager for strict parity.
+
+- [x] Ensure GitHub Actions has `GCP_SA_KEY` configured for prod workflows.
+
+- [x] Provision/verify logical backup infrastructure (bucket + job + scheduler)
+
+  ```bash
+  PROJECT_ID=hushh-pda REGION=us-central1 bash deploy/backup/setup_prod_logical_backup.sh
+  ```
+
+- [x] Run pre-deploy logical backup freshness gate (read-only)
+
+  ```bash
+  python3 scripts/ops/logical_backup_freshness_check.py \
+    --project-id hushh-pda \
+    --bucket hushh-pda-prod-db-backups \
+    --prefix prod/supabase-logical \
+    --max-age-hours 30 \
+    --report-path /tmp/prod-backup-posture-report.json
+  ```
+
+- [x] Run migration governance + DB drift gate
+
+  ```bash
+  python3 scripts/ops/db_migration_release_guard.py \
+    --report-path /tmp/db-migration-guard-report.json
+  ```
 
 ---
 

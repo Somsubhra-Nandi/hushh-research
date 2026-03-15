@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, BarChart3, X } from "lucide-react";
 import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
 
+import { PageHeader } from "@/components/app-ui/page-sections";
 import { DebateStreamView, type AgentState } from "@/components/kai/debate-stream-view";
 import { HushhLoader } from "@/components/app-ui/hushh-loader";
 import { AnalysisHistoryDashboard } from "@/components/kai/views/analysis-history-dashboard";
 import { AnalysisSummaryView } from "@/components/kai/views/analysis-summary-view";
 import { HistoryDetailView } from "@/components/kai/views/history-detail-view";
+import { StockComparisonPreview } from "@/components/kai/cards/stock-comparison-preview";
 import { Button as MorphyButton } from "@/lib/morphy-ux/button";
 import { Icon } from "@/lib/morphy-ux/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +32,8 @@ import {
 } from "@/lib/kai/market-snapshot";
 import { cn } from "@/lib/utils";
 import { toInvestorLoading, toInvestorMessage } from "@/lib/copy/investor-language";
+import { ApiService, type KaiStockPreviewResponse } from "@/lib/services/api-service";
+import { getKaiActivePickSource } from "@/lib/kai/pick-source-selection";
 
 const ANALYSIS_INTENT_FRESH_MS = 15_000;
 type WorkspaceTab = "debate" | "summary" | "detailed";
@@ -121,6 +125,9 @@ export default function KaiAnalysisPage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("debate");
   const [headerSnapshot, setHeaderSnapshot] = useState<TickerMarketSnapshot | null>(null);
   const [headerSnapshotLoading, setHeaderSnapshotLoading] = useState(false);
+  const [stockPreview, setStockPreview] = useState<KaiStockPreviewResponse | null>(null);
+  const [stockPreviewLoading, setStockPreviewLoading] = useState(false);
+  const [stockPreviewError, setStockPreviewError] = useState<string | null>(null);
 
   const hasFreshAnalysisIntent =
     Boolean(analysisParams) &&
@@ -411,6 +418,27 @@ export default function KaiAnalysisPage() {
     }
     return activeEntry?.ticker ? String(activeEntry.ticker).trim().toUpperCase() : "";
   }, [activeEntry?.ticker, activeRunTask?.ticker, analysisParams?.ticker, focusedRunTask?.ticker, liveIntentReady]);
+  const previewTickerFromQuery = useMemo(() => {
+    const rawTicker = String(searchParams.get("ticker") || "").trim().toUpperCase();
+    if (!rawTicker) return "";
+    if (showWorkspace) return "";
+    return rawTicker;
+  }, [searchParams, showWorkspace]);
+  const handleStartDebateFromPreview = useCallback(() => {
+    const currentPreviewTicker = String(searchParams.get("ticker") || "").trim().toUpperCase();
+    if (!currentPreviewTicker || !userId || showWorkspace) return;
+    setResolvedEntry(null);
+    setLiveEntry(null);
+    setFocusedRunId(null);
+    setFocusedRunTask(null);
+    setAnalysisParams({
+      ticker: currentPreviewTicker,
+      userId,
+      riskProfile: "balanced",
+    });
+    setShowHistoryWhileActive(false);
+    setWorkspaceTab("debate");
+  }, [searchParams, setAnalysisParams, showWorkspace, userId]);
   const headerPriceLabel =
     headerSnapshotLoading && (headerSnapshot?.last_price ?? null) === null
       ? "Loading price..."
@@ -464,6 +492,47 @@ export default function KaiAnalysisPage() {
   }, [activeTicker, showWorkspace, userId, vaultOwnerToken]);
 
   useEffect(() => {
+    if (!previewTickerFromQuery || !userId || !vaultOwnerToken) {
+      setStockPreview(null);
+      setStockPreviewLoading(false);
+      setStockPreviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setStockPreviewLoading(true);
+    setStockPreviewError(null);
+    void (async () => {
+      try {
+        const payload = await ApiService.getKaiStockPreview({
+          userId,
+          symbol: previewTickerFromQuery,
+          vaultOwnerToken,
+          pickSource: getKaiActivePickSource(userId),
+        });
+        if (!cancelled) {
+          setStockPreview(payload);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStockPreview(null);
+          setStockPreviewError(
+            error instanceof Error ? error.message : "Failed to load stock preview"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStockPreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewTickerFromQuery, userId, vaultOwnerToken]);
+
+  useEffect(() => {
     if (
       summaryLoadingToastIdRef.current !== null &&
       workspaceTab === "summary" &&
@@ -508,9 +577,9 @@ export default function KaiAnalysisPage() {
             <MorphyButton
               variant="none"
               effect="fade"
-              onClick={() => router.push("/kai/dashboard")}
+              onClick={() => router.push("/kai/portfolio")}
             >
-              Open Dashboard
+              Open Portfolio
             </MorphyButton>
           </div>
         </div>
@@ -523,18 +592,27 @@ export default function KaiAnalysisPage() {
       {showWorkspace ? (
         <div ref={workspaceTopRef} className="mx-auto w-full max-w-6xl space-y-4 px-4 sm:px-6">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <MorphyButton variant="none" effect="fade" size="sm" onClick={handleBackToHistory}>
-                <Icon icon={ArrowLeft} size="sm" className="mr-1" />
-                Back to history
-              </MorphyButton>
-              {liveIntentReady ? (
-                <MorphyButton variant="none" effect="fade" size="sm" onClick={handleCloseLiveDebate}>
-                  <Icon icon={X} size="xs" className="mr-1" />
-                  Cancel
-                </MorphyButton>
-              ) : null}
-            </div>
+            <PageHeader
+              eyebrow="Kai Analysis"
+              title="Analysis"
+              description="Move between live debate, summary, and detailed review without losing the current ticker context."
+              icon={BarChart3}
+              accent="violet"
+              actions={
+                <>
+                  <MorphyButton variant="none" effect="fade" size="sm" onClick={handleBackToHistory}>
+                    <Icon icon={ArrowLeft} size="sm" className="mr-1" />
+                    Back to history
+                  </MorphyButton>
+                  {liveIntentReady ? (
+                    <MorphyButton variant="none" effect="fade" size="sm" onClick={handleCloseLiveDebate}>
+                      <Icon icon={X} size="xs" className="mr-1" />
+                      Cancel
+                    </MorphyButton>
+                  ) : null}
+                </>
+              }
+            />
             <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 shadow-sm backdrop-blur-md">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h1 className="text-2xl font-black tracking-tighter text-foreground sm:text-3xl">
@@ -583,6 +661,8 @@ export default function KaiAnalysisPage() {
                     riskProfile={analysisParams?.riskProfile || "balanced"}
                     vaultOwnerToken={vaultOwnerToken || ""}
                     vaultKey={vaultKey}
+                    portfolioContextOverride={analysisParams?.portfolioContext || null}
+                    portfolioSource={analysisParams?.portfolioSource}
                     onClose={handleCloseLiveDebate}
                     onDecisionSaved={handleLiveDecisionSaved}
                     showHeader={false}
@@ -595,6 +675,8 @@ export default function KaiAnalysisPage() {
                     riskProfile={analysisParams?.riskProfile || "balanced"}
                     vaultOwnerToken={vaultOwnerToken || ""}
                     vaultKey={vaultKey}
+                    portfolioContextOverride={analysisParams?.portfolioContext || null}
+                    portfolioSource={analysisParams?.portfolioSource}
                     onClose={handleCloseLiveDebate}
                     onDecisionSaved={handleLiveDecisionSaved}
                     showHeader={false}
@@ -606,6 +688,8 @@ export default function KaiAnalysisPage() {
                     riskProfile={analysisParams.riskProfile}
                     vaultOwnerToken={vaultOwnerToken || ""}
                     vaultKey={vaultKey}
+                    portfolioContextOverride={analysisParams?.portfolioContext || null}
+                    portfolioSource={analysisParams?.portfolioSource}
                     onClose={handleCloseLiveDebate}
                     onDecisionSaved={handleLiveDecisionSaved}
                     showHeader={false}
@@ -655,6 +739,28 @@ export default function KaiAnalysisPage() {
         </div>
       ) : !resolvingEntry ? (
         <div className="space-y-3 pt-3">
+          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+            <PageHeader
+              eyebrow="Kai Analysis"
+              title="Analysis"
+              description="Review saved debates, reopen active analysis, and keep the running history of Kai decisions in one place."
+              icon={BarChart3}
+              accent="violet"
+            />
+          </div>
+          {previewTickerFromQuery ? (
+            <div className="mx-auto w-full max-w-4xl px-4 sm:px-6">
+              <StockComparisonPreview
+                preview={stockPreview}
+                loading={stockPreviewLoading}
+                error={stockPreviewError}
+                onStartDebate={handleStartDebateFromPreview}
+                onOpenFullAnalysis={handleStartDebateFromPreview}
+                showOpenFullAnalysis={false}
+                compact
+              />
+            </div>
+          ) : null}
           {activeRunTask ? (
             <div className="mx-auto w-full max-w-4xl rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
               Analysis for <span className="font-semibold">{activeRunTask.ticker}</span> is still

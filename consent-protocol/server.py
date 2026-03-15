@@ -66,6 +66,10 @@ def _parse_cors_allowed_origins() -> list[str]:
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
+from api.middlewares.observability import (  # noqa: E402
+    configure_opentelemetry,
+    observability_middleware,
+)
 from api.middlewares.rate_limit import limiter  # noqa: E402
 from api.routes import (  # noqa: E402
     account,
@@ -78,7 +82,6 @@ from api.routes import (  # noqa: E402
     notifications,
     session,
     sse,
-    sync,
 )
 
 # Dynamic root_path for Swagger docs in production
@@ -92,9 +95,11 @@ app = FastAPI(
     root_path=root_path,
 )
 
+app.middleware("http")(observability_middleware)
+
 # Rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # CORS allowlist: explicit origins only (no wildcard regex).
 cors_origins = _parse_cors_allowed_origins()
@@ -110,6 +115,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+configure_opentelemetry(app)
+
 
 # ============================================================================
 # REGISTER ROUTERS
@@ -124,11 +131,11 @@ app.include_router(agents.router)
 # Consent management routes (/api/consent/...)
 app.include_router(consent.router)
 
-# Developer API v1 routes (/api/v1/...)
-app.include_router(developer.router)
-
 # Session token routes (/api/consent/issue-token, /api/user/lookup, etc.)
 app.include_router(session.router)
+
+# Developer API routes (/api/v1/*)
+app.include_router(developer.router)
 
 # Database proxy routes (/db/vault/...) - for iOS native app
 app.include_router(db_proxy.router)
@@ -165,15 +172,10 @@ from api.routes import tickers  # noqa: E402
 
 app.include_router(tickers.router)
 
-# Phase 2: Identity Resolution (Consent-then-encrypt flow)
+# Identity compatibility routes
 from api.routes import identity  # noqa: E402
 
 app.include_router(identity.router)
-
-# Phase 6: Fundamental Analysis Agent
-from api.routes import analysis  # noqa: E402
-
-app.include_router(analysis.router)
 
 # Phase 7: World Model (Dynamic Domain Management)
 from api.routes import world_model  # noqa: E402
@@ -183,8 +185,13 @@ app.include_router(world_model.router)
 # Account deletion and management
 app.include_router(account.router)
 
-# Data synchronization
-app.include_router(sync.router)
+from api.routes import iam, invites, marketplace, ria  # noqa: E402
+
+app.include_router(iam.router)
+app.include_router(ria.router)
+app.include_router(marketplace.router)
+app.include_router(invites.router)
+logger.info("ria.routes_enabled")
 
 logger.info(
     "🚀 Hushh Consent Protocol server initialized with modular routes - KAI V2 + PHASE 2 + WORLD MODEL ENABLED"

@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronRight, Cpu, Percent, Zap, type LucideIcon } from "lucide-react";
+import { Cpu, Percent, Zap, type LucideIcon } from "lucide-react";
 
-import { Card, CardContent } from "@/lib/morphy-ux/card";
 import { Icon } from "@/lib/morphy-ux/ui";
+import { SettingsGroup } from "@/components/profile/settings-ui";
 
 export interface ThemeFocusItem {
   id?: string;
@@ -17,30 +17,32 @@ const FALLBACK_ICON: LucideIcon[] = [Cpu, Percent, Zap];
 export function ThemeFocusList({ themes = [] }: { themes?: ThemeFocusItem[] }) {
   if (!themes.length) {
     return (
-      <Card variant="muted" effect="fill" className="rounded-xl p-0">
-        <CardContent className="p-4 text-sm text-muted-foreground">
+      <SettingsGroup>
+        <div className="px-4 py-4 text-sm text-muted-foreground">
           No active market themes are available right now.
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsGroup>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <SettingsGroup>
       {themes.map((theme, idx) => (
-        <Card key={theme.id || theme.title} variant="none" effect="glass" className="rounded-xl p-0">
-          <CardContent className="flex items-center gap-4 p-4">
-            <div className="grid h-10 w-10 place-items-center rounded-full bg-background/80">
+        <div
+          key={theme.id || theme.title}
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-4"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-violet-500/18 bg-violet-500/10 text-violet-700 shadow-sm dark:text-violet-300">
               <Icon icon={theme.icon || FALLBACK_ICON[idx % FALLBACK_ICON.length] || Cpu} size="md" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold leading-tight">{theme.title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{theme.subtitle}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight text-foreground">{theme.title}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{theme.subtitle}</p>
             </div>
-            <Icon icon={ChevronRight} size="sm" className="text-muted-foreground" />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ))}
-    </div>
+    </SettingsGroup>
   );
 }

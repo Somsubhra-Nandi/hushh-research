@@ -17,13 +17,15 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from api.middleware import require_vault_owner_token
+from api.middleware import require_firebase_auth, require_vault_owner_token
 from api.utils.firebase_auth import verify_firebase_bearer
 from hushh_mcp.consent.scope_helpers import get_scope_description as get_dynamic_scope_description
 from hushh_mcp.consent.scope_helpers import resolve_scope_to_enum
 from hushh_mcp.consent.token import issue_token, validate_token
 from hushh_mcp.constants import ConsentScope
+from hushh_mcp.services.consent_center_service import ConsentCenterService
 from hushh_mcp.services.consent_db import ConsentDBService
+from hushh_mcp.services.ria_iam_service import RIAIAMPolicyError, RIAIAMService
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,18 @@ def get_scope_description(scope: str) -> str:
 class CancelConsentRequest(BaseModel):
     userId: str
     requestId: str
+
+
+class GenericConsentRequestCreate(BaseModel):
+    subject_user_id: str
+    requester_actor_type: str = "ria"
+    subject_actor_type: str = "investor"
+    scope_template_id: str
+    selected_scope: str | None = None
+    duration_mode: str = "preset"
+    duration_hours: int | None = None
+    firm_id: str | None = None
+    reason: str | None = None
 
 
 @router.get("/pending")
@@ -93,6 +107,7 @@ async def approve_consent(
     encryptedData = body.get("encryptedData")  # Base64 ciphertext
     encryptedIv = body.get("encryptedIv")  # Base64 IV
     encryptedTag = body.get("encryptedTag")  # Base64 auth tag
+    requested_duration_hours = body.get("durationHours")
 
     # Verify user is approving their own consent
     if token_data["user_id"] != userId:
@@ -119,6 +134,8 @@ async def approve_consent(
     # Optional metadata on pending request (used for expiry hints)
     metadata = pending_request.get("metadata", {})
     expiry_hours = metadata.get("expiry_hours", 24)
+    if isinstance(requested_duration_hours, int) and requested_duration_hours > 0:
+        expiry_hours = min(requested_duration_hours, 24 * 365)
 
     # MODULAR COMPLIANCE CHECK: Idempotency
     # Before issuing a NEW token, check if a valid token for this scope/agent already exists.
@@ -155,6 +172,7 @@ async def approve_consent(
             # Note: Export Key is ephemeral for the SESSION. If we reuse token, the Client might need the key.
             # But in ZK flow, Client HAS the key. We just need to authorize.
             "expires_at": existing_token.get("expires_at"),
+            "bundle_id": metadata.get("bundle_id"),
         }
 
     # CRITICAL FIX: Pass original scope STRING to issue_token, not enum
@@ -195,7 +213,7 @@ async def approve_consent(
         }
         logger.info("   Stored encrypted export for token (DB + cache)")
 
-    # Log CONSENT_GRANTED to database with requested scope (dot notation, e.g. attr.food.* or world_model.read)
+    # Log CONSENT_GRANTED with the normalized requested scope string.
     await service.insert_event(
         user_id=userId,
         agent_id=pending_request["developer"],
@@ -206,6 +224,14 @@ async def approve_consent(
         expires_at=token.expires_at,
     )
     logger.info("consent.granted_event_saved")
+    try:
+        await RIAIAMService().sync_relationship_from_consent_action(
+            user_id=userId,
+            request_id=requestId,
+            action="CONSENT_GRANTED",
+        )
+    except Exception:
+        logger.exception("ria.relationship_sync_failed action=CONSENT_GRANTED")
 
     # Return token with export key for MCP decryption
     return {
@@ -214,6 +240,7 @@ async def approve_consent(
         "consent_token": token.token,
         "export_key": exportKey,  # MCP uses this to decrypt
         "expires_at": token.expires_at,
+        "bundle_id": metadata.get("bundle_id"),
     }
 
 
@@ -250,6 +277,14 @@ async def deny_consent(
         request_id=requestId,
     )
     logger.info("consent.denied_event_saved")
+    try:
+        await RIAIAMService().sync_relationship_from_consent_action(
+            user_id=userId,
+            request_id=requestId,
+            action="CONSENT_DENIED",
+        )
+    except Exception:
+        logger.exception("ria.relationship_sync_failed action=CONSENT_DENIED")
 
     return {"status": "denied", "message": f"Consent denied to {pending_request['developer']}"}
 
@@ -286,8 +321,50 @@ async def cancel_consent(
         request_id=payload.requestId,
         scope_description=pending_request.get("scope_description"),
     )
+    try:
+        await RIAIAMService().sync_relationship_from_consent_action(
+            user_id=payload.userId,
+            request_id=payload.requestId,
+            action="CANCELLED",
+        )
+    except Exception:
+        logger.exception("ria.relationship_sync_failed action=CANCELLED")
 
     return {"status": "cancelled", "requestId": payload.requestId}
+
+
+@router.get("/center")
+async def get_consent_center(firebase_uid: str = Depends(require_firebase_auth)):
+    service = ConsentCenterService()
+    return await service.get_center(firebase_uid)
+
+
+@router.get("/requests/outgoing")
+async def get_outgoing_requests(firebase_uid: str = Depends(require_firebase_auth)):
+    service = ConsentCenterService()
+    return {"items": await service.list_outgoing_requests(firebase_uid)}
+
+
+@router.post("/requests")
+async def create_generic_consent_request(
+    payload: GenericConsentRequestCreate,
+    firebase_uid: str = Depends(require_firebase_auth),
+):
+    try:
+        return await RIAIAMService().create_ria_consent_request(
+            firebase_uid,
+            subject_user_id=payload.subject_user_id,
+            requester_actor_type=payload.requester_actor_type,
+            subject_actor_type=payload.subject_actor_type,
+            scope_template_id=payload.scope_template_id,
+            selected_scope=payload.selected_scope,
+            duration_mode=payload.duration_mode,
+            duration_hours=payload.duration_hours,
+            firm_id=payload.firm_id,
+            reason=payload.reason,
+        )
+    except RIAIAMPolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.post("/vault-owner-token")
@@ -302,7 +379,7 @@ async def issue_vault_owner_token(request: Request):
     - Requires Firebase ID token verification
     - Only issued to the user for their own vault
     - 24-hour expiry (renewable)
-    - Logged to consent_audit
+    - Logged to the internal access ledger
 
     CONSENT-FIRST ARCHITECTURE:
     - Vault owners use this token instead of bypassing authentication
@@ -330,10 +407,14 @@ async def issue_vault_owner_token(request: Request):
                 status_code=403, detail="Cannot issue VAULT_OWNER token for another user"
             )
 
-        # Check for existing active VAULT_OWNER token in DB
+        # Check for existing active VAULT_OWNER token in the internal ledger
         now_ms = int(time.time() * 1000)
         service = ConsentDBService()
-        active_tokens = await service.get_active_tokens(user_id)
+        active_tokens = await service.get_active_internal_tokens(
+            user_id,
+            agent_id="self",
+            scope=ConsentScope.VAULT_OWNER.value,
+        )
 
         for t in active_tokens:
             # Match scope = vault.owner and agent = self
@@ -378,15 +459,16 @@ async def issue_vault_owner_token(request: Request):
             expires_in_ms=24 * 60 * 60 * 1000,  # 24 hours
         )
 
-        # Store in consent_audit (CONSENT_GRANTED for get_active_tokens() compatibility)
+        # Store in the internal ledger so self-session churn stays out of the investor consent feed.
         service = ConsentDBService()
-        await service.insert_event(
+        await service.insert_internal_event(
             user_id=user_id,
             agent_id="self",
             scope="vault.owner",
-            action="CONSENT_GRANTED",  # Use CONSENT_GRANTED for active token queries
-            token_id=token_obj.token,  # Store FULL token (not truncated)
+            action="CONSENT_GRANTED",
+            token_id=token_obj.token,
             expires_at=token_obj.expires_at,
+            scope_description="Vault owner session",
         )
 
         logger.info("vault_owner.token_issued")
@@ -429,13 +511,15 @@ async def revoke_consent(
 
         logger.info("consent.revoke_requested scope=%s", scope)
 
-        # Get the active token for this scope
+        # Get the active token for this scope from the correct ledger.
         service = ConsentDBService()
         active_tokens = await service.get_active_tokens(userId)
-        logger.info("consent.revoke_active_token_count=%s", len(active_tokens))
+        internal_tokens = await service.get_active_internal_tokens(userId)
+        all_active_tokens = [*internal_tokens, *active_tokens]
+        logger.info("consent.revoke_active_token_count=%s", len(all_active_tokens))
 
         token_to_revoke = None
-        for token in active_tokens:
+        for token in all_active_tokens:
             if token.get("scope") == scope:
                 token_to_revoke = token
                 break
@@ -469,7 +553,6 @@ async def revoke_consent(
         logger.info("consent.revoke_persist_event")
 
         # Log REVOKED event to database (link to original request_id for trail)
-        service = ConsentDBService()
         await service.insert_event(
             user_id=userId,
             agent_id=agent_id,
@@ -477,8 +560,19 @@ async def revoke_consent(
             action="REVOKED",
             token_id=revoke_token_id,
             request_id=request_id,
+            scope_description="Vault owner session" if agent_id == "self" else None,
         )
         logger.info("consent.revoked_event_saved scope=%s", scope)
+        try:
+            await RIAIAMService().sync_relationship_from_consent_action(
+                user_id=userId,
+                request_id=request_id,
+                action="REVOKED",
+                agent_id=agent_id,
+                scope=scope,
+            )
+        except Exception:
+            logger.exception("ria.relationship_sync_failed action=REVOKED")
 
         # Return special flag for VAULT_OWNER revocation so client knows to lock vault
         is_vault_owner = scope == "vault.owner" or scope == "VAULT_OWNER"

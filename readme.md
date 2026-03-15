@@ -119,12 +119,13 @@ Layer 4: Agent Tokens     → Scoped permissions (OPERATIONS)
 git clone https://github.com/hushh-labs/hushh-research.git
 cd hushh-research
 
-# Frontend
-cd hushh-webapp && npm install && npm run dev
+# Install
+cd hushh-webapp && npm install
+cd ../consent-protocol && pip install -r requirements.txt
+cd ..
 
-# Backend (new terminal)
-cd consent-protocol && pip install -r requirements.txt
-uvicorn server:app --reload --port 8000
+# Full local stack against UAT-backed resources
+make local
 
 # Open http://localhost:3000
 ```
@@ -136,11 +137,11 @@ uvicorn server:app --reload --port 8000
 | Document                                                              | Description                |
 | --------------------------------------------------------------------- | -------------------------- |
 | [**🚀 Getting Started**](./getting_started.md)                        | Setup and run locally      |
-| [**📖 Documentation Index**](./docs/readme.md)                        | Complete documentation hub |
+| [**📖 Documentation Index**](./docs/README.md)                        | Complete documentation hub |
 | [**👥 Contributor Guide**](./contributing.md)                         | Making your first contribution |
-| [**🏗️ Architecture**](./docs/reference/architecture.md)               | System design & flows      |
+| [**🏗️ Architecture**](./docs/reference/architecture/architecture.md)  | System design & flows      |
 | [**🔐 Consent Protocol**](./consent-protocol/docs/reference/consent-protocol.md) | Token lifecycle            |
-| [**🔧 Developer API**](./docs/reference/api-contracts.md)             | API contract surface       |
+| [**🔧 Developer API**](./docs/reference/architecture/api-contracts.md) | API contract surface      |
 | [**💾 Database Schema**](./consent-protocol/db/migrations/COMBINED_MIGRATION.sql) | PostgreSQL tables          |
 
 ---
@@ -251,8 +252,8 @@ make sync-protocol      # Pulls latest backend from upstream
 ### Frontend-Only Contributor
 
 ```bash
-make dev-backend        # Start backend (terminal 1)
-make dev-frontend       # Start frontend (terminal 2)
+make local-backend      # Start backend (terminal 1)
+make local-web          # Start frontend (terminal 2)
 # Commit normally -- consent-protocol/ is just a directory to you
 ```
 

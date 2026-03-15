@@ -68,6 +68,54 @@ export function toInvestorMessage(
   }
 }
 
+export function toInvestorVaultUnlockError(value: unknown): string {
+  const raw =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+        ? value
+        : "";
+  const lowered = raw.toLowerCase();
+
+  if (
+    lowered.includes("vault_passkey_rp_mismatch") ||
+    lowered.includes("rp id is not allowed") ||
+    lowered.includes("different domain")
+  ) {
+    return toInvestorMessage("VAULT_PASSKEY_ENROLL_REQUIRED");
+  }
+
+  if (
+    lowered.includes("timed out or was not allowed") ||
+    lowered.includes("privacy-considerations-client") ||
+    lowered.includes("notallowederror") ||
+    lowered.includes("aborterror") ||
+    lowered.includes("user cancelled") ||
+    lowered.includes("user canceled") ||
+    lowered.includes("cancelled") ||
+    lowered.includes("canceled")
+  ) {
+    return "Passkey unlock was cancelled or took too long. Try again, or use your passphrase instead.";
+  }
+
+  if (
+    lowered.includes("quick unlock is not ready") ||
+    lowered.includes("quick unlock is not enabled") ||
+    lowered.includes("not enabled on this device")
+  ) {
+    return "Passkey unlock is not ready on this device yet. Use your passphrase once, then try passkey again.";
+  }
+
+  if (
+    lowered.includes("recovery key") &&
+    lowered.includes("did not match")
+  ) {
+    return "That recovery key did not match. Please try again.";
+  }
+
+  return toInvestorMessage("VAULT_UNLOCK_FAILED");
+}
+
 export function toInvestorLoading(stage: InvestorLoadingStage): string {
   switch (stage) {
     case "SESSION_CHECK":

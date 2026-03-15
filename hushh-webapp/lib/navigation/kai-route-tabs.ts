@@ -4,7 +4,7 @@ export const KAI_ROUTE_TABS = [
   { id: "market", label: "Market", href: ROUTES.KAI_HOME, prefetchHref: ROUTES.KAI_HOME },
   {
     id: "dashboard",
-    label: "Dashboard",
+    label: "Portfolio",
     href: ROUTES.KAI_DASHBOARD,
     prefetchHref: ROUTES.KAI_DASHBOARD,
   },
@@ -23,7 +23,12 @@ export function activeKaiRouteTabFromPath(pathname: string): KaiRouteTabId {
   if (pathname.startsWith(ROUTES.KAI_ANALYSIS) || pathname.startsWith("/kai/dashboard/analysis")) {
     return "analysis";
   }
-  if (pathname.startsWith(ROUTES.KAI_DASHBOARD) || pathname.startsWith(ROUTES.KAI_OPTIMIZE)) {
+  if (
+    pathname.startsWith(ROUTES.KAI_DASHBOARD) ||
+    pathname.startsWith(ROUTES.KAI_INVESTMENTS) ||
+    pathname.startsWith("/kai/dashboard") ||
+    pathname.startsWith(ROUTES.KAI_OPTIMIZE)
+  ) {
     return "dashboard";
   }
   return "market";
@@ -40,4 +45,3 @@ export function getAdjacentKaiRouteHref(
   const target = KAI_ROUTE_TABS[targetIndex];
   return target ? target.href : null;
 }
-

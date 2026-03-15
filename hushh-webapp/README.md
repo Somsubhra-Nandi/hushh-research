@@ -20,7 +20,7 @@ Core invariants:
 - `/kai/onboarding` -> onboarding questionnaire + persona
 - `/kai/import` -> import/connect flow + vault introduction
 - `/kai` -> signed-in info home + first-time bottom-nav tour
-- `/kai/dashboard` -> portfolio analytics/dashboard
+- `/kai/portfolio` -> portfolio analytics/dashboard
 
 Guard flow:
 - `KaiOnboardingGuard` blocks non-onboarding `/kai/*` when onboarding is incomplete.
@@ -59,16 +59,22 @@ Use fused stack:
 - Lucide through `Icon` wrapper (`lib/morphy-ux/ui/icon.tsx`)
 
 References:
-- `docs/reference/design-system.md`
-- `docs/reference/frontend-pattern-catalog.md`
+- `docs/reference/quality/design-system.md`
+- `docs/reference/quality/frontend-pattern-catalog.md`
 - `hushh-webapp/components/README.md`
 
 ## Local Development
 
 ```bash
-cd hushh-webapp
 npm install
-npm run dev
+make local
+```
+
+Frontend-only against deployed backends:
+
+```bash
+make uat-web
+make prod-web
 ```
 
 ## Verification Commands

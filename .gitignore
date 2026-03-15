@@ -12,7 +12,6 @@ hushh_starter_idea.md
 cloud-sql-proxy.exe
 cloud-sql-proxy
 CLOUDSQL_CONFIG.md
-cloud-sql-proxy.exe
 
 # Credentials
 service-account.json
@@ -22,6 +21,10 @@ google-services.json
 **/google-services.json
 GoogleService-Info.plist
 **/GoogleService-Info.plist
+!hushh-webapp/android/app/google-services.json
+!hushh-webapp/ios/App/App/GoogleService-Info.plist
+firebase-debug.log
+**/firebase-debug.log
 
 # Local env files (never commit real envs)
 .env
@@ -52,6 +55,8 @@ __pycache__/
 env/
 venv/
 .venv/
+!scripts/env/
+!scripts/env/*.sh
 Pipfile.lock
 .ruff_cache/
 .mypy_cache/
@@ -60,8 +65,14 @@ Pipfile.lock
 .coverage.*
 
 # System
-.DS_Store
 Thumbs.db
 CURSOR_TOOLS.md
 continue-dev-tools-usage.md
-/temp
+/temp# Generated native/build artifacts
+hushh-webapp/.next/
+hushh-webapp/ios/build/
+hushh-webapp/ios/DerivedData/
+hushh-webapp/ios/App/DerivedData*/
+hushh-webapp/android/.gradle/
+hushh-webapp/android/build/
+hushh-webapp/android/app/build/

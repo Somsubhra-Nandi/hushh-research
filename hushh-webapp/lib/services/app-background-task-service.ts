@@ -4,7 +4,8 @@ import { getSessionItem, setSessionItem } from "@/lib/utils/session-storage";
 
 const APP_BACKGROUND_TASKS_KEY = "kai_app_background_tasks_v1";
 
-export type AppBackgroundTaskStatus = "running" | "completed" | "failed";
+export type AppBackgroundTaskStatus = "running" | "completed" | "failed" | "canceled";
+export type AppBackgroundTaskMetadata = Record<string, unknown>;
 
 export interface AppBackgroundTask {
   taskId: string;
@@ -19,6 +20,7 @@ export interface AppBackgroundTask {
   completedAt: string | null;
   error: string | null;
   dismissedAt: string | null;
+  metadata: AppBackgroundTaskMetadata | null;
 }
 
 interface PersistedAppBackgroundTaskState {
@@ -65,13 +67,19 @@ class AppBackgroundTaskManager {
         this.tasks.set(task.taskId, {
           ...task,
           status:
-            task.status === "completed" || task.status === "failed"
+            task.status === "completed" ||
+            task.status === "failed" ||
+            task.status === "canceled"
               ? task.status
               : "running",
           routeHref: task.routeHref || null,
           completedAt: task.completedAt || null,
           error: task.error || null,
           dismissedAt: task.dismissedAt || null,
+          metadata:
+            task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata)
+              ? (task.metadata as AppBackgroundTaskMetadata)
+              : null,
         });
       }
     } catch {
@@ -131,6 +139,7 @@ class AppBackgroundTaskManager {
     description: string;
     routeHref?: string;
     taskId?: string;
+    metadata?: AppBackgroundTaskMetadata | null;
   }): string {
     const taskId = params.taskId || createTaskId(params.kind || "task");
     const startedAt = nowIso();
@@ -147,6 +156,10 @@ class AppBackgroundTaskManager {
       completedAt: null,
       error: null,
       dismissedAt: null,
+      metadata:
+        params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+          ? params.metadata
+          : null,
     });
     return taskId;
   }
@@ -175,12 +188,25 @@ class AppBackgroundTaskManager {
     });
   }
 
+  cancelTask(taskId: string, description?: string): void {
+    const existing = this.tasks.get(taskId);
+    if (!existing) return;
+    this.upsert({
+      ...existing,
+      status: "canceled",
+      description: description ?? existing.description,
+      completedAt: nowIso(),
+      error: null,
+    });
+  }
+
   updateTask(
     taskId: string,
     updates: {
       title?: string;
       description?: string;
       routeHref?: string | null;
+      metadata?: AppBackgroundTaskMetadata | null;
     }
   ): void {
     const existing = this.tasks.get(taskId);
@@ -199,6 +225,12 @@ class AppBackgroundTaskManager {
         updates.routeHref === undefined
           ? existing.routeHref
           : updates.routeHref,
+      metadata:
+        updates.metadata === undefined
+          ? existing.metadata
+          : updates.metadata && typeof updates.metadata === "object" && !Array.isArray(updates.metadata)
+            ? updates.metadata
+            : null,
     });
   }
 
@@ -225,6 +257,10 @@ class AppBackgroundTaskManager {
       return true;
     }
     return false;
+  }
+
+  getTask(taskId: string): AppBackgroundTask | null {
+    return this.tasks.get(taskId) ?? null;
   }
 }
 

@@ -1,55 +1,78 @@
-# api/routes/developer.py
-"""
-Developer API v1 endpoints for external access with consent.
+from __future__ import annotations
 
-Only world-model scopes are supported: world_model.read, world_model.write,
-attr.{domain}.*, and optional nested attr.{domain}.{subintent}.* scopes.
-"""
-
-import json
 import logging
 import os
-import re
 import time
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Header, HTTPException, status
+from pydantic import BaseModel, Field
 
-from api.models import ConsentRequest, ConsentResponse, DataAccessRequest
-from hushh_mcp.consent.scope_generator import get_scope_generator
-from hushh_mcp.consent.scope_helpers import get_scope_description as get_dynamic_scope_description
-from hushh_mcp.consent.scope_helpers import normalize_scope, resolve_scope_to_enum
+from api.models.schemas import ConsentRequest
+from hushh_mcp.consent.scope_helpers import get_scope_description, normalize_scope
 from hushh_mcp.services.consent_db import ConsentDBService
-from hushh_mcp.services.domain_registry_service import get_domain_registry_service
-
-# Well-known non-dynamic world-model scopes (dot notation).
-_STATIC_WORLD_MODEL_SCOPES = {
-    "world_model.read",
-    "world_model.write",
-}
-
-# Pattern for dynamic attr scopes with optional nested subintent paths:
-# - attr.{domain}.*
-# - attr.{domain}.{subintent}.*
-# - attr.{domain}.{subintent}.{attribute}
-_DYNAMIC_ATTR_SCOPE_RE = re.compile(r"^attr\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.\*)?$")
-
-
-def _is_valid_world_model_scope(scope: str) -> bool:
-    """Return True if *scope* is a recognized world-model scope (static or dynamic)."""
-    if scope in _STATIC_WORLD_MODEL_SCOPES:
-        return True
-    return bool(_DYNAMIC_ATTR_SCOPE_RE.match(scope))
-
+from hushh_mcp.services.world_model_service import get_world_model_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Developer API"])
-_DEVELOPER_API_DISABLED_PAYLOAD = {
-    "error_code": "DEVELOPER_API_DISABLED_IN_PRODUCTION",
-    "message": "Developer API is disabled in production.",
-}
+
+_STATIC_REQUESTABLE_SCOPES = ("world_model.read", "world_model.write")
+_MAX_EXPIRY_HOURS = 24 * 365
+
+
+class DeveloperScopeDescriptor(BaseModel):
+    name: str
+    description: str
+    dynamic: bool = False
+    requires_discovery: bool = False
+
+
+class DeveloperScopeCatalogResponse(BaseModel):
+    version: str = "v1"
+    scopes_are_dynamic: bool = True
+    discovery_required: bool = True
+    scopes: list[DeveloperScopeDescriptor]
+    discovery_endpoint: str = "/api/v1/user-scopes/{user_id}"
+    request_endpoint: str = "/api/v1/request-consent"
+    mcp_tools: list[str] = Field(
+        default_factory=lambda: [
+            "discover_user_domains",
+            "request_consent",
+            "check_consent_status",
+            "get_scoped_data",
+        ]
+    )
+    mcp_resources: list[str] = Field(
+        default_factory=lambda: [
+            "hushh://info/connector",
+            "hushh://info/developer-api",
+        ]
+    )
+    recommended_flow: list[str] = Field(
+        default_factory=lambda: [
+            "discover_user_domains",
+            "request_consent",
+            "check_consent_status",
+            "get_scoped_data",
+        ]
+    )
+    notes: list[str] = Field(
+        default_factory=lambda: [
+            "Do not hardcode domain keys. Discover available scopes per user at runtime.",
+            "Dynamic attr scopes are derived from world_model_index_v2.available_domains, domain summaries, and domain_registry metadata.",
+            "Legacy named domain getters remain compatibility surfaces only; new integrations should use get_scoped_data.",
+        ]
+    )
+
+
+class DeveloperUserScopesResponse(BaseModel):
+    user_id: str
+    available_domains: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    scopes_are_dynamic: bool = True
+    source: str = "world_model_index_v2 + domain_registry"
 
 
 def _env_truthy(name: str, fallback: str = "false") -> bool:
@@ -57,406 +80,302 @@ def _env_truthy(name: str, fallback: str = "false") -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def _is_production() -> bool:
-    environment = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
-    return environment == "production"
-
-
 def _developer_api_enabled() -> bool:
-    if _is_production():
-        return False
+    environment = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
+    if environment == "production":
+        return _env_truthy("DEVELOPER_API_ENABLED", "false")
     return _env_truthy("DEVELOPER_API_ENABLED", "true")
 
 
-def _disabled_response_if_needed() -> JSONResponse | None:
-    if _developer_api_enabled():
-        return None
-    return JSONResponse(status_code=410, content=_DEVELOPER_API_DISABLED_PAYLOAD)
-
-
-def _load_registered_developers() -> dict[str, dict]:
-    raw = str(os.getenv("DEVELOPER_REGISTRY_JSON", "")).strip()
-    if not raw:
-        return {}
-
+def _consent_timeout_seconds() -> int:
+    raw = str(os.getenv("CONSENT_TIMEOUT_SECONDS", "120")).strip()
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.error("developer_api.registry_invalid_json")
-        return {}
-
-    if not isinstance(payload, dict):
-        logger.error("developer_api.registry_invalid_shape")
-        return {}
-
-    registry: dict[str, dict] = {}
-    for token, config in payload.items():
-        if not isinstance(token, str) or not isinstance(config, dict):
-            continue
-
-        name = str(config.get("name", "")).strip()
-        approved_scopes = config.get("approved_scopes")
-        if not name or not isinstance(approved_scopes, list):
-            continue
-        if not all(isinstance(scope, str) and scope for scope in approved_scopes):
-            continue
-
-        registry[token] = {"name": name, "approved_scopes": approved_scopes}
-
-    return registry
+        return max(30, int(raw))
+    except ValueError:
+        return 120
 
 
-def _require_registered_developer(developer_token: str) -> dict:
-    token = str(developer_token or "").strip()
-    registered_developers = _load_registered_developers()
-    if not registered_developers:
-        logger.error("developer_api.registry_missing_or_empty")
-        raise HTTPException(status_code=503, detail="Developer registry is not configured")
-    dev_info = registered_developers.get(token)
-    if not dev_info:
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid developer token")
-    return dev_info
+def _developer_api_disabled_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "error_code": "DEVELOPER_API_DISABLED_IN_PRODUCTION",
+            "message": "Developer API is disabled in production.",
+        },
+    )
 
 
-def get_scope_description(scope: str) -> str:
+def _require_developer_token(
+    *,
+    header_token: str | None = None,
+    body_token: str | None = None,
+) -> str:
+    if not _developer_api_enabled():
+        raise _developer_api_disabled_error()
+
+    required_token = str(os.getenv("MCP_DEVELOPER_TOKEN", "")).strip()
+    if not required_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error_code": "DEVELOPER_API_NOT_CONFIGURED",
+                "message": "Developer API is not configured.",
+            },
+        )
+
+    provided = (header_token or body_token or "").strip()
+    if not provided:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error_code": "DEVELOPER_TOKEN_REQUIRED",
+                "message": "Developer token is required.",
+            },
+        )
+    if provided != required_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": "DEVELOPER_TOKEN_INVALID",
+                "message": "Developer token is invalid.",
+            },
+        )
+    return provided
+
+
+def _normalize_agent_id(value: str | None) -> str:
+    raw = str(value or "").strip()
+    return raw or "hushh-mcp"
+
+
+def _is_supported_scope(scope: str) -> bool:
+    if scope in _STATIC_REQUESTABLE_SCOPES:
+        return True
+    return scope.startswith("attr.")
+
+
+def _scope_catalog() -> list[DeveloperScopeDescriptor]:
+    return [
+        DeveloperScopeDescriptor(
+            name="world_model.read",
+            description="Read the full user world model (all discovered domains).",
+        ),
+        DeveloperScopeDescriptor(
+            name="world_model.write",
+            description="Write to the user world model in governed flows.",
+        ),
+        DeveloperScopeDescriptor(
+            name="attr.{domain}.*",
+            description="Read one discovered domain branch.",
+            dynamic=True,
+            requires_discovery=True,
+        ),
+        DeveloperScopeDescriptor(
+            name="attr.{domain}.{subintent}.*",
+            description="Read one discovered nested branch when metadata exposes subintents.",
+            dynamic=True,
+            requires_discovery=True,
+        ),
+        DeveloperScopeDescriptor(
+            name="attr.{domain}.{path}",
+            description="Read one specific discovered path.",
+            dynamic=True,
+            requires_discovery=True,
+        ),
+    ]
+
+
+async def _get_user_scope_snapshot(user_id: str) -> tuple[list[str], list[str]]:
+    world_model = get_world_model_service()
+    index = await world_model.get_index_v2(user_id)
+    if index is None:
+        return [], []
+    available_domains = sorted(
+        {
+            str(domain).strip().lower()
+            for domain in (index.available_domains or [])
+            if str(domain).strip()
+        }
+    )
+    scopes = sorted(await world_model.scope_generator.get_available_scopes(user_id))
+    return available_domains, scopes
+
+
+@router.get("/list-scopes", response_model=DeveloperScopeCatalogResponse)
+async def list_scopes():
     """
-    Human-readable scope descriptions.
+    Return the public developer scope catalog.
 
-    Delegated to centralized dynamic scope resolution.
+    This endpoint is intentionally generic: it documents canonical scope patterns
+    but does not expose user-specific domain availability.
     """
-    return str(get_dynamic_scope_description(scope))
+    if not _developer_api_enabled():
+        raise _developer_api_disabled_error()
+
+    return DeveloperScopeCatalogResponse(scopes=_scope_catalog())
 
 
 @router.get("")
 async def developer_api_root():
-    """Welcome to Hushh Developer API."""
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
+    """Return a lightweight versioned contract summary for external developers."""
+    if not _developer_api_enabled():
+        raise _developer_api_disabled_error()
+
     return {
-        "message": "Welcome to Hushh Developer API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "endpoints": [
-            "POST /api/v1/request-consent",
-            "POST /api/v1/food-data",
-            "POST /api/v1/professional-data",
-            "GET /api/v1/list-scopes",
-            "GET /api/v1/user-scopes/{user_id}",
+        "version": "v1",
+        "dynamic_scopes": True,
+        "endpoints": {
+            "list_scopes": "/api/v1/list-scopes",
+            "user_scopes": "/api/v1/user-scopes/{user_id}",
+            "request_consent": "/api/v1/request-consent",
+        },
+        "recommended_resources": [
+            "hushh://info/connector",
+            "hushh://info/developer-api",
+        ],
+        "recommended_mcp_flow": [
+            "discover_user_domains",
+            "request_consent",
+            "check_consent_status",
+            "get_scoped_data",
+        ],
+        "compatibility_tools": [
+            "get_financial_profile",
+            "get_food_preferences",
+            "get_professional_profile",
         ],
     }
 
 
-@router.post("/request-consent", response_model=ConsentResponse)
-async def request_consent(request: ConsentRequest):
-    """
-    Request consent from a user for data access.
-
-    External developers call this to request permission to access
-    specific user data. The user will be notified and must approve.
-
-    Follows Hushh Core Principle: "Consent First"
-
-    IMPORTANT: This does NOT auto-approve. User must explicitly approve
-    via the /api/consent/pending/approve endpoint.
-    """
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
-
-    logger.info("developer_api.request_consent scope=%s", request.scope)
-
-    # Verify developer
-    dev_info = _require_registered_developer(request.developer_token)
-
-    # Normalize to dot notation for storage and validation (e.g. attr_food -> attr.food.*)
-    scope_dot = normalize_scope(request.scope)
-    if not _is_valid_world_model_scope(scope_dot):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid scope: {request.scope}. Use world_model.read/world_model.write "
-                "or dynamic attr.{domain}.* / attr.{domain}.{subintent}.* scopes."
-            ),
-        )
-
-    if scope_dot.startswith("attr."):
-        scope_generator = get_scope_generator()
-        if not await scope_generator.validate_scope(scope_dot, request.user_id):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Scope '{scope_dot}' is not available for this user. "
-                    "Discover valid scopes first via /api/v1/user-scopes/{user_id}."
-                ),
-            )
-
-    # Verify scope is allowed for this developer.
-    approved = [normalize_scope(str(scope)) for scope in dev_info["approved_scopes"]]
-    scope_generator = get_scope_generator()
-    is_scope_approved = False
-    for allowed_scope in approved:
-        if allowed_scope == "*":
-            is_scope_approved = True
-            break
-        if allowed_scope == scope_dot:
-            is_scope_approved = True
-            break
-        # world_model.read is broader than any attr.* scope.
-        if allowed_scope == "world_model.read" and scope_dot.startswith("attr."):
-            is_scope_approved = True
-            break
-        # Allow narrower requests under approved wildcard paths.
-        if allowed_scope.startswith("attr.") and scope_dot.startswith("attr."):
-            if scope_generator.matches_wildcard(scope_dot, allowed_scope):
-                is_scope_approved = True
-                break
-
-    if not is_scope_approved:
-        raise HTTPException(
-            status_code=403, detail=f"Scope '{scope_dot}' not approved for this developer"
-        )
-
-    # Resolve to enum for token issuance
-    resolve_scope_to_enum(scope_dot)
-
-    # Check if consent already granted (query database with dot notation)
-    service = ConsentDBService()
-    is_active = await service.is_token_active(
-        request.user_id,
-        scope_dot,
-        dev_info["name"],
-    )
-    if is_active:
-        # Fetch the active token to return it
-        active_tokens = await service.get_active_tokens(
-            request.user_id,
-            agent_id=dev_info["name"],
-            scope=scope_dot,
-        )
-        existing_token = None
-        expires_at = None
-
-        for t in active_tokens:
-            existing_token = t.get("token_id")
-            expires_at = t.get("expires_at")
-            break
-
-        if existing_token:
-            return ConsentResponse(
-                status="already_granted",
-                message="User has already granted consent for this scope.",
-                consent_token=existing_token,
-                expires_at=expires_at,
-            )
-
-    # Check if request already pending (query database with dot notation)
-    service = ConsentDBService()
-    pending = await service.get_pending_requests(request.user_id)
-    pending_for_scope = [p for p in pending if p.get("scope") == scope_dot]
-    if pending_for_scope:
-        existing_id = pending_for_scope[0].get("id") or pending_for_scope[0].get("request_id")
-        return ConsentResponse(
-            status="pending",
-            message="Consent request already pending. Waiting for user approval.",
-            request_id=existing_id,
-        )
-
-    # Generate a request ID
-    request_id = str(uuid.uuid4())[:8]
-
-    # Pending request lifetime: use expiry_hours (capped at 24) so request stays pending for long timeouts
-    now_ms = int(time.time() * 1000)
-    pending_hours = min(max(1, request.expiry_hours), 24)
-    poll_timeout_at = now_ms + int(pending_hours * 3600 * 1000)
-
-    # Store in database with dot notation scope (mandatory)
-    service = ConsentDBService()
-    await service.insert_event(
-        user_id=request.user_id,
-        agent_id=dev_info["name"],
-        scope=scope_dot,
-        action="REQUESTED",
-        request_id=request_id,
-        scope_description=get_scope_description(scope_dot),
-        poll_timeout_at=poll_timeout_at,
-        metadata={"developer_name": dev_info["name"], "expiry_hours": request.expiry_hours},
-    )
-    logger.info("developer_api.request_created request_id=%s scope=%s", request_id, scope_dot)
-
-    return ConsentResponse(
-        status="pending",
-        message=f"Consent request submitted. User must approve in their dashboard. Request ID: {request_id}",
-        request_id=request_id,
-    )
-
-
-@router.post("/food-data")
-async def get_food_data(_request: DataAccessRequest):
-    """Removed: use world-model for domain data."""
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
-    raise HTTPException(status_code=410, detail="Gone. Use world-model API for domain data.")
-
-
-@router.post("/professional-data")
-async def get_professional_data(_request: DataAccessRequest):
-    """Removed: use world-model for domain data."""
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
-    raise HTTPException(status_code=410, detail="Gone. Use world-model API for domain data.")
-
-
-@router.get("/list-scopes")
-async def list_available_scopes():
-    """
-    List all available consent scopes (world-model only).
-
-    Developers can reference this to understand what data they can request.
-    Dynamic ``attr.{domain}.*`` scopes are accepted for any domain registered
-    in the user's world model.
-    """
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
-
-    scopes = [
-        {"name": "world_model.read", "description": get_scope_description("world_model.read")},
-        {"name": "world_model.write", "description": get_scope_description("world_model.write")},
-    ]
-
-    registry = get_domain_registry_service()
-    await registry.ensure_canonical_domains()
-    registry_domains = await registry.list_domains(include_empty=True)
-
-    parent_domains = sorted(
-        {
-            str(domain.domain_key).strip().lower()
-            for domain in registry_domains
-            if not domain.parent_domain
-        }
-    )
-
-    for domain_key in parent_domains:
-        scopes.append(
-            {
-                "name": f"attr.{domain_key}.*",
-                "description": get_scope_description(f"attr.{domain_key}.*"),
-                "source": "domain_registry",
-            }
-        )
-
-    for domain in registry_domains:
-        parent_key = str(domain.parent_domain or "").strip().lower()
-        if not parent_key:
-            continue
-        domain_key = str(domain.domain_key).strip().lower()
-        if parent_key not in parent_domains:
-            continue
-        if domain_key.startswith(f"{parent_key}."):
-            subintent = domain_key[len(parent_key) + 1 :]
-        else:
-            subintent = domain_key
-        if not subintent:
-            continue
-        sub_scope = f"attr.{parent_key}.{subintent}.*"
-        scopes.append(
-            {
-                "name": sub_scope,
-                "description": get_scope_description(sub_scope),
-                "source": "domain_registry",
-            }
-        )
-
-    # Add contract templates for clients that construct user-specific requests dynamically.
-    scopes.append(
-        {
-            "name": "attr.{domain}.*",
-            "description": "Dynamic domain scope from user metadata (discover first).",
-            "source": "template",
-        }
-    )
-    scopes.append(
-        {
-            "name": "attr.{domain}.{subintent}.*",
-            "description": "Dynamic subintent scope when domain metadata exposes subintents.",
-            "source": "template",
-        }
-    )
-
-    deduped = []
-    seen = set()
-    for row in scopes:
-        name = row.get("name")
-        if not isinstance(name, str) or not name or name in seen:
-            continue
-        seen.add(name)
-        deduped.append(row)
-
-    return {
-        "scopes": deduped,
-        "scopes_are_dynamic": True,
-        "scope_pattern": "attr.{domain}.* and attr.{domain}.{subintent}.*",
-        "note": "Per-user scope strings should be discovered via /api/v1/user-scopes/{user_id}.",
-    }
-
-
-@router.get("/user-scopes/{user_id}")
-async def list_user_scopes(
+@router.get("/user-scopes/{user_id}", response_model=DeveloperUserScopesResponse)
+async def get_user_scopes(
     user_id: str,
-    x_mcp_developer_token: str | None = Header(None, alias="X-MCP-Developer-Token"),
-    developer_token: str | None = None,
+    x_mcp_developer_token: Optional[str] = Header(None, alias="X-MCP-Developer-Token"),
 ):
     """
-    Discover user-specific dynamic scope strings using developer auth.
+    Return developer-consumable dynamic scopes for a user.
 
-    This endpoint is intended for MCP/tooling flows that need domain discovery
-    before requesting user consent.
+    This is the publishable developer-token wrapper around runtime scope discovery.
     """
-    disabled = _disabled_response_if_needed()
-    if disabled:
-        return disabled
+    _require_developer_token(header_token=x_mcp_developer_token)
 
-    token = str(x_mcp_developer_token or developer_token or "").strip()
-    dev_info = _require_registered_developer(token)
-
-    scope_generator = get_scope_generator()
-    scopes = await scope_generator.get_available_scopes(user_id)
-
-    approved_scopes = [normalize_scope(str(scope)) for scope in dev_info["approved_scopes"]]
-    if "*" not in approved_scopes:
-        filtered_scopes: list[str] = []
-        for discovered_scope in scopes:
-            allowed = False
-            for approved_scope in approved_scopes:
-                if approved_scope == discovered_scope:
-                    allowed = True
-                    break
-                if approved_scope == "world_model.read" and discovered_scope.startswith("attr."):
-                    allowed = True
-                    break
-                if approved_scope.startswith("attr.") and discovered_scope.startswith("attr."):
-                    if scope_generator.matches_wildcard(discovered_scope, approved_scope):
-                        allowed = True
-                        break
-            if allowed:
-                filtered_scopes.append(discovered_scope)
-        scopes = sorted(set(filtered_scopes))
-
-    domains = sorted(
-        {
-            domain
-            for scope in scopes
-            for domain, _path, _is_wildcard in [scope_generator.parse_scope(scope)]
-            if domain
-        }
+    available_domains, scopes = await _get_user_scope_snapshot(user_id)
+    return DeveloperUserScopesResponse(
+        user_id=user_id,
+        available_domains=available_domains,
+        scopes=scopes,
     )
 
+
+@router.post("/request-consent")
+async def request_consent(
+    payload: ConsentRequest,
+    x_mcp_developer_token: Optional[str] = Header(None, alias="X-MCP-Developer-Token"),
+):
+    """
+    Create a developer consent request for a dynamic scope.
+
+    This route is designed for MCP hosts and external developer clients.
+    """
+    _require_developer_token(
+        header_token=x_mcp_developer_token,
+        body_token=payload.developer_token,
+    )
+
+    normalized_scope = normalize_scope(payload.scope)
+    if not _is_supported_scope(normalized_scope):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "INVALID_SCOPE",
+                "message": f"Unsupported scope: {payload.scope}",
+                "valid_scopes": [descriptor.name for descriptor in _scope_catalog()],
+            },
+        )
+
+    if payload.expiry_hours <= 0 or payload.expiry_hours > _MAX_EXPIRY_HOURS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "INVALID_EXPIRY_HOURS",
+                "message": f"expiry_hours must be between 1 and {_MAX_EXPIRY_HOURS}",
+            },
+        )
+
+    available_domains, discovered_scopes = await _get_user_scope_snapshot(payload.user_id)
+    if normalized_scope.startswith("attr.") and normalized_scope not in set(discovered_scopes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "SCOPE_NOT_DISCOVERED_FOR_USER",
+                "message": "Requested scope is not available for this user.",
+                "discovery_hint": "Call GET /api/v1/user-scopes/{user_id} first and request one of the returned scopes.",
+                "available_domains": available_domains,
+            },
+        )
+
+    agent_id = _normalize_agent_id(payload.agent_id)
+    service = ConsentDBService()
+
+    active_tokens = await service.get_active_tokens(
+        payload.user_id,
+        agent_id=agent_id,
+        scope=normalized_scope,
+    )
+    if active_tokens:
+        active = active_tokens[0]
+        logger.info(
+            "developer_api.request_consent.reused scope=%s agent_id=%s", normalized_scope, agent_id
+        )
+        return {
+            "status": "already_granted",
+            "message": "Consent already active for this developer app and scope.",
+            "consent_token": active.get("token_id"),
+            "expires_at": active.get("expires_at"),
+            "request_id": active.get("request_id"),
+            "scope": normalized_scope,
+            "agent_id": agent_id,
+        }
+
+    if await service.was_recently_denied(payload.user_id, normalized_scope):
+        return {
+            "status": "denied_recently",
+            "message": "This scope was recently denied. Wait before sending another request.",
+            "scope": normalized_scope,
+            "agent_id": agent_id,
+        }
+
+    request_id = f"req_{uuid.uuid4().hex}"
+    now_ms = int(time.time() * 1000)
+    poll_timeout_at = now_ms + (_consent_timeout_seconds() * 1000)
+    scope_description = get_scope_description(normalized_scope)
+
+    await service.insert_event(
+        user_id=payload.user_id,
+        agent_id=agent_id,
+        scope=normalized_scope,
+        action="REQUESTED",
+        request_id=request_id,
+        scope_description=scope_description,
+        poll_timeout_at=poll_timeout_at,
+        metadata={
+            "expiry_hours": payload.expiry_hours,
+            "request_source": "developer_api_v1",
+            **({"reason": payload.reason} if payload.reason else {}),
+        },
+    )
+
+    logger.info(
+        "developer_api.request_consent.created scope=%s agent_id=%s", normalized_scope, agent_id
+    )
     return {
-        "user_id": user_id,
-        "domains": domains,
-        "scopes": scopes,
-        "scopes_are_dynamic": True,
+        "status": "pending",
+        "message": "Consent request submitted. User approval is pending in the Hushh app.",
+        "request_id": request_id,
+        "scope": normalized_scope,
+        "scope_description": scope_description,
+        "poll_timeout_at": poll_timeout_at,
+        "expires_in_hours": payload.expiry_hours,
+        "agent_id": agent_id,
+        "approval_surface": "/consents",
     }

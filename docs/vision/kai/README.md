@@ -2,6 +2,8 @@
 
 > **Decide like a committee, carry it in your pocket.**
 
+See also: [broker-execution-future-state.md](./broker-execution-future-state.md) for the planned broker-adapter execution model that sits beyond today’s read-only Plaid connectivity.
+
 ---
 
 <p align="center">

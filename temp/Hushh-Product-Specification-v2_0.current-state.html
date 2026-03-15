@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HUSHH Personal Agent - Product Specification v2.0 - Updated Current-State Edition</title>
+  <style>
+    :root {
+      --text: #171717;
+      --muted: #525252;
+      --line: #d4d4d4;
+      --soft: #f5f5f5;
+      --table: #e5e5e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.52;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 64px 72px 86px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 31px;
+      line-height: 1.14;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 17px;
+      font-weight: 680;
+      line-height: 1.35;
+      margin: 0 0 18px;
+    }
+    .quote {
+      border-left: 4px solid var(--line);
+      color: #6b7280;
+      font-style: italic;
+      margin: 0 0 22px;
+      padding: 4px 0 4px 16px;
+    }
+    hr {
+      border: 0;
+      border-top: 1px solid var(--line);
+      margin: 18px 0 24px;
+    }
+    h2 {
+      font-size: 22px;
+      line-height: 1.22;
+      margin: 30px 0 16px;
+      font-weight: 760;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 17px;
+      line-height: 1.3;
+      margin: 22px 0 10px;
+      font-weight: 720;
+      page-break-after: avoid;
+    }
+    p {
+      margin: 0 0 14px;
+      font-size: 15.5px;
+    }
+    ul, ol {
+      margin: 0 0 14px 24px;
+      padding: 0;
+      font-size: 15.5px;
+    }
+    li { margin: 0 0 8px; }
+    .lead {
+      font-size: 16.5px;
+      color: #262626;
+    }
+    .small {
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+    code {
+      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    pre {
+      margin: 0 0 18px;
+      padding: 14px 16px;
+      overflow: hidden;
+      background: #f7f7f7;
+      border: 1px solid var(--table);
+      border-radius: 10px;
+      white-space: pre-wrap;
+      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 20px;
+      font-size: 14.5px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid var(--table);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #fafafa;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>HUSHH Personal Agent - Product Specification v2.0</h1>
+    <p class="subtitle">Current Hushh Edition | Salesforce CRM + MuleSoft Direction | March 2026 | Hushh Research | CONFIDENTIAL</p>
+    <p class="quote">This edition keeps the original product specification language and structure, while aligning it to the current Hushh product: Kai is live as the flagship surface, the world model is the private system of record, and the Investor plus RIA trust layer is the current path into broader platform expansion.</p>
+    <p class="small"><strong>Document rule:</strong> current repo truth governs present-tense product claims. Enterprise backbone, voice-first, and on-device pillars remain in the document where they define the intended product direction, but they are written as platform direction when they are not yet the default runtime.</p>
+    <hr>
+
+    <h2>1. Executive Summary</h2>
+    <p class="lead">Hushh is a personal agent that is meant to know enough about the user that nobody they trust has to keep asking the same questions again. In the current product, that promise is already visible in practical form: Kai assembles and uses private context from the encrypted world model, consent governs every protected data movement, and investor, advisor, marketplace, and profile workflows are beginning to sit on top of the same trust architecture.</p>
+    <p>Hushh does not yet run every enterprise interaction through Salesforce Agentforce and MuleSoft Anypoint Platform, nor does it yet automate every domain end-to-end. What it does have now is the part that matters most: a user-owned private data plane, an actor-aware workflow plane, and an agent surface that can already act with memory, policy, and explainability. Apple and Google remain the trusted consumer and agent platforms where Hushh lives. The encrypted world model is the present personal data core. Salesforce CRM and MuleSoft remain the intended enterprise workflow, governance, and orchestration layer as Hushh broadens its reach.</p>
+
+    <h2>2. Product Vision</h2>
+
+    <h3>2.1 The Promise</h3>
+    <p class="quote">You tell Hushh who you are once. Hushh handles everything else forever.</p>
+    <p>That promise begins with a simple engineering truth: a user's facts, preferences, and active intent should not need to be repeatedly reconstructed across every interaction. In the current Hushh product, that continuity already exists for Kai onboarding, portfolio intelligence, consented sharing, and the emerging advisor workflow layer.</p>
+
+    <h3>2.2 What the User Controls</h3>
+    <p><strong>Profile</strong> - The facts. In the current product those facts are stored as encrypted world-model data, actor state, and safe workflow projections rather than as a flat CRM card.</p>
+    <p><strong>Preferences</strong> - How they like things. Today these preferences are already domain-scoped, summarized safely for discovery, and available for reuse through consented flows.</p>
+    <p><strong>Intent</strong> - What they need right now. The active intent is already visible across onboarding, portfolio import, analysis, marketplace discovery, and RIA workflows.</p>
+    <p><strong>Consent</strong> - The user's terms. Who can see what, under what scope, for how long, and for what purpose remains the legal and emotional foundation of the product.</p>
+
+    <h3>2.3 The Two Agents Every User Gets</h3>
+    <p>Every Hushh user is being provisioned toward two core agent roles.</p>
+    <p><strong>Agent Kai (the doer)</strong> - Kai is the active flagship product surface today. Kai collects and organizes private context, assembles the user's working profile, and helps them complete high-value tasks across onboarding, import, market intelligence, analysis, and optimization without asking for information that already exists in the vault and world model.</p>
+    <p><strong>Agent Nav (the shield)</strong> - Nav remains the privacy and consent guardian of the platform. In the current product, Nav's responsibilities are carried through the vault, consent center, persona routing, marketplace trust surfaces, and relationship gating flows. Over time these duties will mature into a more explicit agent surface, but the product function already exists: the user should feel powerful, never paranoid.</p>
+
+    <h2>3. Platform Architecture</h2>
+
+    <h3>3.1 The Strategic Platform Stack</h3>
+    <p>Hushh's architecture rests on a clear division of responsibility between consumer trust platforms, agent intelligence platforms, and the enterprise workflow layer that will eventually host and govern a much broader personal-agent fabric.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Platform</th>
+          <th>Role in Hushh</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Consumer Trust + Device</td>
+          <td>Apple (iOS, Siri, MLX, App Intents)</td>
+          <td>Primary consumer trust platform. Native shell, passkeys, Sign in with Apple, secure storage, and future voice and on-device expression live here.</td>
+        </tr>
+        <tr>
+          <td>Consumer Trust + Cloud</td>
+          <td>Google (ADK, A2A, UCP, Gemini)</td>
+          <td>Agent orchestration framework, inter-agent communication, commerce direction, and reasoning backbone.</td>
+        </tr>
+        <tr>
+          <td>Enterprise Backbone</td>
+          <td>Salesforce CRM + MuleSoft Anypoint</td>
+          <td>Intended workflow, governance, registry, and enterprise connectivity layer around the private user-owned core.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The current runtime already provides the structural prerequisites for that backbone. The world model owns private user facts. IAM, marketplace, consent, and advisor tables own workflow and public-discovery state. That is why Salesforce CRM and MuleSoft can be treated as future enterprise operating layers without forcing Hushh to abandon its encrypted private-data model.</p>
+
+    <h3>3.2 MuleSoft as the Agentic Personal Data Platform</h3>
+    <p>MuleSoft Anypoint Platform remains the right target architecture for the agentic personal data platform layer. The current Hushh repo does not yet run on MuleSoft, but it is already shaped in the way MuleSoft expects: routes are governed, agent interactions are policy-aware, workflow objects are explicit, and external connectivity is modeled through MCP, A2A, and gateway-like boundaries rather than through uncontrolled direct calls.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>MuleSoft Capability</th>
+          <th>Hushh Function</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Anypoint runtime</td>
+          <td>Future hosting and policy surface for Agent Kai, Agent Nav, and domain agents as the enterprise layer formalizes.</td>
+        </tr>
+        <tr>
+          <td>Agent registry</td>
+          <td>Natural home for agent discovery, capability publication, and future external partner registration.</td>
+        </tr>
+        <tr>
+          <td>Agent broker</td>
+          <td>Future routing layer for governed agent-to-agent interactions that already exist conceptually through TrustLinks and A2A support.</td>
+        </tr>
+        <tr>
+          <td>Agent governance</td>
+          <td>Enterprise policy enforcement that complements the current consent and scope model.</td>
+        </tr>
+        <tr>
+          <td>Pre-built connectors</td>
+          <td>Expansion path into additional systems of record once the present investor and advisor surfaces are fully hardened.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>3.3 Salesforce CRM as Personal Data System of Record</h3>
+    <p>In the current Hushh product, the encrypted world model is already the private personal data system of record. That is the architectural truth. Salesforce CRM belongs in this specification because it is the correct enterprise-facing system for projected relationship, consent, and activity workflows around that private core.</p>
+    <p>In practical terms, the Hushh data model already contains the pieces that map cleanly into Salesforce language:</p>
+    <ul>
+      <li><strong>Contact and actor records</strong> for persona, identity, and marketplace state.</li>
+      <li><strong>Preference and profile state</strong> inside the world model, with safe summaries in the index layer.</li>
+      <li><strong>Consent records</strong> for who has access to what, for what purpose, and for how long.</li>
+      <li><strong>Connection and relationship workflows</strong> for advisors, invites, and trusted counterparties.</li>
+      <li><strong>Activity history</strong> through consent and interaction auditing.</li>
+    </ul>
+    <p>The inversion remains the same as in the original founder framing: the user owns the record about themselves, and enterprises receive selective access on the user's terms.</p>
+    <p>That workflow layer is also where future handshake economics belong. The product is being shaped so that the moment a trusted counterparty receives a user-approved slice of the world model, the event can be logged not only as consent and activity, but also as value created on the user's terms.</p>
+
+    <h2>4. Protocol Stack</h2>
+    <p>The Hushh agent operates across a small set of interoperable protocol layers. These are not random integration choices; they define how the platform will scale from current Kai workflows into a broader agentic network.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Protocol</th>
+          <th>Owner</th>
+          <th>Function in Hushh</th>
+          <th>Current Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>MCP</td>
+          <td>Anthropic ecosystem standard</td>
+          <td>Agent-to-tool connectivity and governed external access to user-approved data.</td>
+          <td>Implemented in the repo today.</td>
+        </tr>
+        <tr>
+          <td>A2A</td>
+          <td>Google / Linux Foundation ecosystem</td>
+          <td>Agent-to-agent communication, discovery, and delegated work.</td>
+          <td>Implemented in part through TrustLinks, Kai A2A server support, and compliance checks.</td>
+        </tr>
+        <tr>
+          <td>UCP</td>
+          <td>Google</td>
+          <td>Future universal commerce execution path for checkout, payments, and loyalty.</td>
+          <td>Directional product pillar, not current core runtime.</td>
+        </tr>
+        <tr>
+          <td>App Intents</td>
+          <td>Apple</td>
+          <td>Native Siri invocation of Hushh capabilities.</td>
+          <td>Target consumer interface layer, not current primary control surface.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Today, the protocols meet in a practical way: world-model scopes are generated dynamically, MCP can request consented access, A2A delegation preserves boundaries through TrustLinks, and route-governed services keep policy centralized. As enterprise governance matures, MuleSoft becomes the natural place to host and route more of that protocol traffic.</p>
+    <p>Over time, that handshake layer can also become value-carrying. When Kai or another approved agent asks for personal information from the user's own data system, the world model, the approval event can carry background bid or credit metadata so the user quietly accrues value every time their data works for them.</p>
+
+    <h2>5. Agent Architecture</h2>
+
+    <h3>5.1 Agent Kai - Detailed Design</h3>
+    <p>Agent Kai is built on Google ADK as the orchestration framework and is the current flagship Hushh product. In the present repo, Kai is the active runtime proof point for what the platform means when it says the agent should already know enough to act.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Sub-Agent</th>
+          <th>Domain</th>
+          <th>Current Product Role</th>
+          <th>Primary Connectors / Data Paths</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Kai.Finance</td>
+          <td>Financial</td>
+          <td>Primary active runtime today across onboarding, portfolio import, dashboard, analysis, and optimize flows.</td>
+          <td>World model, market providers, portfolio import streams, consented financial scope access.</td>
+        </tr>
+        <tr>
+          <td>Kai.Travel</td>
+          <td>Travel</td>
+          <td>Directional domain pattern carried forward from the founder specification.</td>
+          <td>Future airline, hotel, booking, and loyalty connectors.</td>
+        </tr>
+        <tr>
+          <td>Kai.Commerce</td>
+          <td>Commerce</td>
+          <td>Directional domain pattern for future UCP-driven shopping and purchase flows.</td>
+          <td>Future UCP, merchant, loyalty, and receipt connectors.</td>
+        </tr>
+        <tr>
+          <td>Kai.Health</td>
+          <td>Health</td>
+          <td>Directional domain pattern for consented health data and care workflows.</td>
+          <td>Future FHIR, HealthKit, and pharmacy integrations.</td>
+        </tr>
+        <tr>
+          <td>Kai.Work</td>
+          <td>Work</td>
+          <td>Directional domain pattern for professional identity and workplace coordination.</td>
+          <td>Future Google Workspace, Microsoft 365, Workday, and related connectors.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>That shape matters because new domains can be added without changing the core Kai orchestrator. The current finance-first release is the proving ground rather than the terminal scope of the product.</p>
+
+    <h3>5.2 Agent Nav - Detailed Design</h3>
+    <p>Agent Nav is the consent and privacy enforcement layer of the Hushh product. In the current implementation, Nav's duties are distributed across the consent center, vault authority, persona routing, relationship gating, and audit surfaces. The product function already exists even before a fully separate Agent Nav runtime surface becomes the dominant expression.</p>
+    <p>Nav's job remains the same as in the founder specification:</p>
+    <ul>
+      <li><strong>Consent evaluation</strong> before protected data is shared.</li>
+      <li><strong>Data minimization</strong> so only the approved slice leaves the private plane.</li>
+      <li><strong>Activity feed integrity</strong> so the user can see what happened and why.</li>
+      <li><strong>Trust scoring and relationship judgment</strong> as the network of counterparties grows.</li>
+      <li><strong>Infrastructure enforcement</strong> so policy is not dependent on a single app screen behaving correctly.</li>
+    </ul>
+    <p>As Nav becomes a more explicit product surface, it is also the natural guardian for handshake economics. The user should not need to negotiate value manually. Nav should be able to ensure that if an approved agent interaction creates value from personal context, the corresponding credit is tracked quietly in the background against the user's account.</p>
+
+    <h2>6. Consumer Platform Integration</h2>
+
+    <h3>6.1 Apple Integration</h3>
+    <p>Apple remains the primary consumer trust platform. Hushh already integrates through the native mobile shell, Sign in with Apple, passkeys, secure storage, push notifications, and native plugins. The product is designed to grow from that base into three tighter Apple-native layers.</p>
+    <p><strong>Siri + App Intents</strong> - Every user-facing Hushh capability can eventually be exposed as a native invocation surface so that the user speaks an intent and the agent executes without forms or repeated profile entry.</p>
+    <p><strong>MLX (On-Device AI)</strong> - On-device inference remains the natural privacy-critical layer for preference matching, profile lookup, consent evaluation shortcuts, and personal data graph indexing once operational model packs are production ready. The current repo already contains hooks and capability signals for this direction.</p>
+    <p><strong>Apple Pay + Wallet</strong> - Wallet, passes, cards, and payment rails remain the natural execution layer for future commerce and travel workflows on Apple devices.</p>
+
+    <h3>6.2 Google Integration</h3>
+    <p>Google provides the agent intelligence and protocol backbone already visible in the codebase.</p>
+    <p><strong>Agent Development Kit (ADK)</strong> - ADK is the orchestration framework for Kai and the clearest current proof point for multi-agent Hushh behavior.</p>
+    <p><strong>Gemini</strong> - Gemini-aligned services power reasoning, planning, and natural language behavior in the current agent stack.</p>
+    <p><strong>Universal Commerce Protocol (UCP)</strong> - UCP remains the intended path for future end-to-end commerce execution.</p>
+    <p><strong>A2A Protocol</strong> - A2A remains the standard for inter-agent communication, with Hushh already publishing the relevant delegation and discovery semantics in code.</p>
+
+    <h2>7. Platform Compatibility Matrix</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Integration Method</th>
+          <th>Hushh Use Case</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Apple</td>
+          <td>Native mobile shell, Sign in with Apple, passkeys, future App Intents and MLX</td>
+          <td>Consumer interface, trust posture, on-device expression, voice direction, and future payments.</td>
+        </tr>
+        <tr>
+          <td>Google</td>
+          <td>ADK, A2A, Gemini, future UCP</td>
+          <td>Agent orchestration, reasoning, inter-agent communication, and commerce direction.</td>
+        </tr>
+        <tr>
+          <td>Salesforce</td>
+          <td>CRM mapping and workflow projection</td>
+          <td>Enterprise relationship, consent, activity, and trust workflow alignment.</td>
+        </tr>
+        <tr>
+          <td>MuleSoft</td>
+          <td>Anypoint governance, registry, broker, connectors</td>
+          <td>Future enterprise orchestration and policy fabric.</td>
+        </tr>
+        <tr>
+          <td>External systems of record</td>
+          <td>MCP, governed APIs, and future connector expansion</td>
+          <td>User-authorized access to financial, travel, commerce, health, and work systems.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>8. End-to-End Data Flow Example</h2>
+    <p>User logs into Hushh, imports a brokerage statement, and asks Kai for a portfolio decision.</p>
+    <ol>
+      <li>Kai onboarding captures the user's starting profile and persona.</li>
+      <li>Portfolio import parses the statement, quality-gates the result, and writes the encrypted financial domain into the world model.</li>
+      <li>Kai assembles the user's financial context from the world model and safe index summaries.</li>
+      <li>Agent Kai runs committee-style analysis across its specialist reasoning paths.</li>
+      <li>The result appears as a dashboard and analysis surface with receipts, history, and degraded-state awareness if any provider is partial.</li>
+      <li>The user then enters marketplace or RIA flows and receives a scoped access request from an advisor.</li>
+      <li>Consent is evaluated and approved or denied under explicit scope and duration rules.</li>
+      <li>Every action lands in the activity and consent history surfaces while private data remains in the encrypted personal data plane.</li>
+    </ol>
+    <p>Total user input: a handful of focused steps. Total repeated forms: minimized. The product goal remains the same as in the founder specification: the user should express intent, not rebuild their identity from scratch every time.</p>
+    <p>As the network expands, this same flow can become economically expressive without becoming more complicated. Each approved handshake can eventually resolve into a background micro-credit when Kai or another trusted agent retrieves governed personal information from the world model.</p>
+
+    <h2>9. Scale: 1 Billion Users</h2>
+
+    <h3>9.1 User Provisioning</h3>
+    <p>Hushh is being architected for sovereign-scale user volume even though the current product remains in an earlier stage. Provisioning already follows the right shape: authenticated actor creation, persona state, vault establishment, private world-model storage, default deny posture, and progressive connection of the first useful data source.</p>
+
+    <h3>9.2 Regional Deployment</h3>
+    <p>Regional deployment remains part of the intended platform path rather than a claim that every market in the founder roadmap is already live. The operational direction remains aligned with the original sequencing: United States first, allied markets next, and region-specific residency and compliance as the platform expands.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Role in Expansion</th>
+          <th>Residency / Compliance Direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>United States</td>
+          <td>Primary launch and operating market</td>
+          <td>CCPA/CPRA, HIPAA, PCI-DSS aligned operating posture.</td>
+        </tr>
+        <tr>
+          <td>Allied markets</td>
+          <td>Phase-two expansion</td>
+          <td>Regional deployment with local privacy and consumer data rules.</td>
+        </tr>
+        <tr>
+          <td>UAE / GCC</td>
+          <td>Strategic market direction</td>
+          <td>Regional governance and data-residency alignment.</td>
+        </tr>
+        <tr>
+          <td>Asia-Pacific and India</td>
+          <td>Longer-horizon scale path</td>
+          <td>Regional privacy, localization, and data-governance requirements.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>9.3 Infrastructure Scaling</h3>
+    <ul>
+      <li>Cloud Run and the current service architecture provide horizontal application scaling.</li>
+      <li>The world-model split reduces pressure on query-heavy workflow paths by separating encrypted blobs from indexed metadata.</li>
+      <li>On-device execution can eventually offload routine operations once model-pack maturity supports it.</li>
+      <li>MuleSoft and Salesforce remain the intended enterprise scaling fabric around the current core.</li>
+    </ul>
+
+    <h2>10. Security &amp; Privacy</h2>
+    <p>Privacy is not a feature. It is the product. Hushh enforces that principle at the storage layer, the consent layer, the workflow layer, and the eventual enterprise orchestration layer.</p>
+    <ul>
+      <li><strong>Encryption</strong> - AES-256 class storage rules, TLS in transit, native secure storage, and no plaintext fallback.</li>
+      <li><strong>Zero-Knowledge Cloud</strong> - The world model stores ciphertext, not raw private user facts.</li>
+      <li><strong>Defense-in-Depth Consent</strong> - Consent is enforced through product logic, token logic, and infrastructural boundaries, not a single UI checkbox.</li>
+      <li><strong>Compliance Direction</strong> - Regional privacy, deletion, audit, and data-residency obligations are already shaping the product model.</li>
+      <li><strong>Right to Deletion</strong> - The platform is designed so that the user can erase private, workflow, and connection state coherently.</li>
+      <li><strong>Audit Trail</strong> - Data sharing, approvals, revocations, and agent interactions belong in immutable history surfaces.</li>
+    </ul>
+
+    <h2>11. Go-to-Market</h2>
+
+    <h3>11.1 Consumer Acquisition</h3>
+    <p>The current Hushh product enters the market through Kai and investor trust flows rather than through the original travel-first launch story. That is the operative GTM correction. The logic, however, remains the same: start where the pain is visceral, the fragmented data is valuable, and the product can remove real friction immediately. Today that proof point is private investing intelligence and advisor relationship control. Travel and hospitality remain strong future vertical expressions of the same system.</p>
+
+    <h3>11.2 Enterprise Revenue Model</h3>
+    <p>The consumer product remains the trust-acquisition surface. Enterprise value comes from the workflow and network side of the system:</p>
+    <ul>
+      <li>Consent-verified profile and workflow access that is materially more valuable than brokered or inferred data.</li>
+      <li>Agent hosting and orchestration paths for trusted counterparties and future brand agents.</li>
+      <li>Revenue participation in future agent-executed commerce flows.</li>
+      <li>Connector and workflow infrastructure licensing as the enterprise layer matures.</li>
+    </ul>
+    <p>A core long-term product principle is that the handshake itself should reward the user. Where a consented access event creates enterprise value, Hushh can track a minimum background credit, starting from micro-credit amounts such as 0.01 cents, into the user's future Hushh coin balance. The point is not speculative token language. The point is that whenever Kai, or another agent acting through the same trust layer, gets personal information from the user's own database, the world model, the system should remember that value flowed from the user and should account for it accordingly.</p>
+
+    <h3>11.3 90-Day Execution Plan</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th>Timeline</th>
+          <th>Deliverables</th>
+          <th>Success Metric</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Foundation</td>
+          <td>Days 1-30</td>
+          <td>Kai onboarding and import hardening, world-model coherence, consent-center clarity, marketplace and RIA surface stabilization.</td>
+          <td>Stable activation and profile continuity.</td>
+        </tr>
+        <tr>
+          <td>Agent</td>
+          <td>Days 31-60</td>
+          <td>Deeper Kai analysis reliability, improved advisor and relationship workflows, clearer external mapping for consented data exchange.</td>
+          <td>Higher autonomous task completion across current finance flows.</td>
+        </tr>
+        <tr>
+          <td>Enterprise</td>
+          <td>Days 61-90</td>
+          <td>Stronger Salesforce and MuleSoft alignment packet, richer trust workflows, and clearer partner-facing interoperability story.</td>
+          <td>First repeatable enterprise-ready architecture narrative and expanded user base.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>12. Success Metrics</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Current Focus</th>
+          <th>Next Stage</th>
+          <th>At Scale</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Autonomous task completion rate</td>
+          <td>Kai finance flows</td>
+          <td>Multi-surface agent workflows</td>
+          <td>Cross-domain personal-agent execution</td>
+        </tr>
+        <tr>
+          <td>Connected data sources per user</td>
+          <td>Financial and trust-critical starting points</td>
+          <td>Multi-domain expansion</td>
+          <td>High-depth personal data graph</td>
+        </tr>
+        <tr>
+          <td>Forms eliminated per user</td>
+          <td>Onboarding, import, advisor workflows</td>
+          <td>Broader partner interactions</td>
+          <td>Routine zero-form interactions</td>
+        </tr>
+        <tr>
+          <td>Agent trust score</td>
+          <td>User confidence in Kai and consent flows</td>
+          <td>Stronger marketplace and advisor trust</td>
+          <td>Network-level trust advantage</td>
+        </tr>
+        <tr>
+          <td>Enterprise participation</td>
+          <td>Advisor and marketplace relationships</td>
+          <td>Partner integrations</td>
+          <td>Large-scale connected agent ecosystem</td>
+        </tr>
+        <tr>
+          <td>User value returned per handshake</td>
+          <td>Conceptual product metric</td>
+          <td>Measured micro-credit and monetized-consent flows</td>
+          <td>Background value accrual every time personal data works for the user</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>13. Technical Dependencies</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Technology</th>
+          <th>Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Agent hosting and governance direction</td>
+          <td>Salesforce CRM + MuleSoft Anypoint</td>
+          <td>Enterprise workflow, governance, and orchestration layer the product is designed toward.</td>
+        </tr>
+        <tr>
+          <td>Private personal data core</td>
+          <td>World model on Supabase/Postgres</td>
+          <td>Encrypted system of record for private user-owned facts.</td>
+        </tr>
+        <tr>
+          <td>Agent orchestration</td>
+          <td>Google ADK and Gemini-aligned services</td>
+          <td>Current Kai runtime and future multi-agent expansion path.</td>
+        </tr>
+        <tr>
+          <td>Agent-to-agent</td>
+          <td>A2A Protocol and TrustLinks</td>
+          <td>Delegated inter-agent communication with inherited consent boundaries.</td>
+        </tr>
+        <tr>
+          <td>Agent-to-tool</td>
+          <td>MCP</td>
+          <td>Governed external system connectivity.</td>
+        </tr>
+        <tr>
+          <td>On-device AI direction</td>
+          <td>Apple MLX and future local model packs</td>
+          <td>Privacy-preserving local inference and fast consent-sensitive operations.</td>
+        </tr>
+        <tr>
+          <td>Voice interface direction</td>
+          <td>App Intents and Siri</td>
+          <td>Future native voice interface layer.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Hushh Research - Your Data, Your Business</p>
+  </main>
+</body>
+</html>

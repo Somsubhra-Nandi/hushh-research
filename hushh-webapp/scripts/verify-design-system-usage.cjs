@@ -60,6 +60,7 @@ const REGISTRY_UI_FILES = new Set([
   "skeleton.tsx",
   "sonner.tsx",
   "spinner.tsx",
+  "switch.tsx",
   "table.tsx",
   "tabs.tsx",
   "textarea.tsx",

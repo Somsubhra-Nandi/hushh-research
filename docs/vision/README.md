@@ -136,7 +136,7 @@ Agent Kai is an **educational tool**. It is NOT investment advisory.
 | Document                                    | Focus                        |
 | ------------------------------------------- | ---------------------------- |
 | [Agent Kai Vision](./kai/)                  | Multi-agent financial analysis |
-| [Investor Master List](./kai/data/investor-master-list.md) | Target investor profiles |
+| [Investor Profile Strategy](./kai/README.md) | Target investor profiles and positioning |
 
 ---
 

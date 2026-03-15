@@ -9,7 +9,7 @@
  *
  * Flow:
  * - Auth ❌ → Redirect to login
- * - Auth ✅ + Vault ❌ → Show passphrase unlock dialog
+ * - Auth ✅ + Vault ❌ → Show unlock dialog
  * - Auth ✅ + Vault ✅ → Render children
  *
  * SECURITY MODEL (BYOK Compliant):
@@ -25,7 +25,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useVault } from "@/lib/vault/vault-context";
 import { VaultService } from "@/lib/services/vault-service";
-import { VaultFlow } from "./vault-flow";
+import { VaultUnlockDialog } from "./vault-unlock-dialog";
 import { HushhLoader } from "@/components/app-ui/hushh-loader";
 import { useStepProgress } from "@/lib/progress/step-progress-context";
 
@@ -45,6 +45,7 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
   const router = useRouter();
   const { isVaultUnlocked } = useVault();
   const { user, loading: authLoading } = useAuth();
+  const userId = user?.uid ?? null;
   const { beginTask, completeTaskStep, endTask } = useStepProgress();
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const authStepDoneRef = useRef(false);
@@ -54,13 +55,13 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
   // Redirect unauthenticated users (side-effect outside render)
   useEffect(() => {
     if (authLoading) return;
-    if (user) return;
+    if (userId) return;
 
     if (typeof window !== "undefined") {
       const currentPath = window.location.pathname;
       router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
     }
-  }, [authLoading, router, user]);
+  }, [authLoading, router, userId]);
 
   useEffect(() => {
     if (isVaultUnlocked) {
@@ -81,21 +82,21 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
     if (isVaultUnlocked || authLoading || authStepDoneRef.current) return;
     completeTaskStep(PROGRESS_SCOPE);
     authStepDoneRef.current = true;
-    if (!user) {
+    if (!userId) {
       endTask(PROGRESS_SCOPE);
     }
-  }, [authLoading, completeTaskStep, endTask, isVaultUnlocked, user]);
+  }, [authLoading, completeTaskStep, endTask, isVaultUnlocked, userId]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function checkVaultPresence() {
-      if (authLoading || !user || isVaultUnlocked) return;
+      if (authLoading || !userId || isVaultUnlocked) return;
 
       vaultStepDoneRef.current = false;
       setHasVault(null);
       try {
-        const exists = await VaultService.checkVault(user.uid);
+        const exists = await VaultService.checkVault(userId);
         if (!cancelled) {
           setHasVault(exists);
         }
@@ -113,16 +114,16 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user?.uid, isVaultUnlocked]);
+  }, [authLoading, userId, isVaultUnlocked]);
 
   useEffect(() => {
-    if (isVaultUnlocked || authLoading || !user || hasVault === null || vaultStepDoneRef.current) {
+    if (isVaultUnlocked || authLoading || !userId || hasVault === null || vaultStepDoneRef.current) {
       return;
     }
     completeTaskStep(PROGRESS_SCOPE);
     vaultStepDoneRef.current = true;
     endTask(PROGRESS_SCOPE);
-  }, [authLoading, completeTaskStep, endTask, hasVault, isVaultUnlocked, user]);
+  }, [authLoading, completeTaskStep, endTask, hasVault, isVaultUnlocked, userId]);
 
   // ============================================================================
   // FAST PATH: If vault is unlocked (in memory), render children immediately
@@ -156,18 +157,16 @@ export function VaultLockGuard({ children }: VaultLockGuardProps) {
 
   // User exists but vault is locked - show unlock dialog
   return (
-    <div className="flex min-h-[60vh] items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-sm sm:max-w-md">
-        <VaultFlow
-          user={user}
-          enableGeneratedDefault
-          onSuccess={() => {
-            // Force a router refresh to ensure state update is picked up
-            // This handles potential race conditions on native
-            router.refresh(); 
-          }}
-        />
-      </div>
-    </div>
+    <VaultUnlockDialog
+      user={user}
+      open
+      dismissible={false}
+      enableGeneratedDefault
+      title="Unlock Vault"
+      description="Unlock your Vault to continue."
+      onSuccess={() => {
+        router.refresh();
+      }}
+    />
   );
 }

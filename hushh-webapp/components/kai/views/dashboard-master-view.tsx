@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
+  Building2,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
   TrendingDown,
@@ -13,12 +17,15 @@ import {
 import { toast } from "sonner";
 
 import { DataTable } from "@/components/app-ui/data-table";
+import { PageHeader } from "@/components/app-ui/page-sections";
 import { AssetAllocationDonut } from "@/components/kai/charts/asset-allocation-donut";
 import { GainLossDistributionChart } from "@/components/kai/charts/gain-loss-distribution-chart";
 import { HoldingsConcentrationChart } from "@/components/kai/charts/holdings-concentration-chart";
 import { PortfolioHistoryChart } from "@/components/kai/charts/portfolio-history-chart";
 import { SectorAllocationChart } from "@/components/kai/charts/sector-allocation-chart";
 import { StatementCashflowChart } from "@/components/kai/charts/statement-cashflow-chart";
+import { TransactionActivity } from "@/components/kai/cards/transaction-activity";
+import { PlaidBrokerageSummarySection } from "@/components/kai/plaid/plaid-brokerage-sections";
 import { HoldingRowActions } from "@/components/kai/holdings/holding-row-actions";
 import { EditHoldingModal } from "@/components/kai/modals/edit-holding-modal";
 import type { Holding as PortfolioHolding, PortfolioData } from "@/components/kai/types/portfolio";
@@ -45,12 +52,34 @@ import { cn } from "@/lib/utils";
 import { useVault } from "@/lib/vault/vault-context";
 import { mapPortfolioToDashboardViewModel } from "@/components/kai/views/dashboard-data-mapper";
 import { getTickerUniverseSnapshot, preloadTickerUniverse } from "@/lib/kai/ticker-universe-cache";
+import { useKaiSession } from "@/lib/stores/kai-session-store";
+import { ROUTES } from "@/lib/navigation/routes";
+import {
+  buildDebateContextFromPortfolio,
+  normalizePortfolioTransactions,
+  type PlaidItemSummary,
+  type PortfolioSource,
+} from "@/lib/kai/brokerage/portfolio-sources";
+import { usePortfolioSources } from "@/lib/kai/brokerage/use-portfolio-sources";
+import { PortfolioSourceSwitcher } from "@/components/kai/portfolio-source-switcher";
+import { loadPlaidLink } from "@/lib/kai/brokerage/plaid-link-loader";
+import {
+  clearPlaidOAuthResumeSession,
+  savePlaidOAuthResumeSession,
+} from "@/lib/kai/brokerage/plaid-oauth-session";
+import { PlaidPortfolioService } from "@/lib/kai/brokerage/plaid-portfolio-service";
 
 interface DashboardMasterViewProps {
   userId: string;
   vaultOwnerToken: string;
-  portfolioData: PortfolioData;
-  onAnalyzeStock?: (symbol: string) => void;
+  portfolioData?: PortfolioData | null;
+  onAnalyzeStock?: (
+    symbol: string,
+    options?: {
+      portfolioSource?: PortfolioSource;
+      portfolioContext?: Record<string, unknown> | null;
+    }
+  ) => void;
   onReupload?: () => void;
 }
 
@@ -340,9 +369,34 @@ export function DashboardMasterView({
   onAnalyzeStock,
   onReupload,
 }: DashboardMasterViewProps) {
+  const router = useRouter();
   const { vaultKey } = useVault();
   const { setPortfolioData: setCachePortfolioData } = useCache();
+  const setLosersInput = useKaiSession((s) => s.setLosersInput);
   const baselineBySourceRef = useRef<Map<string, ComparableHolding>>(new Map());
+  const {
+    isLoading: isSourcesLoading,
+    error: sourcesError,
+    plaidStatus,
+    statementPortfolio,
+    statementSnapshots,
+    activeStatementSnapshotId,
+    activeSource,
+    availableSources,
+    activePortfolio,
+    freshness,
+    isPlaidRefreshing,
+    changeActiveSource,
+    changeActiveStatementSnapshot,
+    refreshPlaid,
+    cancelPlaidRefresh,
+    reload,
+  } = usePortfolioSources({
+    userId,
+    vaultOwnerToken,
+    vaultKey,
+    initialStatementPortfolio: portfolioData ?? null,
+  });
 
   const [holdingsDraft, setHoldingsDraft] = useState<ManagedHolding[]>([]);
   const [tickerSectorLookup, setTickerSectorLookup] = useState<
@@ -366,16 +420,30 @@ export function DashboardMasterView({
   const [editingHolding, setEditingHolding] = useState<ManagedHolding | null>(null);
   const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLinkingPlaid, setIsLinkingPlaid] = useState(false);
   const [mobileHoldingsTab, _setMobileHoldingsTab] = useState<
     "all" | "analyze" | "non-analyze" | "cash"
   >("all");
+  const statementEditablePortfolio = statementPortfolio ?? portfolioData ?? null;
+  const canEditStatement = activeSource === "statement" && Boolean(statementEditablePortfolio);
+  const displayedPortfolio = activeSource === "statement" ? statementEditablePortfolio : activePortfolio;
+  const isPlaidView = activeSource === "plaid";
+  const hasPlaidConnections = (plaidStatus?.aggregate?.item_count || 0) > 0;
+  const plaidConfigured = plaidStatus?.configured ?? true;
 
   useEffect(() => {
-    const sourceHoldings = (portfolioData.holdings || []) as PortfolioHolding[];
+    const sourceHoldings = (statementEditablePortfolio?.holdings || []) as PortfolioHolding[];
     const { managed, baselineBySource } = buildManagedHoldingsFromSource(sourceHoldings);
     baselineBySourceRef.current = baselineBySource;
     setHoldingsDraft(managed);
-  }, [portfolioData]);
+  }, [statementEditablePortfolio]);
+
+  useEffect(() => {
+    if (activeSource === "statement") return;
+    setIsModalOpen(false);
+    setEditingHolding(null);
+    setEditingHoldingId(null);
+  }, [activeSource]);
 
   useEffect(() => {
     let cancelled = false;
@@ -457,15 +525,29 @@ export function DashboardMasterView({
 
   const workingPortfolioData = useMemo<PortfolioData>(
     () => {
+      const sourcePortfolio = displayedPortfolio ?? statementEditablePortfolio;
+      if (!sourcePortfolio) {
+        return {
+          holdings: [],
+          transactions: [],
+          cash_balance: 0,
+          total_value: 0,
+        };
+      }
+
+      if (activeSource !== "statement") {
+        return sourcePortfolio;
+      }
+
       if (!hasHoldingsChanges) {
         return {
-          ...portfolioData,
+          ...sourcePortfolio,
           holdings: activeHoldings,
         };
       }
 
       const cashBalance = Number(
-        portfolioData.account_summary?.cash_balance ?? portfolioData.cash_balance ?? 0
+        sourcePortfolio.account_summary?.cash_balance ?? sourcePortfolio.cash_balance ?? 0
       );
       const holdingsTotalValue = activeHoldings.reduce(
         (sum, holding) => sum + Number(holding.market_value || 0),
@@ -475,16 +557,16 @@ export function DashboardMasterView({
         (holding) => holding.is_cash_equivalent === true
       );
       const endingValue = holdingsTotalValue + (holdingsIncludeCash ? 0 : cashBalance);
-      const beginningValueRaw = Number(portfolioData.account_summary?.beginning_value);
+      const beginningValueRaw = Number(sourcePortfolio.account_summary?.beginning_value);
       const beginningValue = Number.isFinite(beginningValueRaw) ? beginningValueRaw : endingValue;
 
       return {
-        ...portfolioData,
+        ...sourcePortfolio,
         holdings: activeHoldings,
         total_value: endingValue,
         cash_balance: cashBalance,
         account_summary: {
-          ...portfolioData.account_summary,
+          ...sourcePortfolio.account_summary,
           ending_value: endingValue,
           cash_balance: cashBalance,
           equities_value: activeHoldings
@@ -495,13 +577,258 @@ export function DashboardMasterView({
         ...(hasHoldingsChanges ? { analytics_v2: undefined } : {}),
       };
     },
-    [activeHoldings, hasHoldingsChanges, portfolioData]
+    [activeHoldings, activeSource, displayedPortfolio, hasHoldingsChanges, statementEditablePortfolio]
   );
 
   const model = useMemo(
     () => mapPortfolioToDashboardViewModel(workingPortfolioData),
     [workingPortfolioData]
   );
+
+  const workflowPortfolio = activeSource === "statement" ? workingPortfolioData : activePortfolio;
+  const workflowPortfolioContext = useMemo(
+    () => buildDebateContextFromPortfolio(workflowPortfolio),
+    [workflowPortfolio]
+  );
+
+  const handleSourceChange = useCallback(
+    (nextSource: PortfolioSource) => {
+      void changeActiveSource(nextSource).catch((error) => {
+        toast.error("Could not switch portfolio source.", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    },
+    [changeActiveSource]
+  );
+
+  const handleRefreshPlaid = useCallback(
+    (itemId?: string) => {
+      void refreshPlaid(itemId)
+        .then((result) => {
+          if (result.status === "already_running") {
+            toast.info("A refresh is already in progress.", {
+              description: "Let it finish or cancel it first.",
+              action: result.runIds.length
+                ? {
+                    label: "Cancel",
+                    onClick: () => {
+                      void cancelPlaidRefresh({ itemId, runIds: result.runIds });
+                    },
+                  }
+                : undefined,
+            });
+            return;
+          }
+          if (result.status !== "started") return;
+          toast.message(
+            itemId
+              ? "Refreshing this brokerage in the background."
+              : "Refreshing your brokerage data in the background.",
+            {
+              description: "We’ll update this portfolio when it finishes.",
+              action: {
+                label: "Cancel",
+                onClick: () => {
+                  void cancelPlaidRefresh({ itemId, runIds: result.runIds });
+                },
+              },
+            }
+          );
+        })
+        .catch((error) => {
+          toast.error("Could not refresh Plaid.", {
+            description: error instanceof Error ? error.message : "Please try again.",
+          });
+        });
+    },
+    [cancelPlaidRefresh, refreshPlaid]
+  );
+
+  const handleCancelPlaidRefresh = useCallback(
+    (params?: { itemId?: string; runIds?: string[] }) => {
+      void cancelPlaidRefresh(params)
+        .then((result) => {
+          if (result.status === "noop") {
+            toast.info("No active Plaid refresh is running.");
+            return;
+          }
+          toast.success("Plaid refresh canceled.");
+        })
+        .catch((error) => {
+          toast.error("Could not cancel Plaid refresh.", {
+            description: error instanceof Error ? error.message : "Please try again.",
+          });
+        });
+    },
+    [cancelPlaidRefresh]
+  );
+
+  const handleStatementSnapshotChange = useCallback(
+    (snapshotId: string) => {
+      void changeActiveStatementSnapshot(snapshotId).catch((error) => {
+        toast.error("Could not switch statements.", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    },
+    [changeActiveStatementSnapshot]
+  );
+
+  const openPlaidLinkFlow = useCallback(
+    async (itemId?: string) => {
+      if (!vaultOwnerToken) {
+        toast.error("Please unlock your Vault and try again.");
+        return;
+      }
+
+      setIsLinkingPlaid(true);
+      try {
+        const redirectUri =
+          typeof window !== "undefined"
+            ? new URL(ROUTES.KAI_PLAID_OAUTH_RETURN, window.location.origin).toString()
+            : undefined;
+        const linkToken = await PlaidPortfolioService.createLinkToken({
+          userId,
+          vaultOwnerToken,
+          itemId,
+          updateMode: Boolean(itemId),
+          redirectUri,
+        });
+        if (!linkToken.configured || !linkToken.link_token) {
+          throw new Error("Plaid is not configured for this environment.");
+        }
+        if (linkToken.resume_session_id) {
+          savePlaidOAuthResumeSession({
+            version: 1,
+            userId,
+            resumeSessionId: linkToken.resume_session_id,
+            returnPath: ROUTES.KAI_PORTFOLIO,
+            startedAt: new Date().toISOString(),
+          });
+        }
+
+        const Plaid = await loadPlaidLink();
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const finish = (callback: () => void) => {
+            if (settled) return;
+            settled = true;
+            callback();
+          };
+
+          const handler = Plaid.create({
+            token: linkToken.link_token,
+            onSuccess: (publicToken: string, metadata: Record<string, unknown>) => {
+              void PlaidPortfolioService.exchangePublicToken({
+                userId,
+                publicToken,
+                vaultOwnerToken,
+                metadata,
+                resumeSessionId: linkToken.resume_session_id || null,
+              })
+                .then(async () => {
+                  clearPlaidOAuthResumeSession();
+                  await reload();
+                  toast.success(itemId ? "Plaid connection updated." : "Brokerage connected with Plaid.");
+                  finish(resolve);
+                })
+                .catch((error) => {
+                  finish(() =>
+                    reject(
+                      error instanceof Error ? error : new Error("Plaid connection failed.")
+                    )
+                  );
+                })
+                .finally(() => {
+                  handler.destroy?.();
+                });
+            },
+            onExit: (exitError: Record<string, unknown> | null) => {
+              handler.destroy?.();
+              clearPlaidOAuthResumeSession();
+              if (exitError && typeof exitError === "object") {
+                const detail =
+                  typeof exitError.error_message === "string"
+                    ? exitError.error_message
+                    : "Plaid Link closed with an error.";
+                finish(() => reject(new Error(detail)));
+                return;
+              }
+              finish(resolve);
+            },
+          });
+
+          handler.open();
+        });
+      } catch (error) {
+        clearPlaidOAuthResumeSession();
+        toast.error(itemId ? "Could not update this Plaid connection." : "Could not start Plaid.", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Kai could not start the brokerage connection flow. Please try again.",
+        });
+      } finally {
+        setIsLinkingPlaid(false);
+      }
+    },
+    [reload, userId, vaultOwnerToken]
+  );
+
+  const handleAnalyzeFromDashboard = useCallback(
+    (symbol: string) => {
+      onAnalyzeStock?.(symbol, {
+        portfolioSource: activeSource,
+        portfolioContext: workflowPortfolioContext,
+      });
+    },
+    [activeSource, onAnalyzeStock, workflowPortfolioContext]
+  );
+
+  const handleOptimizePortfolio = useCallback(() => {
+    if (!workflowPortfolio || !Array.isArray(workflowPortfolio.holdings) || workflowPortfolio.holdings.length === 0) {
+      toast.error("No holdings available for optimization.");
+      return;
+    }
+
+    const holdings = workflowPortfolio.holdings.map((holding) => ({
+      symbol: String(holding.symbol || "").trim().toUpperCase(),
+      name: holding.name,
+      gain_loss_pct:
+        typeof holding.unrealized_gain_loss_pct === "number"
+          ? holding.unrealized_gain_loss_pct
+          : undefined,
+      gain_loss:
+        typeof holding.unrealized_gain_loss === "number"
+          ? holding.unrealized_gain_loss
+          : undefined,
+      market_value:
+        typeof holding.market_value === "number" ? holding.market_value : undefined,
+      weight_pct:
+        typeof holding.weight_pct === "number" ? holding.weight_pct : undefined,
+      sector: holding.sector,
+      asset_type: holding.asset_type,
+    }));
+    const losers = holdings.filter((holding) => typeof holding.gain_loss_pct === "number" && holding.gain_loss_pct < 0);
+
+    setLosersInput({
+      userId,
+      thresholdPct: -5,
+      maxPositions: 10,
+      losers,
+      holdings,
+      forceOptimize: losers.length === 0,
+      hadBelowThreshold: losers.length > 0,
+      portfolioSource: activeSource,
+      portfolioContext: workflowPortfolioContext,
+      sourceMetadata:
+        workflowPortfolio.source_metadata && typeof workflowPortfolio.source_metadata === "object"
+          ? workflowPortfolio.source_metadata
+          : null,
+    });
+    router.push(ROUTES.KAI_OPTIMIZE);
+  }, [activeSource, router, setLosersInput, userId, workflowPortfolio, workflowPortfolioContext]);
 
   const allocationData = useMemo(
     () =>
@@ -516,22 +843,43 @@ export function DashboardMasterView({
     () => model.canonicalModel.debateContext.eligibleSymbols.slice(0, 20),
     [model.canonicalModel.debateContext.eligibleSymbols]
   );
+  const recentTransactions = useMemo(
+    () => normalizePortfolioTransactions(workingPortfolioData).slice(0, 8),
+    [workingPortfolioData]
+  );
 
   const sortedHoldingsDraft = useMemo(
     () => [...holdingsDraft].sort(compareHoldingsByNameAsc),
     [holdingsDraft]
   );
 
+  const sourceHoldingRows = useMemo<ManagedHolding[]>(
+    () => {
+      if (activeSource === "statement") {
+        return sortedHoldingsDraft;
+      }
+      const holdings = (displayedPortfolio?.holdings || []) as PortfolioHolding[];
+      return [...holdings]
+        .sort(compareHoldingsByNameAsc)
+        .map((holding, index) => ({
+          ...holding,
+          pending_delete: false,
+          client_id: `readonly-${activeSource}-${index}`,
+        }));
+    },
+    [activeSource, displayedPortfolio, sortedHoldingsDraft]
+  );
+
   const desktopHoldingTables = useMemo(
     () => ({
-      all: sortedHoldingsDraft,
-      analyzeEligible: sortedHoldingsDraft.filter((holding) => isHoldingAnalyzeEligible(holding)),
-      nonAnalyzable: sortedHoldingsDraft.filter(
+      all: sourceHoldingRows,
+      analyzeEligible: sourceHoldingRows.filter((holding) => isHoldingAnalyzeEligible(holding)),
+      nonAnalyzable: sourceHoldingRows.filter(
         (holding) => !holding.is_cash_equivalent && !isHoldingAnalyzeEligible(holding)
       ),
-      cashSweep: sortedHoldingsDraft.filter((holding) => holding.is_cash_equivalent === true),
+      cashSweep: sourceHoldingRows.filter((holding) => holding.is_cash_equivalent === true),
     }),
-    [sortedHoldingsDraft]
+    [sourceHoldingRows]
   );
   const _mobileHoldingsData = useMemo(() => {
     if (mobileHoldingsTab === "analyze") return desktopHoldingTables.analyzeEligible;
@@ -543,7 +891,7 @@ export function DashboardMasterView({
     let cashSweep = 0;
     let analyzeEligible = 0;
     let nonAnalyzable = 0;
-    for (const holding of holdingsDraft) {
+    for (const holding of sourceHoldingRows) {
       if (holding.pending_delete) continue;
       if (holding.is_cash_equivalent === true) {
         cashSweep += 1;
@@ -556,7 +904,7 @@ export function DashboardMasterView({
       }
     }
     return { cashSweep, analyzeEligible, nonAnalyzable };
-  }, [holdingsDraft]);
+  }, [sourceHoldingRows]);
 
   const investorSnapshot = useMemo(() => {
     const totalValue = model.hero.totalValue || 0;
@@ -762,6 +1110,10 @@ export function DashboardMasterView({
   }, []);
 
   const openAddHoldingModal = useCallback(() => {
+    if (!canEditStatement) {
+      toast.info("Plaid holdings are read-only in Kai.");
+      return;
+    }
     setEditingHolding({
       symbol: "",
       name: "",
@@ -773,10 +1125,10 @@ export function DashboardMasterView({
     });
     setEditingHoldingId(null);
     setIsModalOpen(true);
-  }, []);
+  }, [canEditStatement]);
 
   const persistHoldingsChanges = useCallback(async () => {
-    if (!userId || !vaultKey) {
+    if (!userId || !vaultKey || !statementEditablePortfolio) {
       toast.error("Unlock your Vault to save holdings.");
       return;
     }
@@ -805,7 +1157,7 @@ export function DashboardMasterView({
     try {
       const holdingsForSave = activeHoldings;
       const cashBalance = Number(
-        portfolioData.account_summary?.cash_balance ?? portfolioData.cash_balance ?? 0
+        statementEditablePortfolio.account_summary?.cash_balance ?? statementEditablePortfolio.cash_balance ?? 0
       );
       const holdingsTotalValue = holdingsForSave.reduce(
         (sum, holding) => sum + Number(holding.market_value || 0),
@@ -815,17 +1167,17 @@ export function DashboardMasterView({
         (holding) => holding.is_cash_equivalent === true
       );
       const endingValue = holdingsTotalValue + (holdingsIncludeCash ? 0 : cashBalance);
-      const beginningValueRaw = Number(portfolioData.account_summary?.beginning_value);
+      const beginningValueRaw = Number(statementEditablePortfolio.account_summary?.beginning_value);
       const beginningValue = Number.isFinite(beginningValueRaw) ? beginningValueRaw : endingValue;
       const equitiesValue = holdingsForSave
         .filter((holding) => holding.is_cash_equivalent !== true)
         .reduce((sum, holding) => sum + Number(holding.market_value || 0), 0);
 
       const updatedPortfolioData: PortfolioData = {
-        ...portfolioData,
+        ...statementEditablePortfolio,
         holdings: holdingsForSave,
         account_summary: {
-          ...portfolioData.account_summary,
+          ...statementEditablePortfolio.account_summary,
           ending_value: endingValue,
           equities_value: equitiesValue,
           cash_balance: cashBalance,
@@ -898,6 +1250,7 @@ export function DashboardMasterView({
 
       setCachePortfolioData(userId, updatedPortfolioData as CachedPortfolioData);
       CacheSyncService.onPortfolioUpserted(userId, updatedPortfolioData as CachedPortfolioData);
+      void reload();
       const { managed, baselineBySource } = buildManagedHoldingsFromSource(holdingsForSave);
       baselineBySourceRef.current = baselineBySource;
       setHoldingsDraft(managed);
@@ -908,10 +1261,18 @@ export function DashboardMasterView({
     } finally {
       setIsSavingHoldings(false);
     }
-  }, [activeHoldings, portfolioData, setCachePortfolioData, userId, vaultKey, vaultOwnerToken]);
+  }, [
+    activeHoldings,
+    reload,
+    setCachePortfolioData,
+    statementEditablePortfolio,
+    userId,
+    vaultKey,
+    vaultOwnerToken,
+  ]);
 
   const handleDeleteImportedData = useCallback(async () => {
-    if (!userId || !vaultKey) {
+    if (!userId || !vaultKey || !statementEditablePortfolio) {
       toast.error("Unlock your Vault to delete imported data.");
       return;
     }
@@ -942,7 +1303,7 @@ export function DashboardMasterView({
           : {};
 
       const clearedPortfolioData: PortfolioData = {
-        account_info: portfolioData.account_info,
+        account_info: statementEditablePortfolio.account_info,
         account_summary: {
           beginning_value: 0,
           ending_value: 0,
@@ -1053,8 +1414,11 @@ export function DashboardMasterView({
       setHoldingsDraft([]);
       setDeleteImportedDialogOpen(false);
       toast.success("Imported portfolio data deleted.");
+      await reload();
 
-      if (typeof onReupload === "function") {
+      if ((plaidStatus?.aggregate?.item_count || 0) > 0) {
+        await changeActiveSource("plaid").catch(() => undefined);
+      } else if (typeof onReupload === "function") {
         onReupload();
       }
     } catch (error) {
@@ -1063,7 +1427,16 @@ export function DashboardMasterView({
     } finally {
       setIsDeletingImportedData(false);
     }
-  }, [onReupload, portfolioData.account_info, setCachePortfolioData, userId, vaultKey, vaultOwnerToken]);
+  }, [
+    changeActiveSource,
+    onReupload,
+    plaidStatus?.aggregate?.item_count,
+    reload,
+    statementEditablePortfolio,
+    userId,
+    vaultKey,
+    vaultOwnerToken,
+  ]);
 
   const handleEditHolding = useCallback(
     (holdingId: string) => {
@@ -1158,11 +1531,17 @@ export function DashboardMasterView({
               <HoldingRowActions
                 symbol={holding.symbol}
                 isDeleted={deleted}
-                disableEdit={deleted}
+                disableEdit={deleted || !canEditStatement}
                 layout="row"
                 className="w-auto"
-                onEdit={() => handleEditHolding(holding.client_id)}
-                onToggleDelete={() => handleToggleDeleteHolding(holding.client_id)}
+                onEdit={() => {
+                  if (!canEditStatement) return;
+                  handleEditHolding(holding.client_id);
+                }}
+                onToggleDelete={() => {
+                  if (!canEditStatement) return;
+                  handleToggleDeleteHolding(holding.client_id);
+                }}
               />
             </div>
           );
@@ -1252,11 +1631,110 @@ export function DashboardMasterView({
         },
       },
     ],
-    [handleEditHolding, handleToggleDeleteHolding]
+    [canEditStatement, handleEditHolding, handleToggleDeleteHolding]
   );
+
+  const plaidItems = useMemo<PlaidItemSummary[]>(
+    () => plaidStatus?.items || [],
+    [plaidStatus]
+  );
+  const sourceDisplayLabel = activeSource === "statement" ? "Statement" : "Plaid";
+
+  if (isSourcesLoading && !displayedPortfolio) {
+    return (
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-center px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+        <Card variant="none" effect="glass" className="w-full rounded-[24px]">
+          <CardContent className="flex items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading portfolio sources...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!displayedPortfolio) {
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-6 overflow-x-hidden px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+        <PageHeader
+          eyebrow="Kai Portfolio"
+          title="Portfolio"
+          description="Switch between statement and Plaid sources, connect brokerages, and keep your investable context ready for debate."
+          icon={Building2}
+          accent="sky"
+        />
+        <PortfolioSourceSwitcher
+          activeSource={activeSource}
+          availableSources={availableSources}
+          freshness={freshness}
+          onSourceChange={handleSourceChange}
+          statementSnapshots={statementSnapshots}
+          activeStatementSnapshotId={activeStatementSnapshotId}
+          onStatementSnapshotChange={handleStatementSnapshotChange}
+          onRefreshPlaid={hasPlaidConnections ? () => handleRefreshPlaid() : undefined}
+          onCancelRefreshPlaid={isPlaidRefreshing ? () => handleCancelPlaidRefresh() : undefined}
+          onManageConnections={plaidConfigured !== false ? () => void openPlaidLinkFlow() : undefined}
+          isRefreshing={isPlaidRefreshing || isLinkingPlaid}
+        />
+        <Card variant="none" effect="glass" className="rounded-[24px]">
+          <CardContent className="space-y-3 p-6">
+            <p className="text-sm font-semibold">No active portfolio source is ready yet.</p>
+            <p className="text-sm text-muted-foreground">
+              Import a statement for an editable source, or connect Plaid for read-only brokerage data.
+            </p>
+            {plaidConfigured !== false ? (
+              <div className="flex flex-wrap gap-2">
+                <MorphyButton
+                  variant="blue-gradient"
+                  effect="fill"
+                  onClick={() => void openPlaidLinkFlow()}
+                  disabled={isLinkingPlaid}
+                >
+                  {isLinkingPlaid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building2 className="mr-2 h-4 w-4" />}
+                  Connect Plaid
+                </MorphyButton>
+                <MorphyButton variant="none" effect="fade" onClick={onReupload}>
+                  Upload Statement
+                </MorphyButton>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 overflow-x-hidden px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+      <PageHeader
+        eyebrow="Kai Portfolio"
+        title="Portfolio"
+        description="Your active source, holdings context, and brokerage connections stay in sync here before you move into investments, debate, or optimization."
+        icon={Building2}
+        accent="sky"
+      />
+      <PortfolioSourceSwitcher
+        activeSource={activeSource}
+        availableSources={availableSources}
+        freshness={freshness}
+        onSourceChange={handleSourceChange}
+        statementSnapshots={statementSnapshots}
+        activeStatementSnapshotId={activeStatementSnapshotId}
+        onStatementSnapshotChange={handleStatementSnapshotChange}
+        onRefreshPlaid={hasPlaidConnections ? () => handleRefreshPlaid() : undefined}
+        onCancelRefreshPlaid={isPlaidRefreshing ? () => handleCancelPlaidRefresh() : undefined}
+        onManageConnections={plaidConfigured !== false ? () => void openPlaidLinkFlow() : undefined}
+        isRefreshing={isPlaidRefreshing || isLinkingPlaid}
+      />
+
+      {sourcesError ? (
+        <Card variant="none" effect="glass" className="rounded-[22px] border border-amber-500/20">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            {sourcesError}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card
         variant="muted"
         effect="fill"
@@ -1264,8 +1742,13 @@ export function DashboardMasterView({
       >
         <CardContent className="space-y-6 p-6 sm:p-7">
           <div className="flex flex-col items-center gap-2 text-center">
-            <p className="text-sm font-medium text-muted-foreground">Total portfolio value</p>
+            <p className="text-sm font-medium text-muted-foreground">
+              {sourceDisplayLabel} portfolio value
+            </p>
             <div className="flex flex-wrap justify-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                Source: {sourceDisplayLabel}
+              </span>
               <span className="inline-flex items-center rounded-full bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                 Risk: {model.hero.portfolioConcentrationLabel.replace(" Concentration", "")}
               </span>
@@ -1302,14 +1785,71 @@ export function DashboardMasterView({
           </div>
 
           <div className="rounded-xl border border-border/60 bg-background/75 p-4 text-center">
-            <p className="text-sm font-semibold">{model.hero.statementPeriod || "Current statement period"}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Beginning Balance:{" "}
-              <span className="font-semibold text-foreground">{formatCurrency(model.hero.beginningValue)}</span>
+            <p className="text-sm font-semibold">
+              {isPlaidView
+                ? freshness?.lastSyncedAt
+                  ? `Last synced ${new Date(freshness.lastSyncedAt).toLocaleString()}`
+                  : "Plaid brokerage snapshot"
+                : model.hero.statementPeriod || "Current statement period"}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isPlaidView ? (
+                <>
+                  {freshness?.itemCount || 0} item{(freshness?.itemCount || 0) === 1 ? "" : "s"} •{" "}
+                  {freshness?.accountCount || 0} account{(freshness?.accountCount || 0) === 1 ? "" : "s"} • read-only broker data
+                </>
+              ) : (
+                <>
+                  Beginning Balance:{" "}
+                  <span className="font-semibold text-foreground">{formatCurrency(model.hero.beginningValue)}</span>
+                </>
+              )}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <MorphyButton
+              variant="blue-gradient"
+              effect="fill"
+              onClick={handleOptimizePortfolio}
+            >
+              <ArrowRight className="mr-2 h-4 w-4" />
+              Optimize Portfolio
+            </MorphyButton>
+            <MorphyButton
+              variant="none"
+              effect="fade"
+              onClick={() => router.push(ROUTES.KAI_INVESTMENTS)}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              View Investments
+            </MorphyButton>
+            {plaidConfigured !== false ? (
+              <MorphyButton
+                variant="none"
+                effect="fade"
+                onClick={() => void openPlaidLinkFlow()}
+                disabled={isLinkingPlaid}
+              >
+                {isLinkingPlaid ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Building2 className="mr-2 h-4 w-4" />
+                )}
+                {hasPlaidConnections ? "Connect Another Brokerage" : "Connect Plaid"}
+              </MorphyButton>
+            ) : null}
           </div>
         </CardContent>
       </Card>
+
+      <PlaidBrokerageSummarySection
+        items={plaidItems}
+        onRefreshItem={(itemId) => handleRefreshPlaid(itemId)}
+        onCancelRefresh={(params) => handleCancelPlaidRefresh(params)}
+        onManageConnection={(itemId) => void openPlaidLinkFlow(itemId)}
+        onViewInvestments={() => router.push(ROUTES.KAI_INVESTMENTS)}
+      />
 
       <section className="space-y-4">
         {hasEquitySectorAllocation ? (
@@ -1341,9 +1881,15 @@ export function DashboardMasterView({
         )}
       </section>
 
-      {statementSnapshotRows.length > 0 ? (
+      {activeSource === "statement" && statementSnapshotRows.length > 0 ? (
         <StatementCashflowChart data={statementChartData} />
       ) : null}
+
+      <TransactionActivity
+        transactions={recentTransactions}
+        maxItems={6}
+        className="rounded-[22px]"
+      />
 
       <Card
         variant="muted"
@@ -1419,28 +1965,47 @@ export function DashboardMasterView({
         <CardHeader className="pb-2 px-6 pt-6 sm:px-7">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
-              Current Holdings
+              {isPlaidView ? "Brokerage Holdings" : "Current Holdings"}
             </CardTitle>
-            <MorphyButton
-              variant="none"
-              effect="fade"
-              size="sm"
-              onClick={openAddHoldingModal}
-            >
-              <Icon icon={Plus} size="sm" className="mr-1" />
-              Add Holding
-            </MorphyButton>
+            {canEditStatement ? (
+              <MorphyButton
+                variant="none"
+                effect="fade"
+                size="sm"
+                onClick={openAddHoldingModal}
+              >
+                <Icon icon={Plus} size="sm" className="mr-1" />
+                Add Holding
+              </MorphyButton>
+            ) : (
+              <span className="text-xs text-muted-foreground">Read-only source</span>
+            )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
           <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-2.5 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-foreground">Change Summary</span>
-              <span className="rounded-full bg-background px-2 py-0.5">Added: {holdingsChangeSummary.added}</span>
-              <span className="rounded-full bg-background px-2 py-0.5">Edited: {holdingsChangeSummary.edited}</span>
-              <span className="rounded-full bg-background px-2 py-0.5">Deleted: {holdingsChangeSummary.deleted}</span>
-            </div>
+            {canEditStatement ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-foreground">Change Summary</span>
+                <span className="rounded-full bg-background px-2 py-0.5">Added: {holdingsChangeSummary.added}</span>
+                <span className="rounded-full bg-background px-2 py-0.5">Edited: {holdingsChangeSummary.edited}</span>
+                <span className="rounded-full bg-background px-2 py-0.5">Deleted: {holdingsChangeSummary.deleted}</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-foreground">Plaid Snapshot</span>
+                <span className="rounded-full bg-background px-2 py-0.5">
+                  Sync: {freshness?.syncStatus || "idle"}
+                </span>
+                <span className="rounded-full bg-background px-2 py-0.5">
+                  Items: {freshness?.itemCount || 0}
+                </span>
+                <span className="rounded-full bg-background px-2 py-0.5">
+                  Accounts: {freshness?.accountCount || 0}
+                </span>
+              </div>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="font-semibold text-foreground">Bifurcation</span>
               <span className="rounded-full bg-background px-2 py-0.5">
@@ -1453,6 +2018,11 @@ export function DashboardMasterView({
                 Cash: {holdingsBifurcation.cashSweep}
               </span>
             </div>
+            {!canEditStatement ? (
+              <div className="mt-2 rounded-lg border border-dashed border-border/60 bg-muted/40 px-3 py-2 text-xs">
+                Plaid holdings are broker-sourced and cannot be edited in Kai.
+              </div>
+            ) : null}
           </div>
 
           <Tabs defaultValue="all" className="space-y-3">
@@ -1562,7 +2132,7 @@ export function DashboardMasterView({
             </TabsContent>
           </Tabs>
 
-          {hasHoldingsChanges ? (
+          {canEditStatement && hasHoldingsChanges ? (
             <div className="pt-2">
               <MorphyButton
                 variant="blue-gradient"
@@ -1648,7 +2218,7 @@ export function DashboardMasterView({
             userId={userId}
             vaultOwnerToken={vaultOwnerToken}
             symbols={holdingSymbols}
-            onAdd={(symbol) => onAnalyzeStock?.(symbol)}
+            onAdd={handleAnalyzeFromDashboard}
           />
         </CardContent>
       </Card>
@@ -1672,7 +2242,11 @@ export function DashboardMasterView({
 
       <Card variant="none" effect="glass" className="rounded-[24px]">
         <CardContent className="flex flex-col gap-3 p-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <p>Imported statement data is synced across dashboard and holdings views.</p>
+          <p>
+            {canEditStatement
+              ? "Imported statement data is synced across dashboard and holdings views."
+              : "Plaid brokerage data is broker-sourced, refreshable, and read-only inside Kai."}
+          </p>
           <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
             <MorphyButton
               variant="none"
@@ -1680,26 +2254,40 @@ export function DashboardMasterView({
               size="sm"
               fullWidth
               disabled={isDeletingImportedData}
-              onClick={onReupload}
+              onClick={canEditStatement ? onReupload : () => void openPlaidLinkFlow()}
             >
-              Import Portfolio
+              {canEditStatement ? "Import Portfolio" : "Connect Another Brokerage"}
             </MorphyButton>
-            <MorphyButton
-              variant="none"
-              effect="fade"
-              size="sm"
-              fullWidth
-              className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-              disabled={isDeletingImportedData}
-              onClick={() => setDeleteImportedDialogOpen(true)}
-            >
-              {isDeletingImportedData ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="mr-1 h-4 w-4" />
-              )}
-              Delete Imported Data
-            </MorphyButton>
+            {canEditStatement ? (
+              <MorphyButton
+                variant="none"
+                effect="fade"
+                size="sm"
+                fullWidth
+                className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+                disabled={isDeletingImportedData}
+                onClick={() => setDeleteImportedDialogOpen(true)}
+              >
+                {isDeletingImportedData ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-1 h-4 w-4" />
+                )}
+                Delete Imported Data
+              </MorphyButton>
+            ) : (
+              <MorphyButton
+                variant="none"
+                effect="fade"
+                size="sm"
+                fullWidth
+                onClick={() => handleRefreshPlaid()}
+                disabled={isPlaidRefreshing}
+              >
+                <RefreshCw className={`mr-1 h-4 w-4 ${isPlaidRefreshing ? "animate-spin" : ""}`} />
+                Refresh Plaid
+              </MorphyButton>
+            )}
           </div>
         </CardContent>
       </Card>

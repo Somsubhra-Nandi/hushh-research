@@ -3,9 +3,17 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, type CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Shield, TrendingUp, User } from "lucide-react";
+import {
+  Activity,
+  BriefcaseBusiness,
+  LayoutDashboard,
+  LineChart,
+  Store,
+  User,
+  Users,
+} from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { usePendingConsentCount } from "@/components/consent/notification-provider";
@@ -14,24 +22,36 @@ import { useKaiSession } from "@/lib/stores/kai-session-store";
 import { getKaiChromeState } from "@/lib/navigation/kai-chrome-state";
 import { SegmentedPill, type SegmentedPillOption } from "@/lib/morphy-ux/ui";
 import { useKaiBottomChromeVisibility } from "@/lib/navigation/kai-bottom-chrome-visibility";
+import { ROUTES } from "@/lib/navigation/routes";
 import { cn } from "@/lib/utils";
 import { morphyToast as toast } from "@/lib/morphy-ux/morphy";
+import { usePersonaState } from "@/lib/persona/persona-context";
+import { activeKaiRouteTabFromPath } from "@/lib/navigation/kai-route-tabs";
+import { activeRiaRouteTabFromPath } from "@/lib/navigation/ria-route-tabs";
+import { useVault } from "@/lib/vault/vault-context";
 
-type NavKey = "kai" | "consents" | "profile";
+type InvestorNavKey = "dashboard" | "market" | "analysis" | "profile";
+type RiaNavKey = "home" | "clients" | "activity" | "profile";
+type NavKey = InvestorNavKey | RiaNavKey;
 
 export const Navbar = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
+  const { isVaultUnlocked } = useVault();
+  const { activePersona, riaEntryRoute } = usePersonaState();
   const pendingConsents = usePendingConsentCount();
   const pillRef = React.useRef<HTMLDivElement | null>(null);
-  const [kaiHref, setKaiHref] = useState("/kai");
   const chromeState = useMemo(() => getKaiChromeState(pathname), [pathname]);
   const useOnboardingChrome = chromeState.useOnboardingChrome;
-  const allowScrollHide = isAuthenticated && !useOnboardingChrome;
+  const preserveBottomChrome = Boolean(
+    pathname?.startsWith("/ria") || pathname?.startsWith("/marketplace")
+  );
+  const allowScrollHide = isAuthenticated && !useOnboardingChrome && !preserveBottomChrome;
   const { hidden: hideBottomChrome, progress: hideBottomChromeProgress } = useKaiBottomChromeVisibility(allowScrollHide);
 
   const lastKaiPath = useKaiSession((s) => s.lastKaiPath);
+  const lastRiaPath = useKaiSession((s) => s.lastRiaPath);
   const busyOperations = useKaiSession((s) => s.busyOperations);
 
   React.useLayoutEffect(() => {
@@ -62,41 +82,93 @@ export const Navbar = () => {
   }, [isAuthenticated, useOnboardingChrome]);
 
   useEffect(() => {
-    if (lastKaiPath) setKaiHref(lastKaiPath);
-  }, [lastKaiPath]);
-
-  useEffect(() => {
     if (!pathname) return;
     if (pathname.startsWith("/kai")) {
       useKaiSession.getState().setLastKaiPath(pathname);
-      setKaiHref(pathname);
+      return;
+    }
+    if (pathname.startsWith("/ria")) {
+      useKaiSession.getState().setLastRiaPath(pathname);
     }
   }, [pathname]);
+  const hideNavbar = pathname?.startsWith(ROUTES.LABS_PROFILE_APPEARANCE);
+
+  useEffect(() => {
+    if (activePersona === "ria") {
+      router.prefetch(lastRiaPath || riaEntryRoute);
+      router.prefetch(ROUTES.RIA_CLIENTS);
+      router.prefetch(ROUTES.RIA_REQUESTS);
+      return;
+    }
+
+    router.prefetch(lastKaiPath || ROUTES.KAI_HOME);
+    router.prefetch(ROUTES.KAI_DASHBOARD);
+    router.prefetch(ROUTES.KAI_ANALYSIS);
+  }, [activePersona, lastKaiPath, lastRiaPath, riaEntryRoute, router]);
 
   const navOptions = useMemo<SegmentedPillOption[]>(
-    () => [
-      {
-        value: "kai",
-        label: "Kai",
-        icon: TrendingUp,
-        dataTourId: "nav-kai",
-      },
-      {
-        value: "consents",
-        label: "Consents",
-        icon: Shield,
-        badge: pendingConsents,
-        dataTourId: "nav-consents",
-      },
-      {
-        value: "profile",
-        label: "Profile",
-        icon: User,
-        dataTourId: "nav-profile",
-      },
-    ],
-    [pendingConsents]
+    () =>
+      activePersona === "ria"
+        ? [
+            {
+              value: "home",
+              label: "Home",
+              icon: BriefcaseBusiness,
+              dataTourId: "nav-ria-home",
+            },
+            {
+              value: "clients",
+              label: "Clients",
+              icon: Users,
+              dataTourId: "nav-ria-clients",
+            },
+            {
+              value: "activity",
+              label: "Activity",
+              icon: Activity,
+              dataTourId: "nav-ria-activity",
+            },
+            {
+              value: "profile",
+              label: "Profile",
+              icon: User,
+              badge: pendingConsents > 0 ? pendingConsents : undefined,
+              dataTourId: "nav-profile",
+            },
+          ]
+        : [
+            {
+              value: "dashboard",
+              label: "Portfolio",
+              icon: LayoutDashboard,
+              dataTourId: "nav-portfolio",
+            },
+            {
+              value: "market",
+              label: "Market",
+              icon: Store,
+              dataTourId: "nav-market",
+            },
+            {
+              value: "analysis",
+              label: "Analysis",
+              icon: LineChart,
+              dataTourId: "nav-analysis",
+            },
+            {
+              value: "profile",
+              label: "Profile",
+              icon: User,
+              badge: pendingConsents > 0 ? pendingConsents : undefined,
+              dataTourId: "nav-profile",
+            },
+          ],
+    [activePersona, pendingConsents]
   );
+
+  if (hideNavbar) {
+    return null;
+  }
 
   if (!isAuthenticated || useOnboardingChrome) {
     return (
@@ -115,11 +187,12 @@ export const Navbar = () => {
   }
 
   const normalizedPathname = pathname?.replace(/\/$/, "") || "";
-  const activeNav: NavKey = normalizedPathname.startsWith("/consents")
-    ? "consents"
-    : normalizedPathname.startsWith("/profile")
+  const activeNav: NavKey =
+    normalizedPathname.startsWith(ROUTES.PROFILE) || normalizedPathname.startsWith(ROUTES.CONSENTS)
       ? "profile"
-      : "kai";
+      : activePersona === "ria"
+      ? activeRiaRouteTabFromPath(normalizedPathname)
+      : activeKaiRouteTabFromPath(normalizedPathname);
 
   const navigateTo = (value: string) => {
     if (busyOperations["portfolio_save"]) {
@@ -138,14 +211,26 @@ export const Navbar = () => {
     }
 
     switch (value as NavKey) {
-      case "kai":
-        router.push(kaiHref);
+      case "market":
+        router.push(ROUTES.KAI_HOME);
         return;
-      case "consents":
-        router.push("/consents");
+      case "dashboard":
+        router.push(ROUTES.KAI_DASHBOARD);
+        return;
+      case "analysis":
+        router.push(`${ROUTES.KAI_ANALYSIS}?tab=history`);
+        return;
+      case "home":
+        router.push(lastRiaPath || riaEntryRoute);
+        return;
+      case "clients":
+        router.push(ROUTES.RIA_CLIENTS);
+        return;
+      case "activity":
+        router.push(ROUTES.RIA_REQUESTS);
         return;
       case "profile":
-        router.push("/profile");
+        router.push(ROUTES.PROFILE);
         return;
       default:
         return;
@@ -155,27 +240,43 @@ export const Navbar = () => {
   return (
     <nav
       className={cn(
-        "fixed inset-x-0 z-[120] flex justify-center px-4 transform-gpu",
-        hideBottomChrome
-          ? "pointer-events-none opacity-0"
-          : "pointer-events-none opacity-100"
+        "fixed inset-x-0 flex justify-center px-4 transform-gpu",
+        isVaultUnlocked ? "z-[120]" : "z-[505]",
+        "pointer-events-none"
       )}
-      style={{
-        bottom:
-          "calc(max(var(--app-safe-area-bottom-effective), 0.75rem) + var(--app-bottom-chrome-lift, 0px))",
-        transform: `translate3d(0, calc(${100 * hideBottomChromeProgress}% + ${10 * hideBottomChromeProgress}px), 0)`,
-        opacity: Math.max(0, 1 - hideBottomChromeProgress),
-      }}
+      style={
+        {
+          bottom:
+            "calc(max(var(--app-safe-area-bottom-effective), 0.75rem) + var(--app-bottom-chrome-lift, 0px))",
+          transform:
+            "translate3d(0, calc(var(--bottom-chrome-progress, 0) * (var(--app-bottom-fixed-ui) + 10px)), 0)",
+          "--bottom-chrome-progress": String(hideBottomChromeProgress),
+        } as CSSProperties
+      }
     >
-      <SegmentedPill
-        ref={pillRef}
-        size="compact"
-        value={activeNav}
-        options={navOptions}
-        onValueChange={navigateTo}
-        ariaLabel="Main navigation"
-        className="pointer-events-auto w-full max-w-[460px]"
-      />
+      <div
+        className={cn(
+          "relative w-full max-w-[480px]",
+          "pointer-events-none",
+          hideBottomChrome && "pointer-events-none"
+        )}
+      >
+        <SegmentedPill
+          ref={pillRef}
+          size="compact"
+          layout="stacked"
+          hitArea="content"
+          value={activeNav}
+          options={navOptions}
+          onValueChange={navigateTo}
+          ariaLabel="Main navigation"
+          className={cn(
+            "relative z-10 w-full chrome-bottom-foreground",
+            !isVaultUnlocked &&
+              "!border-border/80 !bg-background/92 !backdrop-blur-none shadow-[0_10px_22px_rgba(15,23,42,0.08)] dark:!bg-background/94"
+          )}
+        />
+      </div>
     </nav>
   );
 };

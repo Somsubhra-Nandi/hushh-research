@@ -75,6 +75,30 @@ export function removeSessionItem(key: string): void {
 }
 
 /**
+ * Remove session values by prefix
+ */
+export function removeSessionItemsByPrefix(prefix: string): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    const storage = isNativePlatform ? localStorage : sessionStorage;
+    const normalizedPrefix = isNativePlatform ? SESSION_PREFIX + prefix : prefix;
+    const keysToRemove: string[] = [];
+
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith(normalizedPrefix)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => storage.removeItem(key));
+  } catch (e) {
+    console.warn("[SessionStorage] Failed to remove prefixed items:", e);
+  }
+}
+
+/**
  * Clear all session values
  */
 export function clearSessionStorage(): void {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Mic, Search } from "lucide-react";
 
 import { KaiCommandPalette, type KaiCommandAction } from "@/components/kai/kai-command-palette";
@@ -32,7 +32,7 @@ export function KaiSearchBar({
   portfolioTickers = [],
 }: KaiSearchBarProps) {
   const [open, setOpen] = useState(false);
-  const { hidden: hideBottomChrome, progress: hideBottomChromeProgress } = useKaiBottomChromeVisibility(true);
+  const { progress: hideBottomChromeProgress } = useKaiBottomChromeVisibility(true);
   const barRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
@@ -72,17 +72,14 @@ export function KaiSearchBar({
   return (
     <>
       <div
-        className={cn(
-          "fixed inset-x-0 z-[130] flex justify-center px-4",
-          hideBottomChrome
-            ? "pointer-events-none opacity-0"
-            : "pointer-events-none opacity-100"
-        )}
-        style={{
-          bottom: "calc(var(--app-bottom-inset) + var(--kai-command-bottom-gap, 18px))",
-          transform: `translate3d(0, calc(${100 * hideBottomChromeProgress}% + ${12 * hideBottomChromeProgress}px), 0)`,
-          opacity: Math.max(0, 1 - hideBottomChromeProgress),
-        }}
+        className="pointer-events-none fixed inset-x-0 z-[130] flex justify-center px-4"
+        style={
+          {
+            bottom:
+              "calc(var(--app-bottom-inset) + var(--kai-command-bottom-gap, 18px) - (var(--bottom-chrome-progress, 0) * var(--app-bottom-fixed-ui)))",
+            "--bottom-chrome-progress": String(hideBottomChromeProgress),
+          } as CSSProperties
+        }
       >
         <div ref={barRef} className="pointer-events-auto w-full max-w-[420px]">
           <div className="relative">
@@ -93,7 +90,7 @@ export function KaiSearchBar({
               size="default"
               data-tour-id="kai-command-bar"
               className={cn(
-                "h-12 justify-start rounded-full px-4 pr-12 text-sm text-muted-foreground",
+                "chrome-bottom-foreground h-12 justify-start rounded-full px-4 pr-12 text-sm text-muted-foreground",
                 disabled && "pointer-events-none opacity-50"
               )}
               onClick={() => setOpen(true)}

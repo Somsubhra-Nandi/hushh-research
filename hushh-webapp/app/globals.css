@@ -92,7 +92,7 @@ html body[data-scroll-locked] {
   --color-voteBearish: hsl(var(--chart-5));
 
   --radius: 1.25rem;
-  /* Lucide defaults (see docs/reference/design-system.md): change once to update all icons. */
+  /* Lucide defaults (see docs/reference/quality/design-system.md): change once to update all icons. */
   --lucide-stroke-width: 1;
   /* Safe area and fixed-bottom UI spacing tokens (single source of truth). */
   --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -113,11 +113,7 @@ html body[data-scroll-locked] {
   --app-top-safe-offset: 0px;
   --app-safe-area-top-probe: 0px;
   --app-safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
-  --app-safe-area-top-effective: max(
-    var(--app-safe-area-top),
-    env(safe-area-max-inset-top, 0px),
-    var(--app-safe-area-top-probe)
-  );
+  --app-safe-area-top-effective: var(--app-safe-area-top);
   --app-top-bar-height: 72px;
   --kai-route-tabs-height: 32px;
   --kai-route-tabs-content-gap: 8px;
@@ -130,11 +126,25 @@ html body[data-scroll-locked] {
   --top-tabs-total: 0px;
   --top-fade-active: 14px;
   --top-systembar-row-gap: 4px;
-  --top-shell-h: calc(
+  --top-shell-reserved-height: calc(
     var(--top-inset) + var(--top-systembar-row-gap) + var(--top-bar-h) + var(--top-tabs-total)
   );
-  --top-glass-h: calc(var(--top-shell-h) + var(--top-fade-active));
-  --top-content-pad: var(--top-glass-h);
+  --top-shell-visual-height: calc(var(--top-shell-reserved-height) + var(--top-fade-active));
+  --top-shell-h: var(--top-shell-reserved-height);
+  --top-glass-h: var(--top-shell-visual-height);
+  --top-content-pad: var(--top-shell-reserved-height);
+  --bottom-chrome-stack-height: calc(var(--app-bottom-inset) + var(--kai-command-fixed-ui));
+  --bottom-chrome-fade-overscan: 24px;
+  --bottom-chrome-full-height: calc(
+    var(--bottom-chrome-stack-height) + var(--bottom-chrome-fade-overscan)
+  );
+  --bottom-chrome-search-height: calc(
+    var(--app-safe-area-bottom-effective) +
+      var(--app-bottom-chrome-lift) +
+      var(--kai-command-fixed-ui) +
+      var(--bottom-chrome-fade-overscan)
+  );
+  --bottom-chrome-visual-height: var(--bottom-chrome-full-height);
 
   /* Motion tokens (GSAP + CSS). Change once to retune the whole app. */
   --motion-duration-xs: 120ms;
@@ -281,12 +291,18 @@ html body[data-scroll-locked] {
   --app-top-safe-offset: 2px;
 }
 
-/* Capacitor iOS uses `ios.contentInset = always`; don't double-count bottom safe area in app spacing. */
+/* Capacitor iOS uses `ios.contentInset = "never"` with CSS-owned insets; don't double-count shell spacing. */
 html.native-ios {
   /* Lift persistent bottom chrome above the iOS home indicator zone. */
   --app-bottom-chrome-lift: 10px;
   /* Keep a small effective inset because WKWebView already applies content inset on iOS. */
   --app-safe-area-bottom-effective: 10px;
+  /* On native iOS, keep the stronger recovery logic because WKWebView can report 0 on first paint. */
+  --app-safe-area-top-effective: max(
+    var(--app-safe-area-top),
+    env(safe-area-max-inset-top, 0px),
+    var(--app-safe-area-top-probe)
+  );
   /* On iOS onboarding screens, keep CTA comfortably above the bottom theme/nav pill. */
   --app-screen-footer-pad: calc(56px + var(--app-bottom-inset));
 }
@@ -601,7 +617,7 @@ html.native-ios {
       border-color 200ms ease-in-out;
   }
   html.native-ios body {
-    padding-top: env(safe-area-inset-top);
+    padding-top: 0;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
@@ -650,25 +666,154 @@ md-ripple.morphy-md-ripple {
   --app-bar-glass-blur: 7px;
   --app-bar-border-top: 0;
   --app-bar-shadow: none;
-  background-color: var(--app-bar-glass-bg-light);
-  -webkit-backdrop-filter: blur(var(--app-bar-glass-blur)) saturate(135%);
-  backdrop-filter: blur(var(--app-bar-glass-blur)) saturate(135%);
+  --app-bar-mask-overscan: 44px;
+  position: relative;
   transform: translate3d(0, 0, 0);
   will-change: transform;
   backface-visibility: hidden;
-  contain: paint;
   isolation: isolate;
-  overflow: hidden;
-  border-top: var(--app-bar-border-top);
-  box-shadow: var(--app-bar-shadow);
-  mask-size: 100% 100%;
-  -webkit-mask-size: 100% 100%;
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
+  overflow: visible;
 }
 
-.dark .bar-glass {
+.bar-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--app-bar-glass-bg-light);
+  -webkit-backdrop-filter: blur(var(--app-bar-glass-blur)) saturate(135%);
+  backdrop-filter: blur(var(--app-bar-glass-blur)) saturate(135%);
+  border-top: var(--app-bar-border-top);
+  box-shadow: var(--app-bar-shadow);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+}
+
+.bar-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.dark .bar-glass::before {
   background-color: var(--app-bar-glass-bg-dark);
+}
+
+.bar-glass-top {
+}
+
+.bar-glass-bottom {
+}
+
+.bar-glass-top::before {
+  inset: 0 0 calc(-1 * var(--app-bar-mask-overscan)) 0;
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 40%,
+    rgba(0, 0, 0, 0.995) 54%,
+    rgba(0, 0, 0, 0.965) 66%,
+    rgba(0, 0, 0, 0.88) 78%,
+    rgba(0, 0, 0, 0.68) 88%,
+    rgba(0, 0, 0, 0.38) 95%,
+    rgba(0, 0, 0, 0.14) 98%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 40%,
+    rgba(0, 0, 0, 0.995) 54%,
+    rgba(0, 0, 0, 0.965) 66%,
+    rgba(0, 0, 0, 0.88) 78%,
+    rgba(0, 0, 0, 0.68) 88%,
+    rgba(0, 0, 0, 0.38) 95%,
+    rgba(0, 0, 0, 0.14) 98%,
+    transparent 100%
+  );
+}
+
+.bar-glass-top::after {
+  inset: 0 0 calc(-1 * var(--app-bar-mask-overscan)) 0;
+  opacity: 1;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.12) 56%,
+    rgba(255, 255, 255, 0.06) 76%,
+    rgba(255, 255, 255, 0.02) 90%,
+    transparent 100%
+  );
+}
+
+.dark .bar-glass-top::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.045) 56%,
+    rgba(255, 255, 255, 0.022) 76%,
+    rgba(255, 255, 255, 0.008) 90%,
+    transparent 100%
+  );
+}
+
+.bar-glass-bottom::before {
+  inset: calc(-1 * var(--app-bar-mask-overscan)) 0 0 0;
+  mask-image: linear-gradient(
+    to top,
+    black 0%,
+    black 40%,
+    rgba(0, 0, 0, 0.995) 54%,
+    rgba(0, 0, 0, 0.965) 66%,
+    rgba(0, 0, 0, 0.88) 78%,
+    rgba(0, 0, 0, 0.68) 88%,
+    rgba(0, 0, 0, 0.38) 95%,
+    rgba(0, 0, 0, 0.14) 98%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to top,
+    black 0%,
+    black 40%,
+    rgba(0, 0, 0, 0.995) 54%,
+    rgba(0, 0, 0, 0.965) 66%,
+    rgba(0, 0, 0, 0.88) 78%,
+    rgba(0, 0, 0, 0.68) 88%,
+    rgba(0, 0, 0, 0.38) 95%,
+    rgba(0, 0, 0, 0.14) 98%,
+    transparent 100%
+  );
+}
+
+.bar-glass-bottom::after {
+  inset: calc(-1 * var(--app-bar-mask-overscan)) 0 0 0;
+  opacity: 1;
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.12) 56%,
+    rgba(255, 255, 255, 0.06) 76%,
+    rgba(255, 255, 255, 0.02) 90%,
+    transparent 100%
+  );
+}
+
+.dark .bar-glass-bottom::after {
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.045) 56%,
+    rgba(255, 255, 255, 0.022) 76%,
+    rgba(255, 255, 255, 0.008) 90%,
+    transparent 100%
+  );
 }
 
 /* Shared frosted surface for persistent chrome (tabs / bottom nav / command bar). */
@@ -690,6 +835,26 @@ md-ripple.morphy-md-ripple {
   box-shadow:
     inset 0 1px 0 color-mix(in oklch, white 14%, transparent),
     0 16px 34px color-mix(in oklch, black 54%, transparent);
+}
+
+.chrome-bottom-foreground {
+  background-color: color-mix(in oklch, lab(100 0 0 / 0.62) 16%, transparent);
+  border: 1px solid color-mix(in oklch, white 34%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 30%, transparent),
+    0 10px 22px color-mix(in oklch, black 14%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(145%) contrast(102%);
+  backdrop-filter: blur(10px) saturate(145%) contrast(102%);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.dark .chrome-bottom-foreground {
+  background-color: color-mix(in oklch, lab(0 0 0 / 0.68) 30%, transparent);
+  border-color: color-mix(in oklch, white 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 10%, transparent),
+    0 12px 26px color-mix(in oklch, black 42%, transparent);
 }
 
 /* Carousel edge glass (left/right): use to hint adjacent slides while keeping center crisp. */
@@ -936,7 +1101,7 @@ md-ripple.morphy-md-ripple {
   }
 
   .pt-safe {
-    padding-top: env(safe-area-inset-top);
+    padding-top: var(--app-safe-area-top-effective);
   }
   .safe-area-pb {
     padding-bottom: var(--app-safe-area-bottom-effective);

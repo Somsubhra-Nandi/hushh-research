@@ -29,6 +29,7 @@ import {
   type AppBackgroundTask,
 } from "@/lib/services/app-background-task-service";
 import { ApiService } from "@/lib/services/api-service";
+import { PlaidPortfolioService } from "@/lib/kai/brokerage/plaid-portfolio-service";
 import { getSessionItem, removeSessionItem } from "@/lib/utils/session-storage";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { useVault } from "@/lib/vault/vault-context";
@@ -56,6 +57,7 @@ function statusIcon(task: DebateRunTask) {
 function appTaskStatusLabel(task: AppBackgroundTask): string {
   if (task.status === "running") return "Running";
   if (task.status === "completed") return "Completed";
+  if (task.status === "canceled") return "Canceled";
   return "Failed";
 }
 
@@ -65,6 +67,9 @@ function appTaskStatusIcon(task: AppBackgroundTask) {
   }
   if (task.status === "completed") {
     return <Icon icon={CheckCircle2} size="sm" className="text-emerald-500" />;
+  }
+  if (task.status === "canceled") {
+    return <Icon icon={Ban} size="sm" className="text-amber-500" />;
   }
   return <Icon icon={XCircle} size="sm" className="text-rose-500" />;
 }
@@ -179,6 +184,27 @@ export function DebateTaskCenter({ triggerClassName }: DebateTaskCenterProps = {
     }
     removeSessionItem(IMPORT_BACKGROUND_SNAPSHOT_KEY);
     AppBackgroundTaskService.dismissTask(task.taskId);
+  };
+
+  const cancelPlaidRefreshTask = async (task: AppBackgroundTask) => {
+    if (!vaultOwnerToken) return;
+    const metadata =
+      task.metadata && typeof task.metadata === "object"
+        ? (task.metadata as Record<string, unknown>)
+        : null;
+    const runIds = Array.isArray(metadata?.runIds)
+      ? metadata.runIds
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      : [];
+    for (const runId of runIds) {
+      await PlaidPortfolioService.cancelRefreshRun({
+        userId: task.userId,
+        runId,
+        vaultOwnerToken,
+      });
+    }
+    AppBackgroundTaskService.cancelTask(task.taskId, "Plaid refresh canceled.");
   };
 
   if (!userId) return null;
@@ -343,7 +369,8 @@ export function DebateTaskCenter({ triggerClassName }: DebateTaskCenterProps = {
                           <Icon icon={ExternalLink} size="xs" />
                         </Button>
                       ) : null}
-                      {task.status === "running" && task.kind === "portfolio_import_stream" ? (
+                      {task.status === "running" &&
+                      (task.kind === "portfolio_import_stream" || task.kind === "plaid_refresh") ? (
                         <Button
                           variant="none"
                           effect="fade"
@@ -352,10 +379,14 @@ export function DebateTaskCenter({ triggerClassName }: DebateTaskCenterProps = {
                           disabled={!vaultOwnerToken || Boolean(isBusy[task.taskId])}
                           onClick={() =>
                             runAction(task.taskId, async () => {
-                              await cancelPortfolioImportTask(task);
+                              if (task.kind === "portfolio_import_stream") {
+                                await cancelPortfolioImportTask(task);
+                                return;
+                              }
+                              await cancelPlaidRefreshTask(task);
                             })
                           }
-                          aria-label="Cancel import"
+                          aria-label={task.kind === "plaid_refresh" ? "Cancel refresh" : "Cancel import"}
                         >
                           <Icon icon={X} size="xs" />
                         </Button>

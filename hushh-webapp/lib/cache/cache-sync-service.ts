@@ -1,6 +1,7 @@
 import type { PortfolioData } from "@/lib/cache/cache-context";
 import { CacheService, CACHE_KEYS, CACHE_TTL } from "@/lib/services/cache-service";
 import type { WorldModelMetadata } from "@/lib/services/world-model-service";
+import { removeSessionItemsByPrefix } from "@/lib/utils/session-storage";
 
 type DomainSummaryPatch = Record<string, unknown>;
 
@@ -116,6 +117,19 @@ function patchMetadataDomain(
  * Services/components should call this instead of ad-hoc invalidation logic.
  */
 export class CacheSyncService {
+  private static onKaiMarketContextChanged(userId: string): void {
+    const cache = CacheService.getInstance();
+    cache.invalidatePattern(`kai_market_home_${userId}_`);
+    cache.invalidatePattern(`kai_dashboard_profile_picks_${userId}_`);
+    removeSessionItemsByPrefix(`kai_market_home_session_${userId}_`);
+    removeSessionItemsByPrefix(`kai_market_home_last_known_${userId}_`);
+    void import("@/lib/services/unlock-warm-orchestrator")
+      .then(({ UnlockWarmOrchestrator }) => {
+        UnlockWarmOrchestrator.invalidateForUser(userId);
+      })
+      .catch(() => undefined);
+  }
+
   static onWorldModelDomainStored(
     userId: string,
     domain: string,
@@ -206,9 +220,14 @@ export class CacheSyncService {
     const cache = CacheService.getInstance();
     cache.set(CACHE_KEYS.PORTFOLIO_DATA(userId), portfolioData, CACHE_TTL.SESSION);
     cache.set(CACHE_KEYS.DOMAIN_DATA(userId, "financial"), portfolioData, CACHE_TTL.SESSION);
+    this.onKaiMarketContextChanged(userId);
     if (options?.invalidateMetadata !== false) {
       cache.invalidate(CACHE_KEYS.WORLD_MODEL_METADATA(userId));
     }
+  }
+
+  static onPlaidSourceProjected(userId: string): void {
+    this.onKaiMarketContextChanged(userId);
   }
 
   static onVaultStateChanged(
@@ -231,7 +250,34 @@ export class CacheSyncService {
     cache.invalidate(CACHE_KEYS.ACTIVE_CONSENTS(userId));
     cache.invalidate(CACHE_KEYS.PENDING_CONSENTS(userId));
     cache.invalidate(CACHE_KEYS.CONSENT_AUDIT_LOG(userId));
+    cache.invalidate(CACHE_KEYS.CONSENT_CENTER(userId, "all"));
+    cache.invalidate(CACHE_KEYS.RIA_ROSTER_SUMMARY(userId));
     cache.invalidate(CACHE_KEYS.VAULT_STATUS(userId));
+    this.onKaiMarketContextChanged(userId);
+  }
+
+  static onPersonaStateChanged(
+    userId: string,
+    options?: {
+      preservePersonaState?: boolean;
+    }
+  ): void {
+    const cache = CacheService.getInstance();
+    if (!options?.preservePersonaState) {
+      cache.invalidate(CACHE_KEYS.PERSONA_STATE(userId));
+    }
+    cache.invalidate(CACHE_KEYS.RIA_ONBOARDING_STATUS(userId));
+    cache.invalidate(CACHE_KEYS.CONSENT_CENTER(userId, "all"));
+    cache.invalidate(CACHE_KEYS.RIA_ROSTER_SUMMARY(userId));
+    this.onKaiMarketContextChanged(userId);
+  }
+
+  static onMarketplaceVisibilityChanged(userId: string): void {
+    const cache = CacheService.getInstance();
+    cache.invalidate(CACHE_KEYS.PERSONA_STATE(userId));
+    cache.invalidate(CACHE_KEYS.RIA_ONBOARDING_STATUS(userId));
+    cache.invalidatePattern("marketplace_rias_");
+    cache.invalidatePattern("marketplace_investors_");
   }
 
   /**

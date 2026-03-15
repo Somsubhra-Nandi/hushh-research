@@ -25,6 +25,16 @@ import { HushhVault, HushhAuth, HushhConsent, HushhNotifications } from "@/lib/c
 import { Kai, PORTFOLIO_STREAM_EVENT, KAI_STREAM_EVENT } from "@/lib/capacitor/kai";
 import { isKaiStreamEnvelope, type KaiStreamEnvelope } from "@/lib/streaming/kai-stream-types";
 import { AuthService } from "@/lib/services/auth-service";
+import {
+  toDurationBucket,
+  trackApiRequestCompleted,
+  trackEvent,
+} from "@/lib/observability/client";
+import {
+  getOrCreateRequestId,
+  REQUEST_ID_HEADER,
+} from "@/lib/observability/request-id";
+import { resolveRouteId } from "@/lib/observability/route-map";
 
 const getEnvBackendUrl = (): string => {
   return (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim().replace(/\/$/, "");
@@ -102,6 +112,22 @@ export const getDirectBackendUrl = (): string => {
   return getEnvBackendUrl();
 };
 
+function toResultFromStatus(status: number): "success" | "expected_error" | "error" {
+  if (status >= 200 && status < 400) return "success";
+  if (status >= 400 && status < 500) return "expected_error";
+  return "error";
+}
+
+function toStatusBucketFromStatus(
+  status: number
+): "2xx" | "3xx" | "4xx_expected" | "4xx_unexpected" | "5xx" | "network_error" {
+  if (status >= 200 && status < 300) return "2xx";
+  if (status >= 300 && status < 400) return "3xx";
+  if (status >= 400 && status < 500) return "4xx_unexpected";
+  if (status >= 500) return "5xx";
+  return "network_error";
+}
+
 /**
  * Platform-aware fetch wrapper
  * Automatically adds base URL and common headers
@@ -115,6 +141,11 @@ async function apiFetch(
 ): Promise<Response> {
   const apiBase = getApiBaseUrl();
   const url = `${apiBase}${path}`;
+  const requestStartedAt = Date.now();
+  const httpMethod = (options.method || "GET").toUpperCase();
+  const routeId =
+    typeof window !== "undefined" ? resolveRouteId(window.location.pathname) : undefined;
+  const requestId = getOrCreateRequestId(options.headers);
 
   const mergedHeaders: Record<string, string> = {};
   if (!(options.body instanceof FormData)) {
@@ -137,6 +168,17 @@ async function apiFetch(
       }
     }
   }
+  mergedHeaders[REQUEST_ID_HEADER] = requestId;
+
+  const recordApiRequestMetric = (statusCode: number | null) => {
+    trackApiRequestCompleted({
+      path,
+      httpMethod,
+      statusCode,
+      durationMs: Math.max(0, Date.now() - requestStartedAt),
+      routeId,
+    });
+  };
 
   // Dynamically import tracker to avoid creating a hard dependency for environments
   // that don't care about progress (e.g., certain server-side usage).
@@ -181,11 +223,13 @@ async function apiFetch(
         if (options.body !== undefined && options.body !== null && method !== "GET") {
         if (options.body instanceof FormData) {
           // Multipart uploads route through native plugins; keep fetch fallback for safety.
-          return fetch(url, {
+          const formResponse = await fetch(url, {
             ...options,
             credentials: "include",
             headers: mergedHeaders,
           });
+          recordApiRequestMetric(formResponse.status);
+          return formResponse;
         }
         if (typeof options.body === "string") {
           const contentType =
@@ -228,7 +272,9 @@ async function apiFetch(
       };
 
       const nativeResponse = await CapacitorHttp.request(request);
-      return toResponse(nativeResponse);
+      const response = toResponse(nativeResponse);
+      recordApiRequestMetric(response.status);
+      return response;
     }
 
     const response = await fetch(url, {
@@ -236,7 +282,11 @@ async function apiFetch(
       credentials: "include",
       headers: mergedHeaders,
     });
+    recordApiRequestMetric(response.status);
     return response;
+  } catch (error) {
+    recordApiRequestMetric(null);
+    throw error;
   } finally {
     trackEnd?.();
   }
@@ -273,6 +323,67 @@ export interface KaiHomeWatchlistItem {
   source_tags: string[];
   degraded: boolean;
   as_of: string | null;
+}
+
+export interface KaiHomeRenaissanceItem {
+  symbol: string;
+  company_name: string;
+  sector?: string | null;
+  tier?: string | null;
+  tier_rank?: number | null;
+  conviction_weight?: number | null;
+  recommendation_bias?: string | null;
+  investment_thesis?: string | null;
+  fcf_billions?: number | null;
+  price: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  market_cap: number | null;
+  source_tags: string[];
+  degraded: boolean;
+  as_of: string | null;
+}
+
+export interface KaiHomePickSource {
+  id: string;
+  label: string;
+  kind: "default" | "ria";
+  state: "ready" | "pending" | "unavailable";
+  is_default: boolean;
+}
+
+export interface KaiStockPreviewQuote {
+  price: number | null;
+  change_pct: number | null;
+  as_of: string | null;
+  company_name: string;
+  sector?: string | null;
+  market_cap?: number | null;
+  volume?: number | null;
+  source_tags: string[];
+  degraded: boolean;
+}
+
+export interface KaiStockPreviewListMatch {
+  in_list: boolean;
+  source_id: string;
+  label: string;
+  company_name?: string | null;
+  sector?: string | null;
+  tier?: string | null;
+  tier_rank?: number | null;
+  conviction_weight?: number | null;
+  recommendation_bias?: string | null;
+  investment_thesis?: string | null;
+  fcf_billions?: number | null;
+}
+
+export interface KaiStockPreviewResponse {
+  symbol: string;
+  active_pick_source: string;
+  pick_sources: KaiHomePickSource[];
+  quote: KaiStockPreviewQuote;
+  list_match: KaiStockPreviewListMatch;
 }
 
 export interface KaiHomeMover {
@@ -392,6 +503,10 @@ export interface KaiHomeInsightsV2 {
   provider_status?: Record<string, string>;
   hero?: KaiHomeHero;
   watchlist?: KaiHomeWatchlistItem[];
+  pick_sources?: KaiHomePickSource[];
+  active_pick_source?: string;
+  pick_rows?: KaiHomeRenaissanceItem[];
+  renaissance_list?: KaiHomeRenaissanceItem[];
   movers?: KaiHomeMovers;
   sector_rotation?: KaiHomeSectorItem[];
   news_tape?: KaiHomeNewsItem[];
@@ -657,15 +772,26 @@ export class ApiService {
     encryptedIv?: string;
     encryptedTag?: string;
     exportKey?: string;
+    durationHours?: number;
   }): Promise<Response> {
     const requestId = data.requestId || data.token;
     const vaultOwnerToken = data.vaultOwnerToken;
+    trackEvent("consent_action_submitted", {
+      action: "approve",
+      result: "success",
+    });
 
     if (!vaultOwnerToken) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Vault must be unlocked" }),
         { status: 401 }
       );
+      trackEvent("consent_action_result", {
+        action: "approve",
+        result: "error",
+        status_bucket: "4xx_unexpected",
+      });
+      return response;
     }
 
     if (Capacitor.isNativePlatform()) {
@@ -682,16 +808,28 @@ export class ApiService {
           vaultOwnerToken,
         });
 
-        return new Response(JSON.stringify({ success: true }), { status: 200 });
+        const response = new Response(JSON.stringify({ success: true }), { status: 200 });
+        trackEvent("consent_action_result", {
+          action: "approve",
+          result: "success",
+          status_bucket: "2xx",
+        });
+        return response;
       } catch (e) {
         console.error("[ApiService] Native approvePendingConsent error:", e);
-        return new Response(JSON.stringify({ error: (e as Error).message }), {
+        const response = new Response(JSON.stringify({ error: (e as Error).message }), {
           status: 500,
         });
+        trackEvent("consent_action_result", {
+          action: "approve",
+          result: "error",
+          status_bucket: "5xx",
+        });
+        return response;
       }
     }
 
-    return apiFetch("/api/consent/pending/approve", {
+    const response = await apiFetch("/api/consent/pending/approve", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vaultOwnerToken}`,
@@ -703,8 +841,15 @@ export class ApiService {
         encryptedIv: data.encryptedIv,
         encryptedTag: data.encryptedTag,
         exportKey: data.exportKey,
+        durationHours: data.durationHours,
       }),
     });
+    trackEvent("consent_action_result", {
+      action: "approve",
+      result: toResultFromStatus(response.status),
+      status_bucket: toStatusBucketFromStatus(response.status),
+    });
+    return response;
   }
 
   /**
@@ -719,12 +864,22 @@ export class ApiService {
   }): Promise<Response> {
     const requestId = data.requestId || data.token;
     const vaultOwnerToken = data.vaultOwnerToken;
+    trackEvent("consent_action_submitted", {
+      action: "deny",
+      result: "success",
+    });
 
     if (!vaultOwnerToken) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Vault must be unlocked" }),
         { status: 401 }
       );
+      trackEvent("consent_action_result", {
+        action: "deny",
+        result: "error",
+        status_bucket: "4xx_unexpected",
+      });
+      return response;
     }
 
     if (Capacitor.isNativePlatform()) {
@@ -737,22 +892,40 @@ export class ApiService {
           vaultOwnerToken,
         });
 
-        return new Response(JSON.stringify({ success: true }), { status: 200 });
+        const response = new Response(JSON.stringify({ success: true }), { status: 200 });
+        trackEvent("consent_action_result", {
+          action: "deny",
+          result: "success",
+          status_bucket: "2xx",
+        });
+        return response;
       } catch (e) {
         console.error("[ApiService] Native denyPendingConsent error:", e);
-        return new Response(JSON.stringify({ error: (e as Error).message }), {
+        const response = new Response(JSON.stringify({ error: (e as Error).message }), {
           status: 500,
         });
+        trackEvent("consent_action_result", {
+          action: "deny",
+          result: "error",
+          status_bucket: "5xx",
+        });
+        return response;
       }
     }
 
-    return apiFetch("/api/consent/pending/deny", {
+    const response = await apiFetch("/api/consent/pending/deny", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vaultOwnerToken}`,
       },
       body: JSON.stringify({ userId: data.userId, requestId }),
     });
+    trackEvent("consent_action_result", {
+      action: "deny",
+      result: toResultFromStatus(response.status),
+      status_bucket: toStatusBucketFromStatus(response.status),
+    });
+    return response;
   }
 
   /**
@@ -765,21 +938,37 @@ export class ApiService {
     scope?: string;
   }): Promise<Response> {
     const vaultOwnerToken = data.token;
+    trackEvent("consent_action_submitted", {
+      action: "revoke",
+      result: "success",
+    });
     if (!vaultOwnerToken) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Vault must be unlocked" }),
         { status: 401 }
       );
+      trackEvent("consent_action_result", {
+        action: "revoke",
+        result: "error",
+        status_bucket: "4xx_unexpected",
+      });
+      return response;
     }
 
     // Scope is required by backend. On native we enforce + normalize to prevent
     // silent failures (e.g. sending scope="").
     const rawScope = (data.scope || "").trim();
     if (!rawScope) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Missing required parameter: scope" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
+      trackEvent("consent_action_result", {
+        action: "revoke",
+        result: "error",
+        status_bucket: "4xx_unexpected",
+      });
+      return response;
     }
 
     const normalizedScope =
@@ -797,26 +986,44 @@ export class ApiService {
         });
 
         // Pass through the lockVault flag from native plugin response
-        return new Response(
+        const response = new Response(
           JSON.stringify({ 
             success: true, 
             lockVault: result.lockVault ?? false 
           }), 
           { status: 200 }
         );
+        trackEvent("consent_action_result", {
+          action: "revoke",
+          result: "success",
+          status_bucket: "2xx",
+        });
+        return response;
       } catch (e) {
         console.error("[ApiService] Native revokeConsent error:", e);
-        return new Response((e as Error).message || "Failed", { status: 500 });
+        const response = new Response((e as Error).message || "Failed", { status: 500 });
+        trackEvent("consent_action_result", {
+          action: "revoke",
+          result: "error",
+          status_bucket: "5xx",
+        });
+        return response;
       }
     }
 
-    return apiFetch("/api/consent/revoke", {
+    const response = await apiFetch("/api/consent/revoke", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vaultOwnerToken}`,
       },
       body: JSON.stringify({ ...data, scope: normalizedScope }),
     });
+    trackEvent("consent_action_result", {
+      action: "revoke",
+      result: toResultFromStatus(response.status),
+      status_bucket: toStatusBucketFromStatus(response.status),
+    });
+    return response;
   }
 
   /**
@@ -829,10 +1036,14 @@ export class ApiService {
     vaultOwnerToken: string
   ): Promise<Response> {
     if (!vaultOwnerToken) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Vault must be unlocked" }),
         { status: 401 }
       );
+      trackEvent("consent_pending_loaded", {
+        result: "error",
+      });
+      return response;
     }
 
     if (Capacitor.isNativePlatform()) {
@@ -841,18 +1052,26 @@ export class ApiService {
           userId,
           vaultOwnerToken,
         });
-        return new Response(JSON.stringify({ pending: consents || [] }), {
+        const response = new Response(JSON.stringify({ pending: consents || [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
+        trackEvent("consent_pending_loaded", {
+          result: "success",
+        });
+        return response;
       } catch (e) {
         console.warn("[ApiService] Native getPendingConsents error:", e);
-        return new Response(JSON.stringify({ error: (e as Error).message }), {
+        const response = new Response(JSON.stringify({ error: (e as Error).message }), {
           status: 500,
         });
+        trackEvent("consent_pending_loaded", {
+          result: "error",
+        });
+        return response;
       }
     }
-    return apiFetch(
+    const response = await apiFetch(
       `/api/consent/pending?userId=${encodeURIComponent(userId)}`,
       {
         headers: {
@@ -860,6 +1079,10 @@ export class ApiService {
         },
       }
     );
+    trackEvent("consent_pending_loaded", {
+      result: toResultFromStatus(response.status),
+    });
+    return response;
   }
 
   /**
@@ -1196,23 +1419,6 @@ export class ApiService {
     }
 
     return apiFetch("/api/vault/store-preferences", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  // ==================== Chat/Agents ====================
-
-  /**
-   * Send message to chat agent
-   */
-  static async sendChatMessage(data: {
-    message: string;
-    userId: string;
-    agentId?: string;
-    sessionState?: Record<string, unknown>;
-  }): Promise<Response> {
-    return apiFetch("/api/chat", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -1556,7 +1762,7 @@ export class ApiService {
     vaultOwnerToken: string;
     signal?: AbortSignal;
   }): Promise<Response> {
-    return apiFetch("/api/kai/portfolio/import/run/start", {
+    const response = await apiFetch("/api/kai/portfolio/import/run/start", {
       method: "POST",
       body: params.formData,
       headers: {
@@ -1564,6 +1770,10 @@ export class ApiService {
       },
       signal: params.signal,
     });
+    trackEvent("import_upload_started", {
+      result: toResultFromStatus(response.status),
+    });
+    return response;
   }
 
   static async getActivePortfolioImportRun(params: {
@@ -1730,12 +1940,19 @@ export class ApiService {
     file: File;
     vaultOwnerToken: string;
   }): Promise<Response> {
+    trackEvent("import_upload_started", {
+      result: "success",
+    });
     // Use VAULT_OWNER token for consent-gated access
     if (!data.vaultOwnerToken) {
-      return new Response(
+      const response = new Response(
         JSON.stringify({ error: "Vault must be unlocked to import portfolio" }),
         { status: 401 }
       );
+      trackEvent("import_quality_gate_failed", {
+        result: "error",
+      });
+      return response;
     }
 
     try {
@@ -1755,19 +1972,39 @@ export class ApiService {
       });
 
       // Wrap result in Response for backward compatibility
-      return new Response(JSON.stringify(result), {
+      const response = new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+      trackEvent("import_parse_completed", {
+        result: "success",
+      });
+      trackEvent("import_quality_gate_passed", {
+        result: "success",
+      });
+      trackEvent("import_save_completed", {
+        result: "success",
+      });
+      return response;
     } catch (error) {
       console.error("[ApiService] importPortfolio error:", error);
-      return new Response(
+      const response = new Response(
         JSON.stringify({
           success: false,
           error: (error as Error).message,
         }),
         { status: 500 }
       );
+      trackEvent("import_parse_completed", {
+        result: "error",
+      });
+      trackEvent("import_quality_gate_failed", {
+        result: "error",
+      });
+      trackEvent("import_save_completed", {
+        result: "error",
+      });
+      return response;
     }
   }
 
@@ -1811,14 +2048,19 @@ export class ApiService {
     vaultOwnerToken: string;
     symbols?: string[];
     daysBack?: number;
+    pickSource?: string;
     signal?: AbortSignal;
   }): Promise<KaiHomeInsightsV2> {
+    const startedAt = Date.now();
     const query = new URLSearchParams();
     if (Array.isArray(data.symbols) && data.symbols.length > 0) {
       query.set("symbols", data.symbols.join(","));
     }
     if (typeof data.daysBack === "number" && Number.isFinite(data.daysBack)) {
       query.set("days_back", String(data.daysBack));
+    }
+    if (typeof data.pickSource === "string" && data.pickSource.trim()) {
+      query.set("pick_source", data.pickSource.trim());
     }
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const path = `/api/kai/market/insights/${data.userId}${suffix}`;
@@ -1830,10 +2072,42 @@ export class ApiService {
         Authorization: `Bearer ${data.vaultOwnerToken}`,
       },
     });
+    const durationMs = Math.max(0, Date.now() - startedAt);
+    trackEvent("market_insights_loaded", {
+      result: toResultFromStatus(response.status),
+      status_bucket: toStatusBucketFromStatus(response.status),
+      duration_ms_bucket: toDurationBucket(durationMs),
+    });
     if (!response.ok) {
       throw new Error(`Failed to load market insights: ${response.status}`);
     }
     return (await response.json()) as KaiHomeInsightsV2;
+  }
+
+  static async getKaiStockPreview(data: {
+    userId: string;
+    symbol: string;
+    vaultOwnerToken: string;
+    pickSource?: string;
+    signal?: AbortSignal;
+  }): Promise<KaiStockPreviewResponse> {
+    const query = new URLSearchParams({
+      symbol: data.symbol.trim().toUpperCase(),
+    });
+    if (typeof data.pickSource === "string" && data.pickSource.trim()) {
+      query.set("pick_source", data.pickSource.trim());
+    }
+    const response = await apiFetch(`/api/kai/stock-preview/${data.userId}?${query.toString()}`, {
+      method: "GET",
+      signal: data.signal,
+      headers: {
+        Authorization: `Bearer ${data.vaultOwnerToken}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to load stock preview: ${response.status}`);
+    }
+    return (await response.json()) as KaiStockPreviewResponse;
   }
 
   /**
@@ -1846,6 +2120,7 @@ export class ApiService {
     limit?: number;
     signal?: AbortSignal;
   }): Promise<KaiDashboardProfilePicksResponse> {
+    const startedAt = Date.now();
     const query = new URLSearchParams();
     if (Array.isArray(data.symbols) && data.symbols.length > 0) {
       query.set("symbols", data.symbols.join(","));
@@ -1871,6 +2146,12 @@ export class ApiService {
         headers: {
           Authorization: `Bearer ${data.vaultOwnerToken}`,
         },
+      });
+      const durationMs = Math.max(0, Date.now() - startedAt);
+      trackEvent("profile_picks_loaded", {
+        result: toResultFromStatus(response.status),
+        status_bucket: toStatusBucketFromStatus(response.status),
+        duration_ms_bucket: toDurationBucket(durationMs),
       });
       if (!response.ok) {
         throw new Error(`Failed to load profile picks: ${response.status}`);
@@ -2370,7 +2651,7 @@ export class ApiService {
     userContext?: Record<string, unknown>;
     vaultOwnerToken: string;
   }): Promise<Response> {
-    return apiFetch("/api/kai/analyze/run/start", {
+    const response = await apiFetch("/api/kai/analyze/run/start", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${data.vaultOwnerToken}`,
@@ -2383,6 +2664,21 @@ export class ApiService {
         context: data.userContext,
       }),
     });
+    if (response.ok) {
+      trackEvent("analysis_stream_started", {
+        result: "success",
+      });
+    } else if (response.status === 409) {
+      trackEvent("analysis_stream_aborted", {
+        result: "expected_error",
+        reason: "run_already_active",
+      });
+    } else {
+      trackEvent("analysis_stream_error", {
+        result: "error",
+      });
+    }
+    return response;
   }
 
   static async getActiveKaiDebateRun(data: {
@@ -2408,12 +2704,23 @@ export class ApiService {
     vaultOwnerToken: string;
   }): Promise<Response> {
     const query = new URLSearchParams({ user_id: data.userId }).toString();
-    return apiFetch(`/api/kai/analyze/run/${encodeURIComponent(data.runId)}/cancel?${query}`, {
+    const response = await apiFetch(`/api/kai/analyze/run/${encodeURIComponent(data.runId)}/cancel?${query}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${data.vaultOwnerToken}`,
       },
     });
+    if (response.ok) {
+      trackEvent("analysis_stream_aborted", {
+        result: "expected_error",
+        reason: "user_cancelled",
+      });
+    } else {
+      trackEvent("analysis_stream_error", {
+        result: "error",
+      });
+    }
+    return response;
   }
 
   static async streamKaiDebateRun(data: {

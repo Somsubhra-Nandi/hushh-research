@@ -21,6 +21,8 @@ from api.middleware import require_vault_owner_token
 from hushh_mcp.operons.kai.fetchers import fetch_market_data, fetch_market_news
 from hushh_mcp.services.market_cache_store import get_market_cache_store_service
 from hushh_mcp.services.market_insights_cache import market_insights_cache
+from hushh_mcp.services.renaissance_service import TIER_WEIGHTS, get_renaissance_service
+from hushh_mcp.services.ria_iam_service import RIAIAMService
 from hushh_mcp.services.symbol_master_service import get_symbol_master_service
 from hushh_mcp.services.world_model_service import get_world_model_service
 
@@ -45,6 +47,7 @@ FINANCIAL_SUMMARY_FRESH_TTL_SECONDS = 600
 FINANCIAL_SUMMARY_STALE_TTL_SECONDS = 1800
 
 DEFAULT_SYMBOLS = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+DEFAULT_PICK_SOURCE_ID = "default"
 WATCHLIST_MAX = 8
 NEWS_SYMBOL_MAX = 3
 NEWS_ROWS_MAX = 12
@@ -110,6 +113,10 @@ def _empty_market_home_payload(
             "portfolio_value_bucket": None,
         },
         "watchlist": [],
+        "pick_sources": [_default_pick_source()],
+        "active_pick_source": DEFAULT_PICK_SOURCE_ID,
+        "pick_rows": [],
+        "renaissance_list": [],
         "movers": {
             "gainers": [],
             "losers": [],
@@ -142,6 +149,60 @@ def _empty_market_home_payload(
         "spotlights": [],
         "themes": [],
     }
+
+
+def _default_pick_source() -> dict[str, Any]:
+    return {
+        "id": DEFAULT_PICK_SOURCE_ID,
+        "label": "Default list",
+        "kind": "default",
+        "state": "ready",
+        "is_default": True,
+    }
+
+
+def _normalize_pick_source(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return DEFAULT_PICK_SOURCE_ID
+    if normalized.lower() == DEFAULT_PICK_SOURCE_ID:
+        return DEFAULT_PICK_SOURCE_ID
+    if normalized.startswith("ria:"):
+        return normalized
+    return DEFAULT_PICK_SOURCE_ID
+
+
+async def _resolve_pick_source_rows(
+    user_id: str,
+    active_pick_source: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    renaissance_service = get_renaissance_service()
+    default_rows = await renaissance_service.get_all_investable()
+    sources = [_default_pick_source()]
+
+    try:
+        ria_sources = await RIAIAMService().list_investor_pick_sources(user_id)
+    except Exception as exc:
+        logger.debug("[Kai Market] investor pick sources unavailable for %s: %s", user_id, exc)
+        ria_sources = []
+
+    if ria_sources:
+        sources.extend(ria_sources)
+
+    if active_pick_source != DEFAULT_PICK_SOURCE_ID:
+        try:
+            ria_rows = await RIAIAMService().get_pick_rows_for_source(user_id, active_pick_source)
+            if ria_rows:
+                return ria_rows, sources, active_pick_source
+        except Exception as exc:
+            logger.debug(
+                "[Kai Market] pick source %s unavailable for %s: %s",
+                active_pick_source,
+                user_id,
+                exc,
+            )
+
+    return default_rows, sources, DEFAULT_PICK_SOURCE_ID
 
 
 def _finnhub_api_key() -> str:
@@ -223,6 +284,19 @@ def _fallback_recommendation_from_quote(
         "source": "Momentum Fallback",
         "degraded": True,
     }
+
+
+def _recommendation_bias_from_tier(tier: str | None) -> str:
+    normalized = str(tier or "").strip().upper()
+    if normalized == "ACE":
+        return "STRONG_BUY"
+    if normalized == "KING":
+        return "BUY"
+    if normalized == "QUEEN":
+        return "HOLD_TO_BUY"
+    if normalized == "JACK":
+        return "HOLD"
+    return "NEUTRAL"
 
 
 def _spotlight_rank(row: dict[str, Any]) -> tuple[int, float]:
@@ -1415,6 +1489,10 @@ async def get_market_insights(
     user_id: str,
     symbols: str | None = Query(default=None, description="CSV list of symbols, max 8"),
     days_back: int = Query(default=7, ge=1, le=14),
+    pick_source: str | None = Query(
+        default=None,
+        description="Active market picks source. Only the default source is live today.",
+    ),
     token_data: dict = Depends(require_vault_owner_token),
 ) -> dict[str, Any]:
     if token_data["user_id"] != user_id:
@@ -1444,6 +1522,7 @@ async def get_market_insights(
         watchlist_symbols = list(dict.fromkeys(watchlist_symbols))
     if not watchlist_symbols:
         watchlist_symbols = DEFAULT_SYMBOLS
+    active_pick_source = _normalize_pick_source(pick_source)
     consent_token = _coerce_consent_token(token_data.get("token"))
     if not consent_token:
         raise HTTPException(
@@ -1451,7 +1530,7 @@ async def get_market_insights(
             detail="Missing or invalid consent token",
         )
     canonical_watchlist_key = ",".join(sorted(set(watchlist_symbols)))
-    home_key = f"home:{user_id}:{canonical_watchlist_key}:{days_back}"
+    home_key = f"home:{user_id}:{canonical_watchlist_key}:{days_back}:{active_pick_source}"
 
     async def build_payload() -> dict[str, Any]:
         provider_status: dict[str, str] = {}
@@ -1459,8 +1538,19 @@ async def get_market_insights(
         aggregated_cache_tier = "memory"
         aggregated_cache_hit = True
 
+        (
+            renaissance_rows_source,
+            pick_sources,
+            resolved_pick_source,
+        ) = await _resolve_pick_source_rows(user_id, active_pick_source)
+        renaissance_symbols = [
+            str(stock.ticker or "").strip().upper()
+            for stock in renaissance_rows_source
+            if str(stock.ticker or "").strip()
+        ]
+
         core_symbols = ["SPY", "QQQ"]
-        symbol_set = sorted({*watchlist_symbols, *core_symbols})
+        symbol_set = sorted({*watchlist_symbols, *core_symbols, *renaissance_symbols})
         quotes_key = f"quotes:{','.join(symbol_set)}"
 
         async def fetch_quotes_bundle() -> dict[str, Any]:
@@ -1573,6 +1663,7 @@ async def get_market_insights(
         aggregated_cache_hit = aggregated_cache_hit and macro_cache_hit
 
         watchlist_rows: list[dict[str, Any]] = []
+        renaissance_rows: list[dict[str, Any]] = []
         rec_semaphore = asyncio.Semaphore(RECOMMENDATION_FANOUT_CONCURRENCY)
 
         async def build_watchlist_row(symbol: str) -> tuple[dict[str, Any], dict[str, str], bool]:
@@ -1639,6 +1730,35 @@ async def get_market_insights(
             watchlist_rows.append(row)
             provider_status.update(status_map)
             stale = stale or row_stale
+
+        for stock in renaissance_rows_source:
+            symbol = str(stock.ticker or "").strip().upper()
+            quote = quote_map.get(symbol) if isinstance(quote_map, dict) else None
+            quote_source = str((quote or {}).get("source") or "").strip() or "Unknown"
+            renaissance_rows.append(
+                {
+                    "symbol": symbol,
+                    "company_name": str(stock.company_name or symbol),
+                    "sector": str(stock.sector or "").strip() or None,
+                    "tier": str(stock.tier or "").strip().upper() or None,
+                    "tier_rank": int(stock.tier_rank or 0),
+                    "conviction_weight": float(
+                        TIER_WEIGHTS.get(str(stock.tier or "").strip().upper(), 0.5)
+                    ),
+                    "recommendation_bias": _recommendation_bias_from_tier(stock.tier),
+                    "investment_thesis": str(stock.investment_thesis or "").strip() or None,
+                    "fcf_billions": _safe_float(stock.fcf_billions),
+                    "price": _safe_float((quote or {}).get("price")),
+                    "change_pct": _safe_float((quote or {}).get("change_percent")),
+                    "volume": _safe_int((quote or {}).get("volume")),
+                    "market_cap": _safe_float((quote or {}).get("market_cap")),
+                    "source_tags": sorted(set(["Renaissance", quote_source])),
+                    "degraded": bool(not quote),
+                    "as_of": (quote or {}).get("fetched_at")
+                    if isinstance((quote or {}).get("fetched_at"), str)
+                    else None,
+                }
+            )
 
         (
             movers_value,
@@ -1899,6 +2019,10 @@ async def get_market_insights(
             "provider_status": provider_status,
             "hero": hero,
             "watchlist": watchlist_rows,
+            "pick_sources": pick_sources,
+            "active_pick_source": resolved_pick_source,
+            "pick_rows": renaissance_rows,
+            "renaissance_list": renaissance_rows,
             "movers": movers_payload,
             "sector_rotation": sector_rotation,
             "news_tape": news_tape,
@@ -1972,3 +2096,102 @@ async def get_market_insights(
     payload["meta"] = meta
 
     return payload
+
+
+@router.get("/stock-preview/{user_id}")
+async def get_stock_preview(
+    user_id: str,
+    symbol: str = Query(..., min_length=1, description="Ticker symbol"),
+    pick_source: str | None = Query(default=None),
+    token_data: dict = Depends(require_vault_owner_token),
+) -> dict[str, Any]:
+    if token_data["user_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User ID does not match token",
+        )
+
+    consent_token = _coerce_consent_token(token_data.get("token"))
+    if not consent_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid consent token",
+        )
+
+    classification = get_symbol_master_service().classify(symbol)
+    normalized_symbol = classification.symbol
+    active_pick_source = _normalize_pick_source(pick_source)
+    pick_rows_source, pick_sources, resolved_pick_source = await _resolve_pick_source_rows(
+        user_id,
+        active_pick_source,
+    )
+
+    quote_payload: dict[str, Any]
+    try:
+        quote_payload = await fetch_market_data(normalized_symbol, user_id, consent_token) or {}
+    except Exception as exc:
+        logger.warning("[Kai Market] stock preview quote failed for %s: %s", normalized_symbol, exc)
+        quote_payload = {}
+
+    matched_row: dict[str, Any] | None = None
+    for row in pick_rows_source:
+        if isinstance(row, dict):
+            row_symbol = str(row.get("ticker") or "").strip().upper()
+            if row_symbol != normalized_symbol:
+                continue
+            matched_row = row
+            break
+
+        row_symbol = str(getattr(row, "ticker", "") or "").strip().upper()
+        if row_symbol != normalized_symbol:
+            continue
+        matched_row = {
+            "ticker": getattr(row, "ticker", None),
+            "company_name": getattr(row, "company_name", None),
+            "sector": getattr(row, "sector", None),
+            "tier": getattr(row, "tier", None),
+            "tier_rank": getattr(row, "tier_rank", None),
+            "conviction_weight": getattr(row, "conviction_weight", None),
+            "recommendation_bias": getattr(row, "recommendation_bias", None),
+            "investment_thesis": getattr(row, "investment_thesis", None),
+            "fcf_billions": getattr(row, "fcf_billions", None),
+        }
+        break
+
+    quote_price = _safe_float(quote_payload.get("price"))
+    quote_change_pct = _safe_float(quote_payload.get("change_percent"))
+    quote_as_of = (
+        quote_payload.get("fetched_at")
+        if isinstance(quote_payload.get("fetched_at"), str)
+        else _now_iso()
+    )
+
+    return {
+        "symbol": normalized_symbol,
+        "active_pick_source": resolved_pick_source,
+        "pick_sources": pick_sources,
+        "quote": {
+            "price": quote_price,
+            "change_pct": quote_change_pct,
+            "as_of": quote_as_of,
+            "company_name": str(quote_payload.get("company_name") or normalized_symbol),
+            "sector": str(quote_payload.get("sector") or "").strip() or None,
+            "market_cap": _safe_float(quote_payload.get("market_cap")),
+            "volume": _safe_int(quote_payload.get("volume")),
+            "source_tags": [str(quote_payload.get("source") or "Unknown")],
+            "degraded": quote_price is None,
+        },
+        "list_match": {
+            "in_list": bool(matched_row),
+            "source_id": resolved_pick_source,
+            "label": "On selected list" if matched_row else "Not on selected list",
+            "company_name": matched_row.get("company_name") if matched_row else None,
+            "sector": matched_row.get("sector") if matched_row else None,
+            "tier": matched_row.get("tier") if matched_row else None,
+            "tier_rank": matched_row.get("tier_rank") if matched_row else None,
+            "conviction_weight": matched_row.get("conviction_weight") if matched_row else None,
+            "recommendation_bias": matched_row.get("recommendation_bias") if matched_row else None,
+            "investment_thesis": matched_row.get("investment_thesis") if matched_row else None,
+            "fcf_billions": matched_row.get("fcf_billions") if matched_row else None,
+        },
+    }

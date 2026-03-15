@@ -57,13 +57,7 @@ import { Button as MorphyButton } from "@/lib/morphy-ux/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useVault } from "@/lib/vault/vault-context";
 import { VaultService } from "@/lib/services/vault-service";
-import { VaultFlow } from "@/components/vault/vault-flow";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { VaultUnlockDialog } from "@/components/vault/vault-unlock-dialog";
 import {
   Card as MorphyCard, 
   CardContent, 
@@ -75,6 +69,10 @@ import { scrollAppToTop } from "@/lib/navigation/use-scroll-reset";
 import { toInvestorMessage } from "@/lib/copy/investor-language";
 import { AppBackgroundTaskService } from "@/lib/services/app-background-task-service";
 import { ROUTES } from "@/lib/navigation/routes";
+import {
+  buildFinancialDomainSummary,
+  buildStatementSource,
+} from "@/lib/kai/brokerage/financial-sources";
 
 
 
@@ -192,6 +190,13 @@ export interface PortfolioData {
   quality_report_v2?: QualityReport;
   raw_extract_v2?: Record<string, unknown>;
   analytics_v2?: Record<string, unknown>;
+  source_metadata?: {
+    source_type?: string;
+    source_label?: string;
+    source_id?: string;
+    active_snapshot_id?: string;
+    is_editable?: boolean;
+  };
   domain_intent?: {
     primary: string;
     source: string;
@@ -828,6 +833,7 @@ export function PortfolioReviewView({
   const createdVaultCopyRef = useRef(false);
   const createdVaultModeRef = useRef<string | null>(null);
   const continuationInFlightRef = useRef(false);
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {});
   const saveInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
@@ -943,10 +949,10 @@ export function PortfolioReviewView({
 
     setPendingVaultSave(false);
     continuationInFlightRef.current = true;
-    void handleSave().finally(() => {
+    void handleSaveRef.current().finally(() => {
       continuationInFlightRef.current = false;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [pendingVaultSave, effectiveVaultKey]);
 
   const activeHoldings = useMemo(
@@ -1741,6 +1747,13 @@ export function PortfolioReviewView({
 
       const canonicalPortfolio = {
         ...portfolioToSave,
+        source_metadata: {
+          source_type: "statement",
+          source_label: "Statement",
+          source_id: snapshotId,
+          active_snapshot_id: snapshotId,
+          is_editable: true,
+        },
         domain_intent: {
           primary: "financial",
           secondary: "portfolio",
@@ -1762,10 +1775,27 @@ export function PortfolioReviewView({
         portfolio: canonicalPortfolio,
         analytics: initialData.analytics_v2 || existingFinancial.analytics || null,
         documents: nextDocsDomain,
+        sources: {
+          ...(
+            existingFinancial.sources &&
+            typeof existingFinancial.sources === "object" &&
+            !Array.isArray(existingFinancial.sources)
+              ? (existingFinancial.sources as Record<string, unknown>)
+              : {}
+          ),
+          active_source: "statement",
+          statement: buildStatementSource(
+            existingFinancial,
+            nextDocsDomain.statements as Record<string, unknown>[],
+            snapshotId,
+            nowIso
+          ),
+        },
         updated_at: nowIso,
       };
 
       const financialSummary = {
+        ...buildFinancialDomainSummary(nextFinancialDomain as Record<string, unknown>),
         intent_source: "kai_import_llm",
         attribute_count: normalizedActiveHoldings.length,
         item_count: normalizedActiveHoldings.length,
@@ -1928,6 +1958,7 @@ export function PortfolioReviewView({
       createdVaultModeRef.current = null;
     }
   };
+  handleSaveRef.current = handleSave;
 
   const confirmDiscardChanges = useCallback((): boolean => {
     if (!hasUnsavedChanges || isBusySaving) return true;
@@ -2453,44 +2484,37 @@ export function PortfolioReviewView({
 
       {/* Vault Dialog (create/unlock) */}
       {user && (
-        <Dialog
+        <VaultUnlockDialog
+          user={user}
           open={vaultDialogOpen}
           onOpenChange={(open) => {
             if (isBusySaving) return;
             setVaultDialogOpen(open);
             if (!open) setPendingVaultSave(false);
           }}
-        >
-          <DialogContent className="z-[520] w-[calc(100%-1rem)] max-h-[calc(100svh-1rem)] p-0 border border-border/60 bg-background shadow-2xl overflow-hidden sm:max-w-md">
-            <DialogTitle className="sr-only">
-              {hasVault === false
-                ? "Create Vault to save portfolio"
-                : "Unlock Vault to save portfolio"}
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Create or unlock your Vault to save this portfolio securely.
-            </DialogDescription>
-            <VaultFlow
-              user={user}
-              enableGeneratedDefault={hasVault === false}
-              onSuccess={(meta) => {
-                createdVaultModeRef.current = meta?.mode ?? null;
-                setVaultDialogOpen(false);
-                if (
-                  effectiveVaultKey &&
-                  !continuationInFlightRef.current
-                ) {
-                  continuationInFlightRef.current = true;
-                  void handleSave().finally(() => {
-                    continuationInFlightRef.current = false;
-                  });
-                  return;
-                }
-                setPendingVaultSave(true);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+          title={
+            hasVault === false
+              ? "Create Vault to save portfolio"
+              : "Unlock Vault to save portfolio"
+          }
+          description="Create or unlock your Vault to save this portfolio securely."
+          enableGeneratedDefault={hasVault === false}
+          onSuccess={(meta) => {
+            createdVaultModeRef.current = meta?.mode ?? null;
+            setVaultDialogOpen(false);
+            if (
+              effectiveVaultKey &&
+              !continuationInFlightRef.current
+            ) {
+              continuationInFlightRef.current = true;
+              void handleSave().finally(() => {
+                continuationInFlightRef.current = false;
+              });
+              return;
+            }
+            setPendingVaultSave(true);
+          }}
+        />
       )}
 
       {isSaving && (

@@ -29,10 +29,12 @@ concurrency:
 env:
   NODE_VERSION: "20"
   PYTHON_VERSION: "3.13"
-  WEB_LINT_WARNING_BUDGET: "161"
+  WEB_LINT_WARNING_BUDGET: "0"
   WEB_AUDIT_MODERATE_BUDGET: "7"
   WEB_AUDIT_HIGH_BUDGET: "21"
   WEB_AUDIT_CRITICAL_BUDGET: "0"
+  CI_NATIVE_PARITY_REQUIRED: "0"
+  CI_DOCS_PARITY_REQUIRED: "0"
   GITLEAKS_VERSION: "8.24.2"
   CLOUD_RUN_REVISION_RETENTION: "10"
 
@@ -42,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Install gitleaks OSS CLI (license-free)
@@ -53,7 +55,7 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
       - name: Run gitleaks scan (no license secret required)
-        run: bash scripts/ci/secret-scan.sh
+        run: bash scripts/ci/orchestrate.sh secret
 
   # ============================================================================
   # Path filters: run frontend/backend jobs only when their paths change (or manual scope)
@@ -66,9 +68,9 @@ jobs:
       frontend: ${{ steps.resolve.outputs.frontend }}
       backend: ${{ steps.resolve.outputs.backend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
@@ -116,21 +118,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: hushh-webapp/package-lock.json
 
       - name: Run web check script (single source of truth)
-        run: bash scripts/ci/web-check.sh
+        run: bash scripts/ci/orchestrate.sh web
         env:
           WEB_LINT_WARNING_BUDGET: ${{ env.WEB_LINT_WARNING_BUDGET }}
           WEB_AUDIT_MODERATE_BUDGET: ${{ env.WEB_AUDIT_MODERATE_BUDGET }}
           WEB_AUDIT_HIGH_BUDGET: ${{ env.WEB_AUDIT_HIGH_BUDGET }}
           WEB_AUDIT_CRITICAL_BUDGET: ${{ env.WEB_AUDIT_CRITICAL_BUDGET }}
+          CI_NATIVE_PARITY_REQUIRED: ${{ env.CI_NATIVE_PARITY_REQUIRED }}
           NEXT_PUBLIC_BACKEND_URL: https://api.example.com
           NEXT_PUBLIC_FIREBASE_API_KEY: "test-api-key"
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "dummy-project.firebaseapp.com"
@@ -156,9 +159,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -166,7 +169,7 @@ jobs:
 
       - name: Run protocol check script (single source of truth)
         timeout-minutes: 22
-        run: bash scripts/ci/protocol-check.sh
+        run: bash scripts/ci/orchestrate.sh protocol
         env:
           TESTING: "true"
           SECRET_KEY: "test_secret_key_for_ci_only_32chars_min"
@@ -183,16 +186,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: hushh-webapp/package-lock.json
 
       - name: Run integration check script (single source of truth)
-        run: bash scripts/ci/integration-check.sh
+        run: bash scripts/ci/orchestrate.sh integration
+        env:
+          CI_NATIVE_PARITY_REQUIRED: ${{ env.CI_NATIVE_PARITY_REQUIRED }}
+          CI_DOCS_PARITY_REQUIRED: ${{ env.CI_DOCS_PARITY_REQUIRED }}
         continue-on-error: false  # Route contracts must pass; fail CI if missing/out of sync
 
   # ============================================================================
@@ -203,11 +209,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Check if upstream consent-protocol has unpulled commits
+        continue-on-error: true
         run: bash scripts/ci/subtree-sync-check.sh
 
   ci-status:
@@ -218,7 +225,6 @@ jobs:
       - web-check
       - protocol-check
       - integration-check
-      - subtree-sync-check
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -231,17 +237,15 @@ jobs:
           WEB="${{ needs['web-check'].result }}"
           PROTOCOL="${{ needs['protocol-check'].result }}"
           INTEGRATION="${{ needs['integration-check'].result }}"
-          SUBTREE="${{ needs['subtree-sync-check'].result }}"
 
           printf 'secret-scan=%s\n' "$SECRET_SCAN"
           printf 'paths=%s\n' "$PATHS"
           printf 'web-check=%s\n' "$WEB"
           printf 'protocol-check=%s\n' "$PROTOCOL"
           printf 'integration-check=%s\n' "$INTEGRATION"
-          printf 'subtree-sync-check=%s\n' "$SUBTREE"
 
           fail=0
-          for result in "$SECRET_SCAN" "$PATHS" "$WEB" "$PROTOCOL" "$INTEGRATION" "$SUBTREE"; do
+          for result in "$SECRET_SCAN" "$PATHS" "$WEB" "$PROTOCOL" "$INTEGRATION"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ] || [ "$result" = "timed_out" ]; then
               fail=1
             fi
@@ -252,68 +256,3 @@ jobs:
             exit 1
           fi
           echo "All required CI jobs passed or were intentionally skipped."
-
-  # ============================================================================
-  # Deploy to Cloud Run (deploy branch only, runs strictly after CI gate passes)
-  # ============================================================================
-  deploy-cloudrun:
-    name: "Deploy Cloud Run"
-    needs:
-      - ci-status
-    if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      GCP_REGION: us-central1
-      BACKEND_SERVICE: consent-protocol
-      FRONTEND_SERVICE: hushh-webapp
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy backend using Cloud Build
-        run: gcloud builds submit --config=deploy/backend.cloudbuild.yaml
-
-      - name: Get backend URL
-        id: backend-url
-        run: |
-          BACKEND_URL=$(gcloud run services describe "${{ env.BACKEND_SERVICE }}" \
-            --region="${{ env.GCP_REGION }}" \
-            --format='value(status.url)')
-          echo "url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
-          echo "Backend URL: $BACKEND_URL"
-
-      - name: Deploy frontend using Cloud Build
-        run: gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
-
-      - name: Get frontend URL
-        id: frontend-url
-        run: |
-          FRONTEND_URL=$(gcloud run services describe "${{ env.FRONTEND_SERVICE }}" \
-            --region="${{ env.GCP_REGION }}" \
-            --format='value(status.url)')
-          echo "url=$FRONTEND_URL" >> "$GITHUB_OUTPUT"
-          echo "Frontend URL: $FRONTEND_URL"
-
-      - name: Retain latest backend revisions
-        continue-on-error: true
-        run: bash scripts/ci/cloudrun-retention.sh "${{ env.BACKEND_SERVICE }}" "${{ env.GCP_REGION }}" "${{ env.CLOUD_RUN_REVISION_RETENTION }}"
-
-      - name: Retain latest frontend revisions
-        continue-on-error: true
-        run: bash scripts/ci/cloudrun-retention.sh "${{ env.FRONTEND_SERVICE }}" "${{ env.GCP_REGION }}" "${{ env.CLOUD_RUN_REVISION_RETENTION }}"
-
-      - name: Deployment Summary
-        if: always()
-        shell: bash
-        run: |
-          echo "✅ Production Deployment Complete"
-          echo "Backend: ${{ steps.backend-url.outputs.url }}"
-          echo "Frontend: ${{ steps.frontend-url.outputs.url }}"

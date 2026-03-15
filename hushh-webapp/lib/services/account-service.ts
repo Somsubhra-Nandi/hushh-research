@@ -2,6 +2,7 @@
 import { Capacitor } from "@capacitor/core";
 import { HushhAccount } from "@/lib/capacitor";
 import { apiJson } from "./api-client";
+import { trackEvent } from "@/lib/observability/client";
 
 export class AccountServiceImpl {
   /**
@@ -18,6 +19,10 @@ export class AccountServiceImpl {
       throw new Error("VAULT_OWNER token required - vault must be unlocked");
     }
     
+    trackEvent("account_delete_requested", {
+      result: "success",
+    });
+
     console.log("[AccountService] Deleting account with token:", vaultOwnerToken.substring(0, 30) + "...");
 
     try {
@@ -25,6 +30,10 @@ export class AccountServiceImpl {
         // Native: Call Capacitor plugin directly to Python backend
         const result = await HushhAccount.deleteAccount({
           authToken: vaultOwnerToken,
+        });
+        trackEvent("account_delete_completed", {
+          result: result.success ? "success" : "error",
+          status_bucket: result.success ? "2xx" : "5xx",
         });
         return result;
       } else {
@@ -38,10 +47,18 @@ export class AccountServiceImpl {
             },
           }
         );
+        trackEvent("account_delete_completed", {
+          result: result.success ? "success" : "error",
+          status_bucket: result.success ? "2xx" : "5xx",
+        });
         return result;
       }
     } catch (error) {
       console.error("Account deletion failed:", error);
+      trackEvent("account_delete_completed", {
+        result: "error",
+        status_bucket: "5xx",
+      });
       throw error;
     }
   }

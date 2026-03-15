@@ -20,6 +20,71 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 
 ---
 
+## 🧭 Runtime Profiles (Local/UAT-Remote/Prod-Remote)
+
+Use profile sources and activate one profile into the live local files:
+
+- Backend active file: `consent-protocol/.env`
+- Frontend active file: `hushh-webapp/.env.local`
+
+Runtime profile sources (local only, not committed):
+
+- `consent-protocol/.env.local-uatdb.local`, `.env.uat-remote.local`, `.env.prod-remote.local`
+- `hushh-webapp/.env.local-uatdb.local`, `.env.uat-remote.local`, `.env.prod-remote.local`
+
+Activation:
+
+```bash
+bash scripts/env/bootstrap_profiles.sh
+bash scripts/env/use_profile.sh local-uatdb
+bash scripts/env/use_profile.sh uat-remote
+bash scripts/env/use_profile.sh prod-remote
+```
+
+Makefile wrappers:
+
+```bash
+make local
+make uat
+make prod
+make local-web
+make uat-web
+make local-backend
+```
+
+### Blocking vs optional validation
+
+Blocking by default:
+
+1. `scripts/ci/secret-scan.sh`
+2. `scripts/ci/web-check.sh`
+3. `scripts/ci/protocol-check.sh`
+4. `scripts/ci/integration-check.sh`
+
+Canonical executor:
+
+- `scripts/ci/orchestrate.sh` (used by GitHub Actions stages and local wrappers)
+
+Optional/advisory by default:
+
+1. `scripts/ci/docs-parity-check.sh`
+2. `scripts/ci/subtree-sync-check.sh`
+3. `scripts/ops/verify-env-secrets-parity.py` (release/deploy preflight)
+4. Native parity checks for native release lanes
+
+Local full run with advisory checks:
+
+```bash
+INCLUDE_ADVISORY_CHECKS=1 ./scripts/test-ci-local.sh
+```
+
+### UAT analytics divergence note
+
+`deploy_uat` currently includes newer analytics/auth-split expectations (`NEXT_PUBLIC_AUTH_FIREBASE_*`, measurement IDs, GTM IDs).  
+Production analytics key migration is deferred intentionally and should be handled as a separate release task.
+
+---
+
 ## 📋 Prerequisites
 
 1. **Google Cloud SDK** installed and authenticated
@@ -40,7 +105,7 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 
 3. **Configure Secrets** (one-time setup)
 
-   Secrets in GCP Secret Manager must match **exactly** what the code uses — no more, no less. See [docs/reference/env-and-secrets.md](../docs/reference/env-and-secrets.md) for the full audit and gcloud CLI.
+   Secrets in GCP Secret Manager must match **exactly** what the code uses — no more, no less. See [docs/reference/operations/env-and-secrets.md](../docs/reference/operations/env-and-secrets.md) for the full audit and gcloud CLI.
 
    ```bash
    python3 scripts/ops/verify-env-secrets-parity.py \
@@ -50,12 +115,24 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
      --frontend-service hushh-webapp
    ```
 
-   Required backend secrets (10):
+   For brokerage-enabled environments such as UAT Plaid testing, include:
+
+   ```bash
+   python3 scripts/ops/verify-env-secrets-parity.py \
+     --project hushh-pda-uat \
+     --region us-central1 \
+     --backend-service consent-protocol \
+     --frontend-service hushh-webapp \
+     --require-plaid
+   ```
+
+   Required backend secrets (11):
 
    - `SECRET_KEY`
    - `VAULT_ENCRYPTION_KEY`
    - `GOOGLE_API_KEY`
    - `FIREBASE_SERVICE_ACCOUNT_JSON`
+   - `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`
    - `FRONTEND_URL`
    - `DB_USER`
    - `DB_PASSWORD`
@@ -63,7 +140,47 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
    - `REVIEWER_UID`
    - `MCP_DEVELOPER_TOKEN`
 
+   Optional when Plaid brokerage is enabled (3):
+
+   - `PLAID_CLIENT_ID`
+   - `PLAID_SECRET`
+   - `PLAID_TOKEN_ENCRYPTION_KEY`
+
    **Note:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, and `SYNC_REMOTE_ENABLED` are set as Cloud Run env vars (not secrets). **Do not use `DATABASE_URL`** — migrations and scripts use DB_* only (strict parity). Delete `DATABASE_URL` from Secret Manager if present.
+   Plaid webhook and callback settings are runtime env vars, not dashboard secrets:
+   `PLAID_ENV`, `PLAID_CLIENT_NAME`, `PLAID_COUNTRY_CODES`, `PLAID_WEBHOOK_URL`, `PLAID_REDIRECT_PATH`, `PLAID_TX_HISTORY_DAYS`.
+
+4. **Configure production logical backup infrastructure** (GCP)
+
+   Provision the bucket + service accounts + Cloud Run Job + Cloud Scheduler:
+
+   ```bash
+   PROJECT_ID=hushh-pda REGION=us-central1 bash deploy/backup/setup_prod_logical_backup.sh
+   ```
+
+   The setup script enforces bucket hardening (UBLA + PAP), lifecycle delete at 14 days, and soft-delete disabled for cost control.
+
+   If the currently deployed backend image does not yet include `scripts/ops/supabase_logical_backup.py`,
+   pass an explicit image override:
+
+   ```bash
+   PROJECT_ID=hushh-pda REGION=us-central1 \
+   BACKUP_JOB_IMAGE=gcr.io/hushh-pda/consent-protocol:backup-job-YYYYMMDD-HHMMSS \
+   bash deploy/backup/setup_prod_logical_backup.sh
+   ```
+
+   Validate backup freshness policy locally (same gate used by production deploy workflow):
+
+   ```bash
+   python3 scripts/ops/logical_backup_freshness_check.py \
+     --project-id hushh-pda \
+     --bucket hushh-pda-prod-db-backups \
+     --prefix prod/supabase-logical \
+     --max-age-hours 30 \
+     --report-path /tmp/prod-backup-posture-report.json
+   ```
+
+   This checker requires ADC-capable credentials (`gcloud auth application-default login`) or a service account credential source.
 
 ---
 
@@ -76,7 +193,7 @@ Deploys Python FastAPI backend to Cloud Run:
 - Builds Docker image from `consent-protocol/Dockerfile`
 - Pushes to Google Container Registry
 - Deploys to `consent-protocol` service
-- Connects to Cloud SQL via Unix socket
+- Uses DB host/port env wiring (optionally supports Cloud SQL Unix socket when configured)
 - Injects secrets from Secret Manager
 - Sets `ENVIRONMENT=production` and `GOOGLE_GENAI_USE_VERTEXAI=True` (Vertex AI for Gemini)
 
@@ -94,9 +211,12 @@ Deploys Next.js frontend to Cloud Run:
 
 ## 🔄 CI/CD Setup (GitHub/GitLab)
 
-### GitHub Actions: Deploy workflow (deploy branch)
+### GitHub Actions: Deploy workflows (production + UAT)
 
-The repo includes [.github/workflows/deploy-production.yml](../.github/workflows/deploy-production.yml), which runs on **push to the `deploy` branch** (and on manual dispatch). It does not run on `main`.
+The repo includes:
+
+- [.github/workflows/deploy-production.yml](../.github/workflows/deploy-production.yml): manual production deploy (`workflow_dispatch`).
+- [.github/workflows/deploy-uat.yml](../.github/workflows/deploy-uat.yml): auto deploy on push to `deploy_uat` and manual dispatch.
 
 Manual dispatch now supports `scope`:
 
@@ -106,14 +226,14 @@ Manual dispatch now supports `scope`:
 
 **For seamless deployment:**
 
-1. **GitHub secret:** In the repo settings, add a secret **`GCP_SA_KEY`** containing the JSON key of a Google Cloud service account that has permissions for Cloud Build, Secret Manager, and Cloud Run.
-2. **Branch flow:** After merging to `main`, update the `deploy` branch (e.g. merge `main` into `deploy` or push to `deploy`) so the workflow builds from an up-to-date state. Then push to `deploy` to trigger the workflow, or run it manually from the Actions tab.
-3. **Approval policy:** reviewer exclusions (for repo owner or specific users) are configured in GitHub Environment settings, not in repo code. Use Settings -> Environments -> `production` -> Required reviewers.
+1. **GitHub secret:** add `GCP_SA_KEY` (and optionally `GCP_SA_KEY_UAT`) with Cloud Build + Cloud Run + Secret Manager permissions.
+2. **Branch flow:** merge to `deploy_uat` for UAT rollout; use manual dispatch for production rollout.
+3. **Approval policy:** configure environment reviewers in GitHub Environments (`production`, `uat`) rather than repo code.
 
 ### CI Security Gates
 
 - `.github/workflows/ci.yml` runs `gitleaks` as a mandatory secret-scanning gate.
-- The same workflow validates that committed mobile Firebase artifacts are templates (`npm run verify:mobile-firebase`).
+- Native parity checks are optional in baseline CI and enabled for native release lanes.
 
 ### Option 1: Cloud Build Triggers (Recommended)
 
@@ -154,18 +274,20 @@ gcloud builds submit --config=deploy/frontend.cloudbuild.yaml
 
 All required secrets must exist in Google Cloud Secret Manager before deployment. Run the parity audit script, then create any missing secrets manually.
 
-**Backend (10 secrets):** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`, `APP_REVIEW_MODE`, `REVIEWER_UID`, `MCP_DEVELOPER_TOKEN`
+**Backend (11 secrets):** `SECRET_KEY`, `VAULT_ENCRYPTION_KEY`, `GOOGLE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`, `FRONTEND_URL`, `DB_USER`, `DB_PASSWORD`, `APP_REVIEW_MODE`, `REVIEWER_UID`, `MCP_DEVELOPER_TOKEN`
+**Backend Plaid secrets when brokerage is enabled (3):** `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_TOKEN_ENCRYPTION_KEY`
 
 **Note:** 
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, and `SYNC_REMOTE_ENABLED` are set as Cloud Run env vars (not secrets) in `backend.cloudbuild.yaml`
-- Migrations use DB_* only (no DATABASE_URL). See docs/reference/env-and-secrets.md.
+- Plaid Cloud Run env remains env-var based: `PLAID_ENV`, `PLAID_CLIENT_NAME`, `PLAID_COUNTRY_CODES`, `PLAID_WEBHOOK_URL`, `PLAID_REDIRECT_PATH`, `PLAID_TX_HISTORY_DAYS`
+- Migrations use DB_* only (no DATABASE_URL). See docs/reference/operations/env-and-secrets.md.
 - **Action required:** Create `DB_USER` and `DB_PASSWORD` secrets in Secret Manager if they don't exist:
   ```bash
   echo "your-db-username" | gcloud secrets create DB_USER --data-file=-
   echo "your-db-password" | gcloud secrets create DB_PASSWORD --data-file=-
   ```
 
-**Frontend build-time (8 centrally-managed values):**
+**Frontend build-time (16 centrally-managed values):**
 - `BACKEND_URL`
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
@@ -174,10 +296,22 @@ All required secrets must exist in Google Cloud Secret Manager before deployment
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
 - `NEXT_PUBLIC_FIREBASE_VAPID_KEY` (web push / FCM)
+- `NEXT_PUBLIC_AUTH_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_AUTH_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_AUTH_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_AUTH_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_STAGING`
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID_PRODUCTION`
+- `NEXT_PUBLIC_GTM_ID_STAGING`
+- `NEXT_PUBLIC_GTM_ID_PRODUCTION`
 
 These Firebase values are public client config, but are still centrally injected from Secret Manager to avoid hardcoded deploy YAML values.
 
-See [docs/reference/env-and-secrets.md](../docs/reference/env-and-secrets.md) for full reference.
+**Frontend runtime (server-only Next.js API handlers):**
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` (required for auth-split setups, e.g., UAT web using prod Firebase Auth)
+
+See [docs/reference/operations/env-and-secrets.md](../docs/reference/operations/env-and-secrets.md) for full reference.
 
 ### Mobile Firebase Artifacts (Regulated)
 
@@ -187,7 +321,56 @@ See [docs/reference/env-and-secrets.md](../docs/reference/env-and-secrets.md) fo
   - `ANDROID_GOOGLE_SERVICES_JSON_B64`
 - Inject both during native release CI and overwrite template files before build/sign.
 - Use `npm run inject:mobile-firebase` in `hushh-webapp/` after exporting those secrets into env vars.
+- Or fetch latest artifacts directly from Firebase and write both files in place:
+  ```bash
+  cd hushh-webapp
+  npm run sync:mobile-firebase
+  ```
 - Run `npm run verify:mobile-firebase` with `REQUIRE_PROD_FIREBASE_ARTIFACTS=true` in release jobs to fail fast if templates were not replaced.
+
+### Observability Provisioning (Automated)
+
+Use the idempotent setup script to provision observability infra in GCP:
+
+```bash
+bash deploy/observability/setup_gcp_observability.sh
+```
+
+Optional email notification channel wiring:
+
+```bash
+OBS_ALERT_EMAIL=you@example.com bash deploy/observability/setup_gcp_observability.sh
+```
+
+### Production DB Governance Helpers
+
+```bash
+# Provision logical backup infra (idempotent)
+bash deploy/backup/setup_prod_logical_backup.sh
+
+# Execute logical backup job manually (optional pre-deploy trigger)
+gcloud run jobs execute prod-supabase-logical-backup \
+  --project hushh-pda \
+  --region us-central1 \
+  --wait
+
+# Read-only logical backup freshness gate
+python3 scripts/ops/logical_backup_freshness_check.py \
+  --project-id hushh-pda \
+  --bucket hushh-pda-prod-db-backups \
+  --prefix prod/supabase-logical \
+  --max-age-hours 30 \
+  --report-path /tmp/prod-backup-posture-report.json
+
+# Read-only migration governance + DB drift checks
+python3 scripts/ops/db_migration_release_guard.py \
+  --report-path /tmp/db-migration-guard-report.json
+
+# Generate audit manifest for a production release
+python3 scripts/ops/generate_migration_release_manifest.py \
+  --output /tmp/prod-migration-release-manifest.json \
+  --environment production
+```
 
 ### Verify Secrets
 
@@ -299,6 +482,7 @@ gcloud run services update-traffic consent-protocol \
 deploy/
 ├── backend.cloudbuild.yaml      # Backend Cloud Build config
 ├── frontend.cloudbuild.yaml     # Frontend Cloud Build config
+├── backup/setup_prod_logical_backup.sh  # Logical backup infra bootstrap
 ├── ../scripts/ops/verify-env-secrets-parity.py  # Secrets/deploy parity audit utility
 ├── .env.backend.example         # Backend env vars template
 ├── .env.frontend.example        # Frontend env vars template

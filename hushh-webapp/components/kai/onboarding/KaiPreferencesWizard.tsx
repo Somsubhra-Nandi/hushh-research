@@ -176,7 +176,7 @@ export function KaiPreferencesWizard(props: {
       className={cn(
         "w-full bg-transparent flex flex-col",
         layout === "page"
-          ? "min-h-[100dvh] px-6 pt-[calc(16px+env(safe-area-inset-top))] pb-[var(--app-screen-footer-pad)]"
+          ? "min-h-[100dvh] px-6 pt-[calc(var(--top-shell-reserved-height,0px)+16px)] pb-[var(--app-screen-footer-pad)]"
           : "min-h-0 px-4 pt-4 pb-4"
       )}
     >

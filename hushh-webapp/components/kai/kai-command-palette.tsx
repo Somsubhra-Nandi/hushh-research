@@ -367,7 +367,7 @@ export function KaiCommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      className="top-[calc(env(safe-area-inset-top)+0.75rem)] max-h-[min(70dvh,32rem)] w-[calc(100%-1rem)] translate-y-0 sm:top-1/2 sm:w-full sm:max-h-none sm:-translate-y-1/2"
+      className="top-[calc(var(--top-shell-reserved-height,0px)+0.75rem)] max-h-[min(70dvh,32rem)] w-[calc(100%-1rem)] translate-y-0 sm:top-1/2 sm:w-full sm:max-h-none sm:-translate-y-1/2"
     >
       <CommandInput
         value={query}
@@ -380,7 +380,7 @@ export function KaiCommandPalette({
         <CommandGroup heading="Portfolio Actions">
           <CommandItem className={commandItemClass} onSelect={() => run("dashboard")}>
             <Icon icon={BarChart3} size="sm" className="mr-2 text-muted-foreground" />
-            Dashboard
+            Portfolio
           </CommandItem>
           {!isFiltering ? (
             <CommandItem className={commandItemClass} disabled>

@@ -1,93 +1,103 @@
 # Getting Started
 
-> Prerequisites, environment setup, running locally, CI, and deployment.
+> Canonical local setup guide for the Hushh monorepo.
 
 ---
 
 ## Prerequisites
 
-| Tool    | Version   | Install                                |
-| ------- | --------- | -------------------------------------- |
-| Node.js | 20+       | [nodejs.org](https://nodejs.org/)      |
-| Python  | 3.13+     | [python.org](https://python.org/)      |
-| pnpm    | 9+        | `npm install -g pnpm` (or use npm)     |
-| Git     | latest    | [git-scm.com](https://git-scm.com/)   |
+| Tool | Version |
+| --- | --- |
+| Node.js | 20+ |
+| Python | 3.13+ |
+| Git | current |
+| PostgreSQL-compatible runtime | local Postgres or Supabase-backed profile |
 
-Optional for mobile builds:
+Optional for native work:
 
-| Tool     | Version | Purpose             |
-| -------- | ------- | ------------------- |
-| Xcode    | 16+     | iOS builds          |
-| CocoaPods| latest  | iOS dependencies    |
-| Android Studio | latest | Android builds |
+| Tool | Purpose |
+| --- | --- |
+| Xcode + CocoaPods | iOS |
+| Android Studio | Android |
 
 ---
 
-## Clone and Setup
+## Clone And Bootstrap
 
 ```bash
 git clone https://github.com/hushh-labs/hushh-research.git
 cd hushh-research
+make setup
 ```
 
-### Backend Environment
+Install package dependencies:
 
 ```bash
-cd consent-protocol
-python -m venv .venv
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\activate         # Windows
-
+cd hushh-webapp && npm install
+cd ../consent-protocol
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+cd ..
 ```
 
-Create `.env` from the example:
+Use `.venv` as the backend virtual environment. Do not maintain a second `venv` alongside it.
+
+---
+
+## Environment Setup
+
+The canonical env contract is documented in [../reference/operations/env-and-secrets.md](../reference/operations/env-and-secrets.md).
+
+Current default workflow uses runtime profiles rather than ad hoc manual env assembly.
+
+Bootstrap local profiles:
 
 ```bash
-cp .env.example .env
+bash scripts/env/bootstrap_profiles.sh
 ```
 
-Required variables in `.env`:
-
-| Variable               | Purpose                          | Example                          |
-| ---------------------- | -------------------------------- | -------------------------------- |
-| `DB_USER`              | Supabase pooler user             | `postgres.xxxxx`                 |
-| `DB_PASSWORD`          | Supabase pooler password         | `your-password`                  |
-| `DB_HOST`              | Supabase pooler host             | `aws-1-us-east-1.pooler.supabase.com` |
-| `DB_PORT`              | Supabase pooler port             | `5432`                           |
-| `DB_NAME`              | Database name                    | `postgres`                       |
-| `GOOGLE_API_KEY`       | Gemini API key                   | `AIza...`                        |
-| `CONSENT_TOKEN_SECRET` | HMAC signing secret              | `your-secret`                    |
-| `FIREBASE_*`           | Firebase Admin SDK config        | (see `.env.example`)             |
-
-### Frontend Environment
+Activate a profile into `consent-protocol/.env` and `hushh-webapp/.env.local`:
 
 ```bash
-cd hushh-webapp
-npm install
+bash scripts/env/use_profile.sh local-uatdb
 ```
 
-Create `.env.local`:
+Supported profile names:
 
-```bash
-cp .env.example .env.local   # if exists, otherwise create manually
-```
+- `local-uatdb`
+- `uat-remote`
+- `prod-remote`
 
-Required variables in `.env.local`:
+Important env rules:
 
-| Variable                            | Purpose                  |
-| ----------------------------------- | ------------------------ |
-| `NEXT_PUBLIC_BACKEND_URL`           | Backend URL              |
-| `NEXT_PUBLIC_FIREBASE_API_KEY`      | Firebase web config      |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`  | Firebase auth domain     |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`   | Firebase project ID      |
-| `NEXT_PUBLIC_FIREBASE_VAPID_KEY`    | FCM VAPID key            |
+- backend database configuration uses `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, and `DB_NAME`
+- backend signing/runtime secrets come from the documented `SECRET_KEY`, Firebase, and Google keys
+- frontend runtime uses `NEXT_PUBLIC_*` keys plus server-side fallback keys where documented
+- `DATABASE_URL` is not part of the supported runtime contract
 
 ---
 
 ## Running Locally
 
-### Backend (Terminal 1)
+Canonical launchers:
+
+```bash
+make local
+make uat
+make prod
+```
+
+Useful narrower launchers:
+
+```bash
+make local-web
+make uat-web
+make prod-web
+make local-backend
+```
+
+Manual backend start after activating `.venv` and the selected profile:
 
 ```bash
 cd consent-protocol
@@ -95,135 +105,66 @@ source .venv/bin/activate
 python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Health check: `curl http://localhost:8000/health`
-
-### Frontend (Terminal 2)
+Health check:
 
 ```bash
-cd hushh-webapp
-npm run dev
+curl http://localhost:8000/health
 ```
 
-Open: `http://localhost:3000`
+Expected outcomes:
 
-### Both Together
-
-| Server   | URL                      | Health Check                        |
-| -------- | ------------------------ | ----------------------------------- |
-| Backend  | `http://localhost:8000`  | `curl http://localhost:8000/health` |
-| Frontend | `http://localhost:3000`  | Open in browser                     |
+- frontend available at `http://localhost:3000`
+- backend responds on `http://localhost:8000`
+- profile-based launchers resolve the correct runtime profile before boot
+- IAM schema verification passes before `make local` and `make local-backend` continue
 
 ---
 
-## Running CI Locally
+## Database And Migrations
 
-### Frontend
+SQL migrations live in `consent-protocol/db/migrations/`.
 
-```bash
-cd hushh-webapp
-npx eslint .                    # Linting
-npx tsc --noEmit                # Type checking
-npx vitest run                  # Tests
-```
+Do not use `psql $DATABASE_URL ...` guidance here. Runtime and migration scripts are aligned to the `DB_*` contract.
 
-### Backend
+For IAM schema setup and verification:
 
 ```bash
-cd consent-protocol
-source .venv/bin/activate
-ruff check .                    # Linting
-mypy .                          # Type checking (if configured)
-pytest                          # Tests
+make db-init-iam
+make verify-iam-schema
 ```
+
+For profile-backed local startup, `make local` and `make local-backend` already run IAM schema verification before boot.
 
 ---
 
-## Deployment
+## Verification
 
-### Cloud Run (Backend)
-
-The backend deploys to Google Cloud Run via GitHub Actions.
-
-**CI workflow**: `.github/workflows/ci.yml`  
-**Production deploy workflow**: `.github/workflows/deploy-production.yml`
-
-| Trigger | Action |
-| ------- | ------ |
-| Push / PR on any branch | Runs CI checks only |
-| Push to `deploy` branch | Runs production deployment |
-| Manual deploy trigger | Actions > Deploy to Production > scope: `backend` / `frontend` / `all` |
-| Manual CI trigger | Actions > Tri-Flow CI > scope: `backend` / `frontend` / `all` |
-
-**Manual deploy**:
+Run the common local checks before opening a PR:
 
 ```bash
-cd consent-protocol
-gcloud run deploy consent-protocol \
-  --source . \
-  --region us-east1 \
-  --port 8000 \
-  --allow-unauthenticated
+./scripts/test-ci-local.sh
+make verify-docs
+cd hushh-webapp && npm run verify:routes
 ```
 
-### GCP Secret Manager
+Useful quick checks after first boot:
 
-Backend secrets are stored in GCP Secret Manager and injected at runtime:
+- open the frontend and confirm the login screen renders
+- hit `curl http://localhost:8000/health`
+- run `cd hushh-webapp && npm run typecheck` if you changed frontend code
+- run targeted backend `pytest` if you changed protocol/runtime behavior
 
-| Secret                         | Description              |
-| ------------------------------ | ------------------------ |
-| `GOOGLE_API_KEY`               | Gemini API key           |
-| `DB_USER`                      | Database user            |
-| `DB_PASSWORD`                  | Database password        |
-| `DB_HOST`                      | Database host            |
-| `CONSENT_TOKEN_SECRET`         | Token signing secret     |
-| `FIREBASE_PROJECT_ID`          | Firebase project         |
-| `FIREBASE_SERVICE_ACCOUNT_KEY` | Firebase admin SDK       |
+Package-local docs for deeper implementation detail:
 
-### Frontend (Vercel / Static)
-
-The frontend deploys as a static Next.js build:
-
-```bash
-cd hushh-webapp
-npm run build
-```
-
-For Capacitor mobile builds, see [Mobile Development](./mobile.md).
+- backend/protocol: [../../consent-protocol/docs/README.md](../../consent-protocol/docs/README.md)
+- frontend/native: [../../hushh-webapp/docs/README.md](../../hushh-webapp/docs/README.md)
 
 ---
 
-## Database Migrations
+## Related References
 
-SQL migrations live in `consent-protocol/db/migrations/`. Apply them in order:
-
-```bash
-# Example: apply migration 013
-psql $DATABASE_URL < db/migrations/013_jsonb_merge_rpc.sql
-```
-
-Or apply directly in the Supabase SQL Editor.
-
----
-
-## Troubleshooting
-
-| Problem                                          | Solution                                                    |
-| ------------------------------------------------ | ----------------------------------------------------------- |
-| `ModuleNotFoundError: google.genai`              | `pip install google-genai` (not `google-generativeai`)      |
-| Backend returns 401 on all requests              | Vault not unlocked -- unlock vault first to get VAULT_OWNER token |
-| Frontend shows blank page                        | Check `.env.local` has correct `NEXT_PUBLIC_BACKEND_URL`    |
-| `Illegal header value` in Cloud Run              | API key has trailing newline -- check `config.py` strips it |
-| iOS build fails with hex digit error             | Plugin IDs in `project.pbxproj` must be 24-char hex (0-9, A-F) |
-| `fetch is not defined` on native                 | Use `ApiService` instead of direct `fetch()` calls          |
-| ESLint reports `no direct fetch`                 | Add to fetch override list in `eslint.config.mjs` if SSE    |
-| Database connection timeout                       | Check `DB_HOST` uses Supabase Session Pooler, not direct    |
-| Portfolio data not rendering after import         | `normalizeStoredPortfolio()` may need updating for new fields|
-
----
-
-## See Also
-
-- [Architecture](../reference/architecture.md) -- System overview
-- [Agent Development](../../consent-protocol/docs/reference/agent-development.md) -- Building new agents
-- [Mobile Development](./mobile.md) -- Capacitor iOS/Android
-- [New Feature Checklist](./new-feature.md) -- Adding a feature end-to-end
+- architecture: [../reference/architecture/architecture.md](../reference/architecture/architecture.md)
+- API contracts: [../reference/architecture/api-contracts.md](../reference/architecture/api-contracts.md)
+- route governance: [../reference/architecture/route-contracts.md](../reference/architecture/route-contracts.md)
+- env and secrets: [../reference/operations/env-and-secrets.md](../reference/operations/env-and-secrets.md)
+- mobile/native workflow: [./mobile.md](./mobile.md)

@@ -26,6 +26,7 @@ DEVELOPER_API_ENABLED = (
 
 # MCP developer token (registered in FastAPI)
 MCP_DEVELOPER_TOKEN = str(os.environ.get("MCP_DEVELOPER_TOKEN", "")).strip()
+MCP_AGENT_ID = str(os.environ.get("MCP_AGENT_ID", "hushh-mcp")).strip() or "hushh-mcp"
 
 # How long to wait for user to approve consent (in seconds)
 CONSENT_TIMEOUT_SECONDS = int(os.environ.get("CONSENT_TIMEOUT_SECONDS", "120"))
@@ -40,7 +41,7 @@ SERVER_INFO = {
     "protocol": "HushhMCP",
     "transport": "stdio",
     "description": "Consent-first personal data access for AI agents; no data without explicit user approval. Scopes are dynamic (from world model/registry); use discover_user_domains to get per-user scope strings.",
-    "tools_count": 8,
+    "tools_count": 15,
     "tools": [
         {"name": "request_consent", "purpose": "Request user consent for a data scope"},
         {
@@ -56,18 +57,40 @@ SERVER_INFO = {
             "purpose": "List dynamic consent scope categories from backend registry",
         },
         {
+            "name": "get_scoped_data",
+            "purpose": "Recommended generic data-access tool for any approved dynamic scope",
+        },
+        {
+            "name": "get_financial_profile",
+            "purpose": "Compatibility wrapper for finance-root profile access",
+        },
+        {
             "name": "check_consent_status",
             "purpose": "Check status of a pending consent request",
         },
         {
             "name": "get_food_preferences",
-            "purpose": "Get food/dining preferences (requires consent token)",
+            "purpose": "Compatibility-only legacy wrapper for named food access",
         },
         {
             "name": "get_professional_profile",
-            "purpose": "Get professional profile (requires consent token)",
+            "purpose": "Compatibility-only legacy wrapper for named professional access",
         },
         {"name": "delegate_to_agent", "purpose": "Create TrustLink for agent-to-agent delegation"},
+        {"name": "list_ria_profiles", "purpose": "List discoverable marketplace RIA profiles"},
+        {"name": "get_ria_profile", "purpose": "Get a discoverable RIA profile by ID"},
+        {
+            "name": "list_marketplace_investors",
+            "purpose": "List discoverable opt-in investor marketplace profiles",
+        },
+        {
+            "name": "get_ria_verification_status",
+            "purpose": "Read verification status for an RIA user (requires VAULT_OWNER token)",
+        },
+        {
+            "name": "get_ria_client_access_summary",
+            "purpose": "Read relationship/access summary for an RIA user (requires VAULT_OWNER token)",
+        },
     ],
     "compliance": [
         "Consent First",

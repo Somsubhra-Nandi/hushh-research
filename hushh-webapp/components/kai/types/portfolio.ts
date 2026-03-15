@@ -6,6 +6,7 @@ export interface Holding {
   quantity: number;
   price: number;
   market_value: number;
+  weight_pct?: number;
   cost_basis?: number;
   unrealized_gain_loss?: number;
   unrealized_gain_loss_pct?: number;
@@ -28,8 +29,28 @@ export interface Holding {
   is_sec_common_equity_ticker?: boolean;
   is_margin?: boolean;
   is_short?: boolean;
+  position_side?: "long" | "short" | "liability";
+  is_short_position?: boolean;
+  is_liability_position?: boolean;
   confidence?: number;
   provenance?: Record<string, unknown>;
+  source_type?: string;
+  source_id?: string;
+  item_id?: string;
+  account_id?: string;
+  account_name?: string;
+  account_mask?: string;
+  account_subtype?: string;
+  persistent_account_id?: string;
+  institution_id?: string;
+  institution_name?: string;
+  last_synced_at?: string;
+  institution_price_as_of?: string;
+  is_editable?: boolean;
+  sync_status?: string;
+  security_id?: string;
+  proxy_security_id?: string;
+  industry?: string;
 }
 
 export interface AccountSummary {
@@ -135,6 +156,17 @@ export interface PortfolioData {
     quality_metrics?: Record<string, unknown>;
     debate_readiness?: Record<string, unknown>;
     optimize_signals?: Record<string, unknown>;
+  };
+  source_metadata?: {
+    source_type?: string;
+    source_label?: string;
+    is_editable?: boolean;
+    sync_status?: string;
+    last_synced_at?: string | null;
+    institution_names?: string[];
+    item_count?: number;
+    account_count?: number;
+    requires_explicit_source_selection_for_analysis?: boolean;
   };
   parse_fallback?: boolean;
 }

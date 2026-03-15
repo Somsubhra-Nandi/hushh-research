@@ -1,17 +1,22 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-const MIN_SCROLL_Y_FOR_HIDE = 6;
-const JITTER_DELTA_PX = 0.15;
-const CHROME_TRAVEL_DISTANCE_PX = 150;
+const MIN_SCROLL_Y_FOR_SHOW = 10;
+const MIN_SCROLL_Y_FOR_HIDE = 24;
+const JITTER_DELTA_PX = 1.5;
+const DIRECTION_DELTA_PX = 2;
 const PROGRESS_EPSILON = 0.001;
+const ANIMATION_TIME_CONSTANT_MS = 85;
 const APP_SCROLL_ROOT_SELECTOR = '[data-app-scroll-root="true"]';
 
 type Listener = () => void;
 
 interface VisibilityState {
   progress: number;
+  targetProgress: number;
   lastY: number;
   initialized: boolean;
+  rafId: number | null;
+  lastFrameTs: number | null;
 }
 
 const listeners = new Set<Listener>();
@@ -22,8 +27,11 @@ const handleScroll = () => onScroll(readActiveScrollY());
 
 const state: VisibilityState = {
   progress: 0,
+  targetProgress: 0,
   lastY: 0,
   initialized: false,
+  rafId: null,
+  lastFrameTs: null,
 };
 
 function clamp01(value: number): number {
@@ -35,6 +43,64 @@ function clamp01(value: number): number {
 
 function emit() {
   listeners.forEach((listener) => listener());
+}
+
+function cancelAnimation() {
+  if (typeof window === "undefined" || state.rafId === null) return;
+  window.cancelAnimationFrame(state.rafId);
+  state.rafId = null;
+  state.lastFrameTs = null;
+}
+
+function animateProgress(ts: number) {
+  if (state.lastFrameTs === null) {
+    state.lastFrameTs = ts;
+  }
+  const dt = Math.min(40, Math.max(1, ts - state.lastFrameTs));
+  state.lastFrameTs = ts;
+
+  const alpha = 1 - Math.exp(-dt / ANIMATION_TIME_CONSTANT_MS);
+  const next = state.progress + (state.targetProgress - state.progress) * alpha;
+
+  if (Math.abs(state.targetProgress - next) <= PROGRESS_EPSILON) {
+    const shouldEmit = Math.abs(state.progress - state.targetProgress) > PROGRESS_EPSILON;
+    state.progress = state.targetProgress;
+    cancelAnimation();
+    if (shouldEmit) {
+      emit();
+    }
+    return;
+  }
+
+  if (Math.abs(next - state.progress) > PROGRESS_EPSILON) {
+    state.progress = next;
+    emit();
+  }
+
+  state.rafId = window.requestAnimationFrame(animateProgress);
+}
+
+function setTargetProgress(nextTarget: number) {
+  const clampedTarget = clamp01(nextTarget);
+  if (Math.abs(clampedTarget - state.targetProgress) <= PROGRESS_EPSILON) {
+    return;
+  }
+  state.targetProgress = clampedTarget;
+
+  if (Math.abs(state.progress - state.targetProgress) <= PROGRESS_EPSILON) {
+    const shouldEmit = Math.abs(state.progress - state.targetProgress) > PROGRESS_EPSILON;
+    state.progress = state.targetProgress;
+    cancelAnimation();
+    if (shouldEmit) {
+      emit();
+    }
+    return;
+  }
+
+  if (typeof window !== "undefined" && state.rafId === null) {
+    state.lastFrameTs = null;
+    state.rafId = window.requestAnimationFrame(animateProgress);
+  }
 }
 
 function readWindowY(): number {
@@ -80,6 +146,7 @@ export function onScroll(y: number): void {
     state.initialized = true;
     state.lastY = nextY;
     state.progress = 0;
+    state.targetProgress = 0;
     return;
   }
 
@@ -90,20 +157,19 @@ export function onScroll(y: number): void {
     return;
   }
 
-  if (nextY <= MIN_SCROLL_Y_FOR_HIDE) {
-    if (state.progress > 0) {
-      state.progress = 0;
-      emit();
-    }
+  if (nextY <= MIN_SCROLL_Y_FOR_SHOW) {
+    setTargetProgress(0);
     return;
   }
 
-  const nextProgress = clamp01(state.progress + delta / CHROME_TRAVEL_DISTANCE_PX);
-  if (Math.abs(nextProgress - state.progress) <= PROGRESS_EPSILON) {
+  if (delta >= DIRECTION_DELTA_PX && nextY >= MIN_SCROLL_Y_FOR_HIDE) {
+    setTargetProgress(1);
     return;
   }
-  state.progress = nextProgress;
-  emit();
+
+  if (delta <= -DIRECTION_DELTA_PX) {
+    setTargetProgress(0);
+  }
 }
 
 function attachScrollListener() {
@@ -128,7 +194,9 @@ function detachScrollListener() {
 }
 
 export function resetKaiBottomChromeVisibility(): void {
+  cancelAnimation();
   state.progress = 0;
+  state.targetProgress = 0;
   state.initialized = false;
   state.lastY = readActiveScrollY();
   emit();

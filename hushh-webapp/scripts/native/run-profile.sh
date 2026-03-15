@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR/../../.." rev-parse --show-toplevel)"
+WEB_DIR="$REPO_ROOT/hushh-webapp"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  hushh-webapp/scripts/native/run-profile.sh --platform <ios|android> [options]
+
+Options:
+  --profile <runtime-profile>   Runtime profile (default: local-uatdb)
+  --fresh                       Clean web and platform build artifacts first
+  --sync-only                   Build + sync only, do not run the native app
+  --target <device-id>          Pass through a Capacitor run target
+  -h, --help                    Show this help
+USAGE
+}
+
+PROFILE="local-uatdb"
+PLATFORM=""
+FRESH=false
+SYNC_ONLY=false
+TARGET=""
+
+while [ "$#" -gt 0 ]; do
+  case "${1:-}" in
+    --profile)
+      PROFILE="${2:-}"
+      shift 2
+      ;;
+    --platform)
+      PLATFORM="${2:-}"
+      shift 2
+      ;;
+    --fresh)
+      FRESH=true
+      shift
+      ;;
+    --sync-only)
+      SYNC_ONLY=true
+      shift
+      ;;
+    --target)
+      TARGET="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$PLATFORM" != "ios" && "$PLATFORM" != "android" ]]; then
+  echo "--platform must be ios or android" >&2
+  exit 1
+fi
+
+bash "$REPO_ROOT/scripts/env/use_profile.sh" "$PROFILE"
+
+if [ "$PROFILE" = "local-uatdb" ]; then
+  echo "local-uatdb selected: make sure the backend is running locally (make backend PROFILE=local-uatdb)."
+fi
+
+cd "$WEB_DIR"
+
+if [ "$FRESH" = "true" ]; then
+  npm run cap:clean:web
+  npm run "cap:clean:${PLATFORM}"
+fi
+
+npm run cap:build:mobile
+npx cross-env CAPACITOR_PLATFORM="$PLATFORM" npx cap sync "$PLATFORM"
+
+if [ "$SYNC_ONLY" = "true" ]; then
+  exit 0
+fi
+
+run_args=("$PLATFORM")
+if [ -n "$TARGET" ]; then
+  run_args+=(--target "$TARGET")
+fi
+npx cap run "${run_args[@]}"

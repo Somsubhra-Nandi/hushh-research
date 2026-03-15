@@ -2,80 +2,67 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Hushh Stack",
-      "type": "node",
+      "name": "Runtime: UAT Stack",
+      "type": "node-terminal",
       "request": "launch",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "${workspaceFolder}/hushh-webapp",
-      "console": "integratedTerminal",
-      "serverReadyAction": {
-        "pattern": "started server on",
-        "action": "openExternally"
-      }
+      "command": "make uat",
+      "cwd": "${workspaceFolder}"
     },
     {
-      "name": "Debug: Next.js Server",
-      "type": "node",
+      "name": "Runtime: Production Stack",
+      "type": "node-terminal",
       "request": "launch",
-      "cwd": "${workspaceFolder}/hushh-webapp",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "console": "integratedTerminal",
-      "env": {
-        "NODE_OPTIONS": "--inspect"
-      }
+      "command": "make prod",
+      "cwd": "${workspaceFolder}"
     },
     {
-      "name": "Debug: Next.js Client",
-      "type": "chrome",
+      "name": "Runtime: Local Web",
+      "type": "node-terminal",
       "request": "launch",
-      "url": "http://localhost:3000",
-      "userDataDir": false
+      "command": "make local-web",
+      "cwd": "${workspaceFolder}"
     },
     {
-      "name": "Attach: Next.js Client",
-      "type": "chrome",
-      "request": "attach",
-      "port": 9222,
-      "urlFilter": "http://localhost:3000/*",
-      "webRoot": "${workspaceFolder}/hushh-webapp",
-      "sourceMaps": true,
-      "sourceMapPathOverrides": {
-        "webpack://_N_E/*": "${workspaceFolder}/hushh-webapp/*",
-        "webpack-internal:///./*": "${workspaceFolder}/hushh-webapp/*",
-        "webpack:///*": "${workspaceFolder}/hushh-webapp/*"
-      },
-      "timeout": 20000,
-      "preLaunchTask": "Launch Chrome for Debug"
+      "name": "Runtime: UAT Web",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "make uat-web",
+      "cwd": "${workspaceFolder}"
     },
     {
-      "name": "Debug: Python FastAPI",
-      "type": "debugpy",
+      "name": "Runtime: Production Web",
+      "type": "node-terminal",
       "request": "launch",
-      "module": "uvicorn",
-      "cwd": "${workspaceFolder}/consent-protocol",
-      "args": ["server:app", "--reload", "--port", "8000"],
-      "jinja": true,
-      "justMyCode": true
+      "command": "make prod-web",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Runtime: Local Backend",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "make local-backend",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Native: Android Local",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "cd hushh-webapp && npm run cap:android:run -- --profile local-uatdb --fresh",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Native: iOS Local",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "cd hushh-webapp && npm run cap:ios:run -- --profile local-uatdb --fresh",
+      "cwd": "${workspaceFolder}"
     }
   ],
   "compounds": [
     {
-      "name": "Debug: Full Stack (Auto Browser)",
-      "configurations": [
-        "Debug: Next.js Server",
-        "Debug: Python FastAPI",
-        "Attach: Next.js Client"
-      ]
-    },
-    {
-      "name": "Debug: Full Stack (Launch Browser - No Auth)",
-      "configurations": [
-        "Debug: Next.js Server",
-        "Debug: Python FastAPI",
-        "Debug: Next.js Client"
-      ]
+      "name": "Runtime: Local Dev",
+      "configurations": ["Runtime: Local Backend", "Runtime: Local Web"],
+      "stopAll": true
     }
   ]
 }

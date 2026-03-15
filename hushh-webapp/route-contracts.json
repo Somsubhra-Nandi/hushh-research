@@ -1,7 +1,6 @@
 {
   "version": 2,
   "allowlistedWebRouteFiles": [
-    "hushh-webapp/app/api/chat/route.ts",
     "hushh-webapp/app/api/app-config/review-mode/route.ts",
     "hushh-webapp/app/api/app-config/review-mode/session/route.ts",
     "hushh-webapp/app/api/consent/events/[userId]/route.ts",
@@ -29,10 +28,27 @@
           "/analyze/run/{run_id}/cancel",
           "/portfolio/import",
           "/portfolio/import/stream",
+          "/portfolio/import/run/start",
+          "/portfolio/import/run/active",
+          "/portfolio/import/run/{run_id}/stream",
+          "/portfolio/import/run/{run_id}/cancel",
           "/portfolio/summary/{user_id}",
+          "/plaid/status/{user_id}",
+          "/plaid/link-token",
+          "/plaid/link-token/update",
+          "/plaid/oauth/resume",
+          "/plaid/exchange-public-token",
+          "/plaid/refresh",
+          "/plaid/refresh/{run_id}",
+          "/plaid/refresh/{run_id}/cancel",
+          "/plaid/source",
+          "/plaid/webhook",
+          "/support/message",
+          "/dashboard/profile-picks/{user_id}",
           "/portfolio/analyze-losers",
           "/portfolio/analyze-losers/stream",
-          "/market/insights/{user_id}"
+          "/market/insights/{user_id}",
+          "/stock-preview/{user_id}"
         ]
       },
       "native": {
@@ -95,7 +111,9 @@
       "backend": {
         "file": "consent-protocol/api/routes/db_proxy.py",
         "routerPrefix": "/db",
-        "paths": ["/vault/status"]
+        "paths": [
+          "/vault/status"
+        ]
       }
     },
     {
@@ -104,13 +122,17 @@
       "backend": {
         "file": "consent-protocol/api/routes/consent.py",
         "routerPrefix": "/api/consent",
-        "paths": ["/vault-owner-token"]
+        "paths": [
+          "/vault-owner-token"
+        ]
       },
       "native": {
         "tsPluginFile": "hushh-webapp/lib/capacitor/index.ts",
         "iosPluginFile": "hushh-webapp/ios/App/App/Plugins/HushhConsentPlugin.swift",
         "androidPluginFile": "hushh-webapp/android/app/src/main/java/com/hushh/app/plugins/HushhConsent/HushhConsentPlugin.kt",
-        "requiredMethodNames": ["issueVaultOwnerToken"]
+        "requiredMethodNames": [
+          "issueVaultOwnerToken"
+        ]
       }
     },
     {
@@ -165,6 +187,23 @@
       }
     },
     {
+      "id": "consentCenterProxy",
+      "webRouteFiles": [
+        "hushh-webapp/app/api/consent/center/route.ts",
+        "hushh-webapp/app/api/consent/requests/route.ts",
+        "hushh-webapp/app/api/consent/requests/outgoing/route.ts"
+      ],
+      "backend": {
+        "file": "consent-protocol/api/routes/consent.py",
+        "routerPrefix": "/api/consent",
+        "paths": [
+          "/center",
+          "/requests",
+          "/requests/outgoing"
+        ]
+      }
+    },
+    {
       "id": "worldModelProxy",
       "webRouteFiles": [
         "hushh-webapp/app/api/world-model/[...path]/route.ts",
@@ -190,9 +229,11 @@
         "androidPluginFile": "hushh-webapp/android/app/src/main/java/com/hushh/app/plugins/WorldModel/WorldModelPlugin.kt",
         "requiredMethodNames": [
           "getMetadata",
-          "getIndex",
-          "getAttributes",
-          "getUserDomains"
+          "getAvailableScopes",
+          "getEncryptedData",
+          "storeDomainData",
+          "getDomainData",
+          "clearDomain"
         ]
       }
     },
@@ -205,16 +246,24 @@
       "backend": {
         "file": "consent-protocol/api/routes/investors.py",
         "routerPrefix": "/api/investors",
-        "paths": ["/search", "/{investor_id}"]
+        "paths": [
+          "/search",
+          "/{investor_id}"
+        ]
       }
     },
     {
       "id": "tokenValidationAndAgentChat",
-      "webRouteFiles": ["hushh-webapp/app/api/vault/store-preferences/route.ts"],
+      "webRouteFiles": [
+        "hushh-webapp/app/api/vault/store-preferences/route.ts"
+      ],
       "backend": {
         "file": "consent-protocol/api/routes/agents.py",
         "routerPrefix": "/api",
-        "paths": ["/validate-token", "/agents/kai/chat"]
+        "paths": [
+          "/validate-token",
+          "/agents/kai/chat"
+        ]
       }
     },
     {
@@ -227,7 +276,11 @@
       "backend": {
         "file": "consent-protocol/api/routes/tickers.py",
         "routerPrefix": "/api/tickers",
-        "paths": ["/all", "/search", "/sync-holdings/{user_id}"]
+        "paths": [
+          "/all",
+          "/search",
+          "/sync-holdings/{user_id}"
+        ]
       }
     },
     {
@@ -239,13 +292,19 @@
       "backend": {
         "file": "consent-protocol/api/routes/notifications.py",
         "routerPrefix": "/api/notifications",
-        "paths": ["/register", "/unregister"]
+        "paths": [
+          "/register",
+          "/unregister"
+        ]
       },
       "native": {
         "tsPluginFile": "hushh-webapp/lib/capacitor/index.ts",
         "iosPluginFile": "hushh-webapp/ios/App/App/Plugins/HushhNotificationsPlugin.swift",
         "androidPluginFile": "hushh-webapp/android/app/src/main/java/com/hushh/app/plugins/HushhNotifications/HushhNotificationsPlugin.kt",
-        "requiredMethodNames": ["registerPushToken", "unregisterPushToken"]
+        "requiredMethodNames": [
+          "registerPushToken",
+          "unregisterPushToken"
+        ]
       }
     },
     {
@@ -254,13 +313,76 @@
       "backend": {
         "file": "consent-protocol/api/routes/account.py",
         "routerPrefix": "/api/account",
-        "paths": ["/delete"]
+        "paths": [
+          "/delete"
+        ]
       },
       "native": {
         "tsPluginFile": "hushh-webapp/lib/capacitor/account.ts",
         "iosPluginFile": "hushh-webapp/ios/App/App/Plugins/HushhAccountPlugin.swift",
         "androidPluginFile": "hushh-webapp/android/app/src/main/java/com/hushh/app/plugins/HushhAccount/HushhAccountPlugin.kt",
-        "requiredMethodNames": ["deleteAccount"]
+        "requiredMethodNames": [
+          "deleteAccount"
+        ]
+      }
+    },
+    {
+      "id": "iamProxy",
+      "webRouteFile": "hushh-webapp/app/api/iam/[...path]/route.ts",
+      "backend": {
+        "file": "consent-protocol/api/routes/iam.py",
+        "routerPrefix": "/api/iam",
+        "paths": [
+          "/persona",
+          "/persona/switch",
+          "/marketplace/opt-in"
+        ]
+      }
+    },
+    {
+      "id": "riaProxy",
+      "webRouteFile": "hushh-webapp/app/api/ria/[...path]/route.ts",
+      "backend": {
+        "file": "consent-protocol/api/routes/ria.py",
+        "routerPrefix": "/api/ria",
+        "paths": [
+          "/onboarding/submit",
+          "/onboarding/status",
+          "/firms",
+          "/clients",
+          "/invites",
+          "/marketplace/discoverability",
+          "/requests",
+          "/workspace/{investor_user_id}"
+        ]
+      }
+    },
+    {
+      "id": "marketplaceProxy",
+      "webRouteFile": "hushh-webapp/app/api/marketplace/[...path]/route.ts",
+      "backend": {
+        "file": "consent-protocol/api/routes/marketplace.py",
+        "routerPrefix": "/api/marketplace",
+        "paths": [
+          "/rias",
+          "/investors",
+          "/ria/{ria_id}"
+        ]
+      }
+    },
+    {
+      "id": "inviteProxy",
+      "webRouteFiles": [
+        "hushh-webapp/app/api/invites/[token]/route.ts",
+        "hushh-webapp/app/api/invites/[token]/accept/route.ts"
+      ],
+      "backend": {
+        "file": "consent-protocol/api/routes/invites.py",
+        "routerPrefix": "/api/invites",
+        "paths": [
+          "/{invite_token}",
+          "/{invite_token}/accept"
+        ]
       }
     },
     {
@@ -284,7 +406,19 @@
     {
       "id": "loginPage",
       "pageFile": "hushh-webapp/app/login/page.tsx",
-      "componentFiles": ["hushh-webapp/components/onboarding/AuthStep.tsx"]
+      "componentFiles": [
+        "hushh-webapp/components/onboarding/AuthStep.tsx"
+      ]
+    },
+    {
+      "id": "profileAppearanceLabPage",
+      "pageFile": "hushh-webapp/app/labs/profile-appearance/page.tsx",
+      "componentFiles": [
+        "hushh-webapp/components/labs/profile-appearance-liquid-glass-lab.tsx"
+      ],
+      "serviceFiles": [
+        "hushh-webapp/lib/app-env.ts"
+      ]
     },
     {
       "id": "kaiHomePage",
@@ -296,23 +430,40 @@
         "hushh-webapp/lib/services/api-service.ts",
         "hushh-webapp/lib/services/kai-token-guard.ts"
       ],
-      "apiContractIds": ["kaiProxy", "vaultOwnerToken"],
-      "nativeContractIds": ["kaiProxy", "vaultOwnerToken"]
+      "apiContractIds": [
+        "kaiProxy",
+        "vaultOwnerToken"
+      ],
+      "nativeContractIds": [
+        "kaiProxy",
+        "vaultOwnerToken"
+      ]
     },
     {
       "id": "kaiOnboardingPage",
       "pageFile": "hushh-webapp/app/kai/onboarding/page.tsx",
       "componentFiles": [
         "hushh-webapp/components/kai/onboarding/KaiPreferencesWizard.tsx",
-        "hushh-webapp/components/kai/onboarding/KaiPersonaScreen.tsx"
+        "hushh-webapp/components/kai/onboarding/KaiPersonaScreen.tsx",
+        "hushh-webapp/components/kai/onboarding/kai-invite-handshake.tsx"
       ],
       "serviceFiles": [
         "hushh-webapp/lib/services/kai-profile-service.ts",
         "hushh-webapp/lib/services/pre-vault-onboarding-service.ts",
-        "hushh-webapp/lib/services/vault-service.ts"
+        "hushh-webapp/lib/services/vault-service.ts",
+        "hushh-webapp/lib/services/ria-service.ts"
       ],
-      "apiContractIds": ["vaultWebProxy", "worldModelProxy", "vaultOwnerToken"],
-      "nativeContractIds": ["vaultWebProxy", "worldModelProxy", "vaultOwnerToken"]
+      "apiContractIds": [
+        "vaultWebProxy",
+        "worldModelProxy",
+        "vaultOwnerToken",
+        "inviteProxy"
+      ],
+      "nativeContractIds": [
+        "vaultWebProxy",
+        "worldModelProxy",
+        "vaultOwnerToken"
+      ]
     },
     {
       "id": "kaiImportPage",
@@ -333,11 +484,16 @@
         "vaultOwnerToken",
         "tickersPublic"
       ],
-      "nativeContractIds": ["kaiProxy", "worldModelProxy", "vaultWebProxy", "vaultOwnerToken"]
+      "nativeContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultWebProxy",
+        "vaultOwnerToken"
+      ]
     },
     {
       "id": "kaiDashboardPage",
-      "pageFile": "hushh-webapp/app/kai/dashboard/page.tsx",
+      "pageFile": "hushh-webapp/app/kai/portfolio/page.tsx",
       "componentFiles": [
         "hushh-webapp/components/kai/kai-flow.tsx",
         "hushh-webapp/components/kai/views/dashboard-master-view.tsx",
@@ -355,7 +511,43 @@
         "vaultOwnerToken",
         "tickersPublic"
       ],
-      "nativeContractIds": ["kaiProxy", "worldModelProxy", "vaultWebProxy", "vaultOwnerToken"]
+      "nativeContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultWebProxy",
+        "vaultOwnerToken"
+      ]
+    },
+    {
+      "id": "kaiInvestmentsPage",
+      "pageFile": "hushh-webapp/app/kai/investments/page.tsx",
+      "componentFiles": [
+        "hushh-webapp/components/kai/views/investments-master-view.tsx",
+        "hushh-webapp/components/kai/plaid/plaid-brokerage-sections.tsx",
+        "hushh-webapp/components/kai/portfolio-source-switcher.tsx"
+      ],
+      "serviceFiles": [
+        "hushh-webapp/lib/kai/brokerage/use-portfolio-sources.ts",
+        "hushh-webapp/lib/kai/brokerage/plaid-portfolio-service.ts",
+        "hushh-webapp/lib/services/world-model-service.ts"
+      ],
+      "apiContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultWebProxy",
+        "vaultOwnerToken",
+        "tickersPublic"
+      ],
+      "nativeContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultWebProxy",
+        "vaultOwnerToken"
+      ]
+    },
+    {
+      "id": "kaiDashboardLegacyRedirectPage",
+      "pageFile": "hushh-webapp/app/kai/dashboard/page.tsx"
     },
     {
       "id": "kaiAnalysisPage",
@@ -369,8 +561,17 @@
         "hushh-webapp/lib/services/api-service.ts",
         "hushh-webapp/lib/kai/market-snapshot.ts"
       ],
-      "apiContractIds": ["kaiProxy", "worldModelProxy", "vaultOwnerToken", "tickersPublic"],
-      "nativeContractIds": ["kaiProxy", "worldModelProxy", "vaultOwnerToken"]
+      "apiContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultOwnerToken",
+        "tickersPublic"
+      ],
+      "nativeContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultOwnerToken"
+      ]
     },
     {
       "id": "kaiOptimizePage",
@@ -380,18 +581,49 @@
         "hushh-webapp/lib/services/kai-profile-service.ts",
         "hushh-webapp/lib/services/kai-token-guard.ts"
       ],
-      "apiContractIds": ["kaiProxy", "worldModelProxy", "vaultOwnerToken"],
-      "nativeContractIds": ["kaiProxy", "worldModelProxy", "vaultOwnerToken"]
+      "apiContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultOwnerToken"
+      ],
+      "nativeContractIds": [
+        "kaiProxy",
+        "worldModelProxy",
+        "vaultOwnerToken"
+      ]
+    },
+    {
+      "id": "kaiPlaidOauthReturnPage",
+      "pageFile": "hushh-webapp/app/kai/plaid/oauth/return/page.tsx",
+      "componentFiles": [
+        "hushh-webapp/components/app-ui/hushh-loader.tsx"
+      ],
+      "serviceFiles": [
+        "hushh-webapp/lib/kai/brokerage/plaid-oauth-session.ts",
+        "hushh-webapp/lib/kai/brokerage/plaid-link-loader.ts",
+        "hushh-webapp/lib/kai/brokerage/plaid-portfolio-service.ts",
+        "hushh-webapp/lib/services/vault-service.ts"
+      ]
     },
     {
       "id": "consentsPage",
       "pageFile": "hushh-webapp/app/consents/page.tsx",
       "serviceFiles": [
         "hushh-webapp/lib/services/api-service.ts",
-        "hushh-webapp/lib/consent/index.ts"
+        "hushh-webapp/lib/consent/index.ts",
+        "hushh-webapp/lib/services/consent-center-service.ts",
+        "hushh-webapp/lib/services/ria-service.ts"
       ],
-      "apiContractIds": ["consentPendingMgmt", "consentSessionMgmt", "vaultOwnerToken"],
-      "nativeContractIds": ["consentPendingMgmt", "vaultOwnerToken"]
+      "apiContractIds": [
+        "consentCenterProxy",
+        "riaProxy",
+        "consentPendingMgmt",
+        "vaultOwnerToken"
+      ],
+      "nativeContractIds": [
+        "consentPendingMgmt",
+        "vaultOwnerToken"
+      ]
     },
     {
       "id": "profilePage",
@@ -399,15 +631,108 @@
       "serviceFiles": [
         "hushh-webapp/lib/services/world-model-service.ts",
         "hushh-webapp/lib/services/account-service.ts",
-        "hushh-webapp/lib/services/vault-service.ts"
+        "hushh-webapp/lib/services/vault-service.ts",
+        "hushh-webapp/lib/services/ria-service.ts"
       ],
       "apiContractIds": [
         "worldModelProxy",
         "vaultWebProxy",
         "vaultOwnerToken",
-        "accountDelete"
+        "accountDelete",
+        "iamProxy"
       ],
-      "nativeContractIds": ["worldModelProxy", "vaultWebProxy", "vaultOwnerToken", "accountDelete"]
+      "nativeContractIds": [
+        "worldModelProxy",
+        "vaultWebProxy",
+        "vaultOwnerToken",
+        "accountDelete"
+      ]
+    },
+    {
+      "id": "marketplacePage",
+      "pageFile": "hushh-webapp/app/marketplace/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "marketplaceProxy",
+        "riaProxy",
+        "iamProxy"
+      ]
+    },
+    {
+      "id": "marketplaceRiaProfilePage",
+      "pageFile": "hushh-webapp/app/marketplace/ria/[riaId]/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "marketplaceProxy"
+      ]
+    },
+    {
+      "id": "riaHomePage",
+      "pageFile": "hushh-webapp/app/ria/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaOnboardingPage",
+      "pageFile": "hushh-webapp/app/ria/onboarding/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaClientsPage",
+      "pageFile": "hushh-webapp/app/ria/clients/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaRequestsPage",
+      "pageFile": "hushh-webapp/app/ria/requests/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaPicksPage",
+      "pageFile": "hushh-webapp/app/ria/picks/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaWorkspacePage",
+      "pageFile": "hushh-webapp/app/ria/workspace/[clientId]/page.tsx",
+      "serviceFiles": [
+        "hushh-webapp/lib/services/ria-service.ts"
+      ],
+      "apiContractIds": [
+        "riaProxy"
+      ]
+    },
+    {
+      "id": "riaSettingsPage",
+      "pageFile": "hushh-webapp/app/ria/settings/page.tsx"
     },
     {
       "id": "logoutPage",
@@ -418,32 +743,8 @@
       ]
     },
     {
-      "id": "chatRedirectPage",
-      "pageFile": "hushh-webapp/app/chat/page.tsx"
-    },
-    {
-      "id": "agentNavRedirectPage",
-      "pageFile": "hushh-webapp/app/agent-nav/page.tsx"
-    },
-    {
-      "id": "apiDocsPage",
-      "pageFile": "hushh-webapp/app/api-docs/page.tsx"
-    },
-    {
       "id": "legacyAnalysisRedirectPage",
       "pageFile": "hushh-webapp/app/kai/dashboard/analysis/page.tsx"
-    },
-    {
-      "id": "legacyLosersRedirectPage",
-      "pageFile": "hushh-webapp/app/kai/dashboard/losers-analysis/page.tsx"
-    },
-    {
-      "id": "legacyManageRedirectPage",
-      "pageFile": "hushh-webapp/app/kai/dashboard/manage/page.tsx"
-    },
-    {
-      "id": "legacyPortfolioHealthRedirectPage",
-      "pageFile": "hushh-webapp/app/kai/dashboard/portfolio-health/page.tsx"
     }
   ]
 }

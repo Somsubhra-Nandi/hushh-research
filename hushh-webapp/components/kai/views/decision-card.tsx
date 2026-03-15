@@ -19,7 +19,7 @@ import {
   Link2,
   Target,
   Crown,
-  Sparkles, // Use Sparkles for QUEEN if Crown is for KING
+  Star,
   Trophy,
   Medal,
 } from "lucide-react";
@@ -690,7 +690,7 @@ function RenaissanceBadge({ tier, score }: { tier: "ACE" | "KING" | "QUEEN" | "J
     },
     QUEEN: {
       color: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800",
-      icon: <Icon icon={Sparkles} size="xs" className="fill-current" />,
+      icon: <Icon icon={Star} size="xs" className="fill-current" />,
       label: "Renaissance Queen",
     },
     JACK: {
@@ -961,7 +961,7 @@ export function DecisionCard({ result }: { result: DecisionResult }) {
           <div className="p-5 bg-primary/5 border border-primary/20 rounded-2xl space-y-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5">
-                <Icon icon={Sparkles} size="xs" />
+                <Icon icon={Target} size="xs" />
                 Chief Strategist Synthesis
               </p>
               {llmSynthesis?.fallback && (

@@ -10,10 +10,10 @@ export function KaiMockSonnerNotice() {
   useEffect(() => {
     toast.info("Kai home is an exploratory mock surface.", {
       id: "kai-mock-home-notice",
-      description: "Use Dashboard for live, data-bound insights and actions.",
+      description: "Use Portfolio for live, data-bound insights and actions.",
       action: {
-        label: "Go to Dashboard",
-        onClick: () => router.push("/kai/dashboard"),
+        label: "Go to Portfolio",
+        onClick: () => router.push("/kai/portfolio"),
       },
       duration: 7000,
     });
@@ -21,4 +21,3 @@ export function KaiMockSonnerNotice() {
 
   return null;
 }
-
