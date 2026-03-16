@@ -564,7 +564,7 @@ export default function KaiAnalysisPage() {
 
   if (!vaultKey) {
     return (
-      <div className="mx-auto w-full max-w-xl px-4 pt-[var(--kai-view-top-gap,16px)]">
+      <div className="app-page-shell mx-auto w-full max-w-xl px-4">
         <div className="rounded-2xl border border-border/60 bg-background/80 p-5 text-center">
           <h2 className="text-lg font-semibold">Connect your portfolio first</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -588,9 +588,12 @@ export default function KaiAnalysisPage() {
   }
 
   return (
-    <div className="overflow-x-hidden pt-[var(--kai-view-top-gap,16px)]">
+    <div className="overflow-x-hidden">
       {showWorkspace ? (
-        <div ref={workspaceTopRef} className="mx-auto w-full max-w-6xl space-y-4 px-4 sm:px-6">
+        <div
+          ref={workspaceTopRef}
+          className="app-page-shell mx-auto w-full max-w-6xl space-y-4 px-4 sm:px-6"
+        >
           <div className="space-y-3">
             <PageHeader
               eyebrow="Kai Analysis"

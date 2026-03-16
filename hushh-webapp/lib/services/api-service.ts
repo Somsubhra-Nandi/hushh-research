@@ -1281,6 +1281,7 @@ export class ApiService {
   /**
    * Check if user has a vault
    * Route: GET /api/vault/check?userId=xxx
+   * Web callers resolve through bootstrap-state so placeholder rows stay current.
    */
   static async checkVault(userId: string): Promise<Response> {
     return apiFetch(`/api/vault/check?userId=${encodeURIComponent(userId)}`);

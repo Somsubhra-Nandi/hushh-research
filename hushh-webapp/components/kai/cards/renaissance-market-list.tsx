@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, TrendingDown, TrendingUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,21 @@ import type {
 import { cn } from "@/lib/utils";
 
 const ALL_FILTER = "all";
-const PICKS_PAGE_SIZE = 18;
+const DEFAULT_PICKS_PAGE_SIZE = 10;
+const PICKS_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+
+function parsePositiveInteger(value: string | null, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
+}
+
+function parsePageSize(value: string | null): number {
+  const parsed = parsePositiveInteger(value, DEFAULT_PICKS_PAGE_SIZE);
+  return PICKS_PAGE_SIZE_OPTIONS.includes(parsed as (typeof PICKS_PAGE_SIZE_OPTIONS)[number])
+    ? parsed
+    : DEFAULT_PICKS_PAGE_SIZE;
+}
 
 function formatCurrency(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "Price unavailable";
@@ -133,11 +148,37 @@ export function RiaPicksList({
   activeSourceId?: string;
   onSourceChange?: (sourceId: string) => void;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const hasHydratedFiltersRef = useRef(false);
   const [selectedRow, setSelectedRow] = useState<KaiHomeRenaissanceItem | null>(null);
   const [query, setQuery] = useState("");
   const [tierFilter, setTierFilter] = useState<string>(ALL_FILTER);
   const [sectorFilter, setSectorFilter] = useState<string>(ALL_FILTER);
-  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => parsePageSize(searchParams.get("picksPageSize")));
+  const [page, setPage] = useState(() =>
+    parsePositiveInteger(searchParams.get("picksPage"), 1)
+  );
+
+  const syncPaginationParams = useMemo(
+    () => (nextPage: number, nextPageSize: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextPageSize === DEFAULT_PICKS_PAGE_SIZE) {
+        params.delete("picksPageSize");
+      } else {
+        params.set("picksPageSize", String(nextPageSize));
+      }
+      if (nextPage <= 1) {
+        params.delete("picksPage");
+      } else {
+        params.set("picksPage", String(nextPage));
+      }
+      const nextQuery = params.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const availableSources = useMemo<KaiHomePickSource[]>(
     () =>
@@ -183,19 +224,38 @@ export function RiaPicksList({
   }, [query, rows, sectorFilter, tierFilter]);
 
   useEffect(() => {
-    setPage(1);
-  }, [activeSourceId, query, rows.length, sectorFilter, tierFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PICKS_PAGE_SIZE));
+    if (!hasHydratedFiltersRef.current) {
+      hasHydratedFiltersRef.current = true;
+      return;
+    }
+    const nextPage = 1;
+    setPage(nextPage);
+    syncPaginationParams(nextPage, pageSize);
+  }, [activeSourceId, pageSize, query, rows.length, sectorFilter, syncPaginationParams, tierFilter]);
 
   useEffect(() => {
-    setPage((currentPage) => Math.min(currentPage, totalPages));
-  }, [totalPages]);
+    const nextPageSize = parsePageSize(searchParams.get("picksPageSize"));
+    const nextPage = parsePositiveInteger(searchParams.get("picksPage"), 1);
+    setPageSize((current) => (current === nextPageSize ? current : nextPageSize));
+    setPage((current) => (current === nextPage ? current : nextPage));
+  }, [searchParams]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+
+  useEffect(() => {
+    setPage((currentPage) => {
+      const nextPage = Math.min(currentPage, totalPages);
+      if (nextPage !== currentPage) {
+        syncPaginationParams(nextPage, pageSize);
+      }
+      return nextPage;
+    });
+  }, [pageSize, syncPaginationParams, totalPages]);
 
   const currentPageRows = useMemo(() => {
-    const startIndex = (page - 1) * PICKS_PAGE_SIZE;
-    return filteredRows.slice(startIndex, startIndex + PICKS_PAGE_SIZE);
-  }, [filteredRows, page]);
+    const startIndex = (page - 1) * pageSize;
+    return filteredRows.slice(startIndex, startIndex + pageSize);
+  }, [filteredRows, page, pageSize]);
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 5) {
@@ -205,8 +265,8 @@ export function RiaPicksList({
     return Array.from({ length: 5 }, (_, index) => start + index);
   }, [page, totalPages]);
 
-  const visibleStart = filteredRows.length === 0 ? 0 : (page - 1) * PICKS_PAGE_SIZE + 1;
-  const visibleEnd = Math.min(page * PICKS_PAGE_SIZE, filteredRows.length);
+  const visibleStart = filteredRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const visibleEnd = Math.min(page * pageSize, filteredRows.length);
 
   if (!rows.length) {
     return (
@@ -292,13 +352,33 @@ export function RiaPicksList({
         </div>
       </SettingsGroup>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-0.5">
         <p className="text-xs leading-5 text-muted-foreground">
           {filteredRows.length > 0
             ? `Showing ${visibleStart}-${visibleEnd} of ${filteredRows.length} matching names · ${rows.length} total investable names.`
             : `Showing 0 matching names · ${rows.length} total investable names.`}
         </p>
         <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => {
+              const nextPageSize = parsePageSize(value);
+              setPageSize(nextPageSize);
+              setPage(1);
+              syncPaginationParams(1, nextPageSize);
+            }}
+          >
+            <SelectTrigger className="h-8 min-w-[112px] rounded-full border-border/70 bg-background/78 text-xs">
+              <SelectValue placeholder="10 per page" />
+            </SelectTrigger>
+            <SelectContent>
+              {PICKS_PAGE_SIZE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={String(option)}>
+                  {option} per page
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {tierFilter !== ALL_FILTER ? (
             <Badge variant="outline" className="border-border/70 bg-background/80 text-muted-foreground">
               Tier {tierFilter}
@@ -391,7 +471,7 @@ export function RiaPicksList({
         )}
       </SettingsGroup>
 
-      {filteredRows.length > PICKS_PAGE_SIZE ? (
+      {filteredRows.length > pageSize ? (
         <div className="flex flex-col gap-3 rounded-[24px] border border-border/80 bg-background/72 px-3 py-3 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <p className="text-xs leading-5 text-muted-foreground">
             Page {page} of {totalPages}
@@ -401,7 +481,11 @@ export function RiaPicksList({
               variant="none"
               effect="fade"
               size="sm"
-              onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+              onClick={() => {
+                const nextPage = Math.max(1, page - 1);
+                setPage(nextPage);
+                syncPaginationParams(nextPage, pageSize);
+              }}
               disabled={page === 1}
             >
               Previous
@@ -412,7 +496,10 @@ export function RiaPicksList({
                 variant={pageNumber === page ? "blue-gradient" : "none"}
                 effect={pageNumber === page ? "fill" : "fade"}
                 size="sm"
-                onClick={() => setPage(pageNumber)}
+                onClick={() => {
+                  setPage(pageNumber);
+                  syncPaginationParams(pageNumber, pageSize);
+                }}
               >
                 {pageNumber}
               </Button>
@@ -421,7 +508,11 @@ export function RiaPicksList({
               variant="none"
               effect="fade"
               size="sm"
-              onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
+              onClick={() => {
+                const nextPage = Math.min(totalPages, page + 1);
+                setPage(nextPage);
+                syncPaginationParams(nextPage, pageSize);
+              }}
               disabled={page === totalPages}
             >
               Next

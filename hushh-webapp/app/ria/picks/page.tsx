@@ -182,7 +182,7 @@ export default function RiaPicksPage() {
             </a>
           </Button>
           <Button asChild variant="none" effect="fade">
-            <Link href={ROUTES.RIA_REQUESTS}>Open request center</Link>
+            <Link href={ROUTES.CONSENTS}>Open consent center</Link>
           </Button>
         </>
       }

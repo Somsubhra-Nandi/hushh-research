@@ -26,6 +26,7 @@ public class HushhAccountPlugin: CAPPlugin, CAPBridgedPlugin {
              call.reject("Missing required parameter: authToken")
              return
         }
+        let target = call.getString("target") ?? "both"
         
         let backendUrl = HushhProxyClient.resolveBackendUrl(
             call: call,
@@ -41,8 +42,12 @@ public class HushhAccountPlugin: CAPPlugin, CAPBridgedPlugin {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "target": target
+        ])
         
-        print("🚨 [HushhAccountPlugin] Requesting account deletion...")
+        print("🚨 [HushhAccountPlugin] Requesting account deletion for target: \(target)")
         
         let task = urlSession.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -52,7 +57,12 @@ public class HushhAccountPlugin: CAPPlugin, CAPBridgedPlugin {
             
             if let httpResponse = response as? HTTPURLResponse {
                 if (200...299).contains(httpResponse.statusCode) {
-                    call.resolve(["success": true])
+                    if let data = data,
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        call.resolve(json)
+                    } else {
+                        call.resolve(["success": true])
+                    }
                 } else {
                     // Try to parse error message
                     if let data = data, 

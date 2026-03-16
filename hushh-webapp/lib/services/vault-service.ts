@@ -670,7 +670,7 @@ export class VaultService {
    * Check if a vault exists for the given user
    * Cached per session to avoid repeated API calls across page navigations.
    * iOS: Uses HushhVault native plugin
-   * Web: Calls /api/vault/check
+   * Web: Calls /api/vault/check (backed by bootstrap-state on the server)
    */
   static async checkVault(userId: string): Promise<boolean> {
     const cache = CacheService.getInstance();
@@ -710,7 +710,10 @@ export class VaultService {
         headers["Authorization"] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
       if (!response.ok) {
         console.error("❌ [VaultService] checkVault failed:", response.status);
         throw new Error("Vault check failed");

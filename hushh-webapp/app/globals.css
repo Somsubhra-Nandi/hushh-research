@@ -133,6 +133,10 @@ html body[data-scroll-locked] {
   --top-shell-h: var(--top-shell-reserved-height);
   --top-glass-h: var(--top-shell-visual-height);
   --top-content-pad: var(--top-shell-reserved-height);
+  --page-top-breathing-space: 24px;
+  --page-top-start: calc(
+    var(--top-shell-reserved-height) + var(--page-top-breathing-space)
+  );
   --bottom-chrome-stack-height: calc(var(--app-bottom-inset) + var(--kai-command-fixed-ui));
   --bottom-chrome-fade-overscan: 24px;
   --bottom-chrome-full-height: calc(
@@ -285,6 +289,10 @@ html body[data-scroll-locked] {
   --md-ripple-pressed-color: var(--morphy-primary-start);
   --md-ripple-hover-opacity: 0.08;
   --md-ripple-pressed-opacity: 0.12;
+}
+
+.app-page-shell {
+  padding-top: var(--page-top-start);
 }
 
 .native-ios {

@@ -4,6 +4,18 @@ import { HushhAccount } from "@/lib/capacitor";
 import { apiJson } from "./api-client";
 import { trackEvent } from "@/lib/observability/client";
 
+export type AccountDeletionTarget = "investor" | "ria" | "both";
+
+export interface AccountDeletionResult {
+  success: boolean;
+  message?: string;
+  requested_target?: AccountDeletionTarget;
+  deleted_target?: AccountDeletionTarget;
+  account_deleted?: boolean;
+  remaining_personas?: Array<"investor" | "ria">;
+  details?: Record<string, unknown>;
+}
+
 export class AccountServiceImpl {
   /**
    * Delete the user's account and all data.
@@ -14,7 +26,10 @@ export class AccountServiceImpl {
    * 
    * @param vaultOwnerToken - The VAULT_OWNER consent token (REQUIRED)
    */
-  async deleteAccount(vaultOwnerToken: string): Promise<{ success: boolean; message?: string }> {
+  async deleteAccount(
+    vaultOwnerToken: string,
+    target: AccountDeletionTarget = "both"
+  ): Promise<AccountDeletionResult> {
     if (!vaultOwnerToken) {
       throw new Error("VAULT_OWNER token required - vault must be unlocked");
     }
@@ -23,13 +38,19 @@ export class AccountServiceImpl {
       result: "success",
     });
 
-    console.log("[AccountService] Deleting account with token:", vaultOwnerToken.substring(0, 30) + "...");
+    console.log(
+      "[AccountService] Deleting account with target:",
+      target,
+      "token:",
+      vaultOwnerToken.substring(0, 30) + "..."
+    );
 
     try {
       if (Capacitor.isNativePlatform()) {
         // Native: Call Capacitor plugin directly to Python backend
         const result = await HushhAccount.deleteAccount({
           authToken: vaultOwnerToken,
+          target,
         });
         trackEvent("account_delete_completed", {
           result: result.success ? "success" : "error",
@@ -38,13 +59,14 @@ export class AccountServiceImpl {
         return result;
       } else {
         // Web: Call Next.js proxy
-        const result = await apiJson<{ success: boolean; message?: string }>(
+        const result = await apiJson<AccountDeletionResult>(
           "/api/account/delete",
           {
             method: "DELETE",
             headers: {
               Authorization: `Bearer ${vaultOwnerToken}`,
             },
+            body: JSON.stringify({ target }),
           }
         );
         trackEvent("account_delete_completed", {

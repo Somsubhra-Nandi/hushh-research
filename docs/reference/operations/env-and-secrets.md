@@ -91,6 +91,12 @@ The script reports:
 3. `NEXT_PUBLIC_FIREBASE_*` and `FIREBASE_SERVICE_ACCOUNT_JSON` must stay aligned with the Firebase project used for login and ID-token verification.
 4. `NEXT_PUBLIC_AUTH_FIREBASE_*` and `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` are compatibility overrides only. If they are set to a different project, the client and backend must still resolve to the same effective Firebase identity plane for auth + FCM.
 5. A split where auth uses one Firebase project and web messaging/default admin uses another is considered config drift and will break web FCM registration.
+6. UAT and production share the live Plaid credential set; only local development should use sandbox Plaid secrets and `PLAID_ENV=sandbox`.
+7. Web consent delivery uses different defaults by environment:
+   - local development: `CONSENT_SSE_ENABLED=true`
+   - UAT: `CONSENT_SSE_ENABLED=true`
+   - production: `CONSENT_SSE_ENABLED=false` unless there is an explicit incident-response or rollout reason to enable it
+8. `RIA_DEV_BYPASS_ENABLED` is the only RIA dev-bypass switch. When `true`, it enables the Dev Bypass flow for any non-production backend environment. It must remain `false` in production.
 
 ### Branch divergence note (current)
 
@@ -197,7 +203,7 @@ Used by:
 | `APP_REVIEW_MODE` | No | Yes (prod) | Local: `.env`; Prod: Secret Manager | Backend app-review toggle |
 | `HUSHH_APP_REVIEW_MODE` | No | No | Optional alternative key | Alias toggle for app review |
 | `REVIEWER_UID` | If app review | Yes (prod) | Local: `.env`; Prod: Secret Manager | Reviewer Firebase UID for custom token minting |
-| `CONSENT_SSE_ENABLED` | No | No | Local: `.env`; Prod: Cloud Run env | Keep false in production (FCM-first) |
+| `CONSENT_SSE_ENABLED` | No | No | Local: `.env`; UAT/Prod: Cloud Run env | Local + UAT should be true for web fallback validation; production stays false by default (FCM-first) |
 | `SYNC_REMOTE_ENABLED` | No | No | Local: `.env`; Prod: Cloud Run env | Legacy deploy flag; keep false |
 | `DEVELOPER_API_ENABLED` | No | No | Local: `.env`; Prod: Cloud Run env | Keep false in production |
 | `OBS_DATA_STALE_RATIO_THRESHOLD` | No | No | Local: `.env`; Scheduler/Job env | Threshold for Supabase data-health stale-ratio anomaly |

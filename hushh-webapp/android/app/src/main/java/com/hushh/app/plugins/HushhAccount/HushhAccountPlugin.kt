@@ -9,6 +9,8 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.hushh.app.plugins.shared.BackendUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -46,17 +48,22 @@ class HushhAccountPlugin : Plugin() {
             call.reject("Missing required parameter: authToken")
             return
         }
+        val target = call.getString("target") ?: "both"
 
         val backendUrl = getBackendUrl(call)
         val url = "$backendUrl/api/account/delete"
+        val requestBody = JSONObject().apply {
+            put("target", target)
+        }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
-        Log.w(TAG, "🚨 [HushhAccountPlugin] Requesting account deletion...")
+        Log.w(TAG, "🚨 [HushhAccountPlugin] Requesting account deletion for target: $target")
 
         Thread {
             try {
                 val request = Request.Builder()
                     .url(url)
-                    .delete()
+                    .delete(requestBody)
+                    .addHeader("Content-Type", "application/json")
                     .addHeader("Authorization", "Bearer $authToken")
                     .build()
 
@@ -66,9 +73,25 @@ class HushhAccountPlugin : Plugin() {
                 activity.runOnUiThread {
                     if (response.isSuccessful) {
                         Log.i(TAG, "✅ [HushhAccountPlugin] Account deleted successfully")
-                        call.resolve(JSObject().apply {
-                            put("success", true)
-                        })
+                        val payload = JSObject()
+                        var parsed = false
+                        try {
+                            if (!responseBody.isNullOrBlank()) {
+                                val json = JSONObject(responseBody)
+                                val keys = json.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    payload.put(key, json.get(key))
+                                }
+                                parsed = true
+                            }
+                        } catch (_: Exception) {
+                            parsed = false
+                        }
+                        if (!parsed) {
+                            payload.put("success", true)
+                        }
+                        call.resolve(payload)
                     } else {
                         // Try to parse error message from response
                         val errorMessage = try {

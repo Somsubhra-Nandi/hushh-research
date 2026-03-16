@@ -56,7 +56,10 @@ import { ROUTES } from "@/lib/navigation/routes";
 import { usePersonaState } from "@/lib/persona/persona-context";
 import { Icon } from "@/lib/morphy-ux/ui";
 import { Button } from "@/lib/morphy-ux/morphy";
-import { AccountService } from "@/lib/services/account-service";
+import {
+  AccountService,
+  type AccountDeletionTarget,
+} from "@/lib/services/account-service";
 import {
   setOnboardingFlowActiveCookie,
   setOnboardingRequiredCookie,
@@ -209,6 +212,7 @@ export default function ProfilePage() {
     "profile_data" | "delete_account"
   >("profile_data");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AccountDeletionTarget>("both");
   const [isDeleting, setIsDeleting] = useState(false);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [domains, setDomains] = useState<DomainSummary[]>([]);
@@ -246,6 +250,11 @@ export default function ProfilePage() {
   const activePanel = requestedPanel;
 
   const provider = getProvider(user);
+  const personaList = personaState?.personas ?? ["investor"];
+  const hasInvestorPersona = personaList.includes("investor");
+  const hasRiaPersona = personaList.includes("ria");
+  const hasDualPersona = hasInvestorPersona && hasRiaPersona;
+  const effectiveDeleteTarget: AccountDeletionTarget = hasDualPersona ? deleteTarget : "both";
 
   const updateProfileView = useMemo(
     () =>
@@ -468,16 +477,41 @@ export default function ProfilePage() {
 
       setHasVault(resolution.hasVault);
 
-      await AccountService.deleteAccount(resolution.token);
+      const result = await AccountService.deleteAccount(
+        resolution.token,
+        effectiveDeleteTarget
+      );
+
       CacheSyncService.onAccountDeleted(user.uid);
       await UserLocalStateService.clearForUser(user.uid);
-      setOnboardingRequiredCookie(false);
-      setOnboardingFlowActiveCookie(false);
-      toast.success("Account deleted successfully. Redirecting...", {
-        duration: 3000,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      await signOut();
+
+      if (result.account_deleted) {
+        setOnboardingRequiredCookie(false);
+        setOnboardingFlowActiveCookie(false);
+        toast.success("Account deleted successfully. Redirecting...", {
+          duration: 3000,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await signOut();
+        return;
+      }
+
+      CacheSyncService.onPersonaStateChanged(user.uid);
+      CacheSyncService.onConsentMutated(user.uid);
+      await refreshPersonaState({ force: true });
+
+      const deletedTarget = result.deleted_target ?? effectiveDeleteTarget;
+      toast.success(
+        deletedTarget === "ria"
+          ? "RIA workspace deleted. Your investor account is still active."
+          : "Investor profile deleted. Your RIA workspace is still active."
+      );
+
+      if (result.remaining_personas?.includes("ria")) {
+        router.push(ROUTES.RIA_HOME);
+      } else {
+        router.push(ROUTES.KAI_DASHBOARD);
+      }
     } catch (error) {
       console.error("Delete account error:", error);
       toast.error("Failed to delete account. Please try again.");
@@ -489,6 +523,7 @@ export default function ProfilePage() {
 
   const handleDeleteClick = async () => {
     if (!user) return;
+    setDeleteTarget("both");
 
     let nextHasVault = hasVault;
     if (nextHasVault === null) {
@@ -734,8 +769,24 @@ export default function ProfilePage() {
 
   const deleteButtonLabel =
     hasVault === true && !isVaultUnlocked
-      ? "Unlock to delete account"
-      : "Delete account";
+      ? hasDualPersona
+        ? "Unlock to manage deletion"
+        : "Unlock to delete account"
+      : hasDualPersona
+        ? "Delete account or persona"
+        : "Delete account";
+  const deleteRowDescription = hasDualPersona
+    ? "Choose whether to remove Investor, RIA, or the full account."
+    : "This action cannot be undone.";
+  const deleteDialogTitle = hasDualPersona
+    ? "Delete Investor, RIA, or everything?"
+    : "Delete Account?";
+  const deleteDialogDescription =
+    effectiveDeleteTarget === "investor"
+      ? "This removes Kai profile data, portfolio imports, investor marketplace visibility, and advisor relationships. Your RIA workspace stays."
+      : effectiveDeleteTarget === "ria"
+        ? "This removes your advisor profile, client requests, picks uploads, and RIA marketplace presence. Your investor account stays."
+        : "This action cannot be undone. This permanently deletes your account, both personas, and encrypted vault records.";
 
   const unlockDialogTitle =
     vaultUnlockReason === "delete_account"
@@ -855,7 +906,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[860px] px-4 pb-[calc(var(--app-bottom-fixed-ui,96px)+1.25rem)] pt-4 sm:px-6 sm:pb-10 md:py-8">
+    <div className="app-page-shell mx-auto w-full max-w-[860px] px-4 pb-[calc(var(--app-bottom-fixed-ui,96px)+1.25rem)] sm:px-6 sm:pb-10 md:pb-8">
       <div className="space-y-5 sm:space-y-6 md:space-y-8">
         <header className="space-y-4 sm:space-y-5">
           <div className="flex flex-col items-start gap-3 text-left min-[430px]:flex-row min-[430px]:items-center sm:gap-4">
@@ -961,7 +1012,7 @@ export default function ProfilePage() {
               <SettingsRow
                 icon={Trash2}
                 title={deleteButtonLabel}
-                description="This action cannot be undone."
+                description={deleteRowDescription}
                 tone="destructive"
                 onClick={() => void handleDeleteClick()}
                 chevron
@@ -1404,13 +1455,32 @@ export default function ProfilePage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="app-critical-title flex items-center gap-2">
               <Icon icon={AlertTriangle} size="md" />
-              Delete Account?
+              {deleteDialogTitle}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete your account
-              and remove your records from our servers.
+              {deleteDialogDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {hasDualPersona ? (
+            <div className="space-y-3">
+              <SettingsSegmentedTabs
+                value={deleteTarget}
+                onValueChange={(value) => setDeleteTarget(value as AccountDeletionTarget)}
+                options={[
+                  { value: "investor", label: "Investor" },
+                  { value: "ria", label: "RIA" },
+                  { value: "both", label: "Both" },
+                ]}
+              />
+              <p className="text-sm leading-6 text-muted-foreground">
+                {effectiveDeleteTarget === "investor"
+                  ? "Investor deletion keeps your advisor-side workspace and signs you into the RIA shell afterwards."
+                  : effectiveDeleteTarget === "ria"
+                    ? "RIA deletion keeps your Kai investor account and takes you back to the investor shell afterwards."
+                    : "Deleting both signs you out and removes the entire account."}
+              </p>
+            </div>
+          ) : null}
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row">
             <AlertDialogCancel className="w-full sm:w-auto" disabled={isDeleting}>
               Cancel
@@ -1424,7 +1494,13 @@ export default function ProfilePage() {
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? "Deleting..." : "Yes, Delete Everything"}
+              {isDeleting
+                ? "Deleting..."
+                : effectiveDeleteTarget === "investor"
+                  ? "Yes, Delete Investor"
+                  : effectiveDeleteTarget === "ria"
+                    ? "Yes, Delete RIA"
+                    : "Yes, Delete Everything"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

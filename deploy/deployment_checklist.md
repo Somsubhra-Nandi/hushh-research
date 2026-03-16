@@ -55,11 +55,12 @@
   echo -n '<value>' | gcloud secrets versions add <SECRET_NAME> --data-file=- --project hushh-pda
   ```
 
-- [x] Verify all 10 required backend secrets exist:
+- [x] Verify all 11 required backend secrets exist:
   - [x] `SECRET_KEY`
   - [x] `VAULT_ENCRYPTION_KEY`
   - [x] `GOOGLE_API_KEY`
   - [x] `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - [x] `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`
   - [x] `FRONTEND_URL`
   - [x] `DB_USER`
   - [x] `DB_PASSWORD`
@@ -124,7 +125,14 @@
   ```
 
 - [x] Backend env: Cloud Run sets `ENVIRONMENT=production` and `GOOGLE_GENAI_USE_VERTEXAI=True` (Vertex AI for Gemini)
-- [x] Regulated defaults verified: `APP_REVIEW_MODE=false`, `DEVELOPER_API_ENABLED=false`, `CONSENT_SSE_ENABLED=false`, `SYNC_REMOTE_ENABLED=false`
+- [x] Regulated defaults verified for production: `APP_REVIEW_MODE=false`, `DEVELOPER_API_ENABLED=false`, `CONSENT_SSE_ENABLED=false`, `SYNC_REMOTE_ENABLED=false`
+
+- [x] UAT runtime overrides verified when deploying `deploy_uat`
+  - `CONSENT_SSE_ENABLED=true`
+  - `PLAID_ENV=production`
+  - `CORS_ALLOWED_ORIGINS=https://uat.kai.hushh.ai,<current-run-url>`
+  - `PLAID_SECRET` uses the live/shared credential set, not sandbox
+  - `RIA_DEV_BYPASS_ENABLED=true` when UAT should expose the non-prod Dev Bypass onboarding path
 
 ---
 

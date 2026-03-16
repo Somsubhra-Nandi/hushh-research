@@ -275,7 +275,14 @@ export class HushhVaultWeb extends WebPlugin {
     authToken?: string;
   }): Promise<{ exists: boolean }> {
     try {
-      const response = await fetch(`/api/vault/check?userId=${options.userId}`);
+      const headers: HeadersInit = {};
+      if (options.authToken) {
+        headers.Authorization = `Bearer ${options.authToken}`;
+      }
+      const response = await fetch(`/api/vault/check?userId=${options.userId}`, {
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
       if (!response.ok) return { exists: false };
       const data = await response.json();
       return { exists: data.hasVault || false };

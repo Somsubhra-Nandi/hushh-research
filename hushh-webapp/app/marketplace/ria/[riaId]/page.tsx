@@ -14,6 +14,12 @@ export default function MarketplaceRiaProfilePage() {
   const [profile, setProfile] = useState<MarketplaceRia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const firmNames = Array.isArray(profile?.firms)
+    ? profile.firms
+        .map((firm) => String(firm?.legal_name || "").trim())
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +88,7 @@ export default function MarketplaceRiaProfilePage() {
             <RiaSurface className="p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Firms</p>
               <p className="mt-2 text-sm font-medium text-foreground">
-                {profile.firms?.map((firm) => firm.legal_name).join(" · ") || "No public firm data"}
+                {firmNames || "No public firm data"}
               </p>
             </RiaSurface>
             <RiaSurface className="p-4">

@@ -149,6 +149,7 @@ Production analytics key migration is deferred intentionally and should be handl
    **Note:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, and `SYNC_REMOTE_ENABLED` are set as Cloud Run env vars (not secrets). **Do not use `DATABASE_URL`** — migrations and scripts use DB_* only (strict parity). Delete `DATABASE_URL` from Secret Manager if present.
    Plaid webhook and callback settings are runtime env vars, not dashboard secrets:
    `PLAID_ENV`, `PLAID_CLIENT_NAME`, `PLAID_COUNTRY_CODES`, `PLAID_WEBHOOK_URL`, `PLAID_REDIRECT_PATH`, `PLAID_TX_HISTORY_DAYS`.
+   UAT and production use the live/shared Plaid credential set; local development stays on sandbox-only credentials.
 
 4. **Configure production logical backup infrastructure** (GCP)
 

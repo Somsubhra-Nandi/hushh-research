@@ -177,12 +177,7 @@ export function TopAppBar({ className }: TopAppBarProps) {
         return;
       }
 
-      if (target === "ria" && riaCapability === "disabled") {
-        toast.info("RIA access is not available in this environment yet.");
-        return;
-      }
-
-      if (target === "ria" && riaCapability === "setup") {
+      if (target === "ria" && riaCapability !== "switch") {
         setSwitchingPersona(target);
         router.push(nextRoute);
         return;
@@ -300,12 +295,12 @@ export function TopAppBar({ className }: TopAppBarProps) {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => void handlePersonaSelect("ria")}
-                          disabled={riaCapability === "disabled" || switchingPersona !== null}
+                          disabled={switchingPersona !== null}
                           className="group"
                         >
                           <div className="relative z-10 flex min-w-0 items-center gap-2 text-current">
                             <BriefcaseBusiness className="h-4 w-4 text-current" />
-                            <span>{riaCapability === "setup" ? "Set up RIA" : "RIA"}</span>
+                            <span>{riaCapability === "switch" ? "RIA" : "Set up RIA"}</span>
                           </div>
                           {switchingPersona === "ria" ? (
                             <Loader2 className="ml-auto h-4 w-4 animate-spin text-primary" />

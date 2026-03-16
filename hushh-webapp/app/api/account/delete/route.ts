@@ -7,6 +7,7 @@ const BACKEND_URL = getPythonApiUrl();
 export async function DELETE(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const requestBody = await request.text();
 
     if (!authHeader) {
       return NextResponse.json(
@@ -24,6 +25,7 @@ export async function DELETE(request: NextRequest) {
         "Content-Type": "application/json",
         Authorization: authHeader,
       },
+      body: requestBody || undefined,
     });
 
     const responseText = await response.text();

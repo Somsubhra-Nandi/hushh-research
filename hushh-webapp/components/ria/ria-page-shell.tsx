@@ -33,7 +33,7 @@ export function RiaPageShell({
   return (
     <main
       className={cn(
-        "mx-auto w-full max-w-5xl px-4 pb-28 pt-[var(--kai-view-top-gap,16px)] sm:px-6",
+        "app-page-shell mx-auto w-full max-w-4xl px-4 pb-28 sm:px-6",
         className
       )}
     >
@@ -45,9 +45,9 @@ export function RiaPageShell({
         icon={icon}
       />
 
-      {statusPanel ? <div className="mt-5">{statusPanel}</div> : null}
+      {statusPanel ? <div className="mt-6">{statusPanel}</div> : null}
 
-      <div className="mt-5 space-y-5">{children}</div>
+      <div className="mt-6 space-y-7">{children}</div>
     </main>
   );
 }
@@ -59,7 +59,16 @@ export function RiaSurface({
   children: ReactNode;
   className?: string;
 }) {
-  return <ContentSurface className={className}>{children}</ContentSurface>;
+  return (
+    <ContentSurface
+      className={cn(
+        "rounded-[28px] border border-border/70 bg-background/82 p-0 shadow-[0_18px_44px_-28px_rgba(15,23,42,0.22)] backdrop-blur-md",
+        className
+      )}
+    >
+      {children}
+    </ContentSurface>
+  );
 }
 
 export function RiaCompatibilityState({
@@ -143,7 +152,7 @@ export function RiaStatusPanel({
         actions={actions}
         icon={ShieldCheck}
       />
-      <RiaSurface className="bg-gradient-to-br from-primary/8 via-card/95 to-card/88">
+      <RiaSurface className="bg-gradient-to-br from-primary/7 via-card/96 to-card/92">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {items.map((item) => (
             <div

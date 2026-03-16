@@ -18,12 +18,12 @@ This matrix tracks the target design-system contract for the current application
 
 | Surface | Target primitives | Status |
 |---|---|---|
-| `/ria` | `RiaPageShell` on top of `PageHeader` and `SectionHeader` | Uses shared shell, needs continued audit discipline |
+| `/ria` | `RiaPageShell`, grouped status band, simple route-launch rows | Simplified into lightweight workspace launcher |
 | `/ria/onboarding` | shared shell spacing + page header contract | In scope for route-level review |
-| `/ria/clients` | `SectionHeader`, grouped operational surfaces | In scope for audit cleanup |
-| `/ria/requests` | `RiaPageShell`, grouped request bundles, scope selection surfaces | In scope and now part of the minimum RIA shell |
+| `/ria/clients` | `SectionHeader`, `SettingsGroup`, `SettingsRow`, detail panel workflow | Simplified into mobile-first roster with Connected / Pending / Invites |
+| `/ria/requests` | shared consent alias | Redirect-only compatibility route into `/consents` |
 | `/ria/picks` | `RiaPageShell`, upload surface, grouped active/history rows | In scope and now part of the minimum RIA shell |
-| `/ria/workspace/[clientId]` | `SectionHeader`, grouped access/data surfaces | In scope for audit cleanup |
+| `/ria/workspace/[clientId]` | `SectionHeader`, grouped access/data surfaces | Simplified into access summary + data view + request/disconnect actions |
 | `/marketplace` | shared shell, grouped discovery rows/cards | In scope for audit cleanup |
 
 ## Open Follow-Through

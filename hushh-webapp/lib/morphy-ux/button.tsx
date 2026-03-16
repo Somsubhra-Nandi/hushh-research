@@ -110,7 +110,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ? "text-[var(--morphy-primary-start)]"
         : "text-inherit";
 
-    const content = (
+    const renderContent = (contentChildren: React.ReactNode) => (
       <>
         <span className="relative z-0 inline-flex items-center justify-center text-inherit">
           {IconComponent ? (
@@ -127,7 +127,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
               />
             </span>
           ) : null}
-          {children}
+          {contentChildren}
         </span>
         {shouldShowRipple ? (
           <MaterialRipple
@@ -145,6 +145,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         children?: React.ReactNode;
         className?: string;
       }>;
+      const slottedContent = renderContent(child.props.children);
 
       return (
         <StockButton
@@ -170,11 +171,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         >
           {React.cloneElement(child, {
             className: cn("relative overflow-hidden", child.props.className),
-            children: content,
+            children: slottedContent,
           })}
         </StockButton>
       );
     }
+
+    const content = renderContent(children);
 
     return (
       <StockButton

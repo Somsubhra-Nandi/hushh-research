@@ -136,6 +136,12 @@ interface CreateRequestOptions {
   };
 }
 
+interface DisconnectRelationshipOptions {
+  idToken: string;
+  investor_user_id?: string;
+  ria_profile_id?: string;
+}
+
 export class ConsentCenterService {
   static async getCenter(options: FetchCenterOptions): Promise<ConsentCenterResponse> {
     const { idToken, userId, actor = "investor", view = "incoming", force = false } = options;
@@ -225,6 +231,33 @@ export class ConsentCenterService {
     }
 
     CacheSyncService.onConsentMutated(userId);
+    return body;
+  }
+
+  static async disconnectRelationship(options: DisconnectRelationshipOptions) {
+    const response = await ApiService.apiFetch("/api/consent/relationships/disconnect", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.idToken}`,
+      },
+      body: JSON.stringify({
+        investor_user_id: options.investor_user_id,
+        ria_profile_id: options.ria_profile_id,
+      }),
+    });
+
+    const body = (await response.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+      relationship_status?: string;
+      revoked_scopes?: string[];
+    };
+
+    if (!response.ok) {
+      throw new Error(body.detail || body.error || `Request failed: ${response.status}`);
+    }
+
     return body;
   }
 }

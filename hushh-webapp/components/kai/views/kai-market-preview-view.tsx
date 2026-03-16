@@ -293,24 +293,25 @@ function toBreadthMetric(payload: KaiHomeInsightsV2 | null): MarketOverviewMetri
   const losers = Array.isArray(movers?.losers) ? movers.losers.length : 0;
   const degraded = Boolean(movers?.degraded) || gainers + losers === 0;
   const spread = gainers - losers;
+  const trackedCount = gainers + losers;
   const tone: MarketOverviewMetric["tone"] =
     spread > 0 ? "positive" : spread < 0 ? "negative" : degraded ? "warning" : "neutral";
 
-  let value = "Balanced";
-  if (spread > 0) value = "Positive";
-  if (spread < 0) value = "Defensive";
-  if (degraded && gainers + losers === 0) value = "Updating";
+  let value = "Mixed tape";
+  if (spread >= 4) value = "Broad participation";
+  if (spread <= -4) value = "Narrow leadership";
+  if (degraded && trackedCount === 0) value = "Updating";
 
   return {
     id: "breadth",
-    label: "Breadth",
+    label: "Advancers vs decliners",
     value,
     delta:
-      gainers + losers > 0
-        ? `${gainers} gainers • ${losers} losers`
+      trackedCount > 0
+        ? `${gainers} of ${trackedCount} tracked names are higher today`
         : degraded
-          ? "Breadth delayed"
-          : "Awaiting breadth",
+          ? "Breadth snapshot delayed"
+          : "Awaiting breadth snapshot",
     tone,
     icon: tone === "negative" ? TrendingDown : TrendingUp,
   };
@@ -942,7 +943,7 @@ export function KaiMarketPreviewView() {
   }, [activePickSource]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 overflow-x-hidden px-4 pb-8 pt-[var(--kai-view-top-gap,16px)] sm:px-6 lg:px-8">
+    <div className="app-page-shell mx-auto w-full max-w-5xl space-y-8 overflow-x-hidden px-4 pb-8 sm:px-6 lg:px-8">
       <PageHeader
         eyebrow="Market"
         title="Explore the market with Kai"
@@ -1057,7 +1058,7 @@ export function KaiMarketPreviewView() {
         <SectionHeader
           eyebrow="Advisor signals"
           title="RIA’s picks"
-          description="Today this defaults to Kai’s house Renaissance-backed list. The same surface will support linked advisor sources later."
+          description="Choose the default Kai list or any connected advisor source. Kai remembers the last active selection and uses it for market and stock comparison surfaces."
           icon={BriefcaseBusiness}
           accent="emerald"
         />

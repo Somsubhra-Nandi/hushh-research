@@ -147,7 +147,8 @@ export function StockComparisonPreview({
                   {preview.list_match.investment_thesis || "Kai can launch the full debate to generate the deeper thesis and recommendation context."}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Source: {preview.list_match.source_id} · Quote as of {new Date(preview.quote.as_of || Date.now()).toLocaleString()}
+                  Source: {preview.list_match.label || preview.list_match.source_id} · Quote as of{" "}
+                  {new Date(preview.quote.as_of || Date.now()).toLocaleString()}
                 </p>
               </div>
             </div>

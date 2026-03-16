@@ -8,11 +8,14 @@ Profile remains the reference implementation for settings rows. This document ex
 
 1. The top shell is the single authority for header clearance.
 2. Standard routes must reserve top space through `--top-shell-reserved-height`, not raw `env(safe-area-inset-top)`.
-3. Raw safe-area math is allowed only for true fullscreen or overlay surfaces that do not participate in the normal shell.
-4. Native iOS stays aligned with:
+3. Standard page roots own their own start spacing through `padding-top: var(--page-top-start)`.
+4. Do not solve overlap by adding bottom padding to the fixed top bar or by inserting route-local spacer nodes above page content.
+5. Shared page-shell wrappers such as `RiaPageShell` and consent/profile/Kai route roots must apply the same page-start token.
+6. Raw safe-area math is allowed only for true fullscreen or overlay surfaces that do not participate in the normal shell.
+7. Native iOS stays aligned with:
    - `ios.contentInset = "never"`
    - `SystemBars.insetsHandling = "css"`
-5. Decorative glass fade is visual-only and must never add extra content spacing.
+8. Decorative glass fade is visual-only and must never add extra content spacing.
 
 ## Page Header Contract
 
@@ -67,6 +70,19 @@ Rules:
 3. Market overview should only promote metrics backed by providers that are actually configured in the active environment.
 4. Degraded or delayed states should read as intentional status, not as broken empty cards.
 5. Long browse lists must support client-side pagination or equivalent browse controls once the result set stops being comfortably scannable in one pass.
+
+## RIA Information Architecture
+
+1. `RIA` is a lightweight workspace shell, not a second dense operations dashboard.
+2. The RIA bottom navigation is `Home / Clients / Picks / Profile`.
+3. `/consents` is the single consent/request workspace for both investor and RIA personas.
+4. `/ria/requests` remains only as a compatibility alias into `/consents`, not as a second consent system.
+5. Relationship views should stay grouped around:
+   - relationship state
+   - next action
+   - available scope metadata
+   - current grants
+6. Workspace data views should open only after consent is active; pre-consent relationship surfaces stay metadata-only.
 
 ## Documentation References
 

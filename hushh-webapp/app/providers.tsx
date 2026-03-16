@@ -57,8 +57,15 @@ export function Providers({ children }: ProvidersProps) {
   const hideGlobalChrome = !topShellMetrics.shellVisible;
   const isFullscreenTopFlow = topShellMetrics.contentOffsetMode === "fullscreen-flow";
   const shouldLockFullscreenRoot = isFullscreenTopFlow && !isImportRoute;
+  const routeOwnsTopPadding =
+    topShellMetrics.shellVisible &&
+    !isFullscreenTopFlow &&
+    !pathname.startsWith("/kai/onboarding") &&
+    !pathname.startsWith("/kai/import");
   const shouldRenderTopSpacer =
-    topShellMetrics.shellVisible && (!isFullscreenTopFlow || isImportRoute);
+    topShellMetrics.shellVisible &&
+    !routeOwnsTopPadding &&
+    (!isFullscreenTopFlow || isImportRoute);
   const topShellRouteStyle = useMemo(
     () =>
       ({
@@ -69,8 +76,11 @@ export function Providers({ children }: ProvidersProps) {
         "--top-systembar-row-gap": topShellMetrics.hasTabs ? "2px" : "0px",
         "--top-fade-active": topShellMetrics.hasTabs ? "24px" : "22px",
         "--top-content-pad": "var(--top-shell-reserved-height)",
-        "--kai-route-content-gap": topShellMetrics.hasTabs ? "20px" : "10px",
-        "--kai-route-content-gap-sm": topShellMetrics.hasTabs ? "24px" : "14px",
+        "--page-top-breathing-space": topShellMetrics.hasTabs ? "32px" : "28px",
+        "--page-top-start":
+          "calc(var(--top-shell-reserved-height) + var(--page-top-breathing-space))",
+        "--kai-route-content-gap": topShellMetrics.hasTabs ? "28px" : "20px",
+        "--kai-route-content-gap-sm": topShellMetrics.hasTabs ? "32px" : "24px",
         "--app-top-shell-visible": topShellMetrics.shellVisible ? "1" : "0",
         "--app-top-has-tabs": topShellMetrics.hasTabs ? "1" : "0",
         "--app-top-offset-mode":
@@ -137,8 +147,8 @@ export function Providers({ children }: ProvidersProps) {
         <AuthProvider>
           <CacheProvider>
             <PersonaProvider>
-              <PersonaBootstrapRedirect />
               <VaultProvider>
+                <PersonaBootstrapRedirect />
                 <ConsentNotificationProvider>
                   {/* Flex container for proper scroll behavior */}
                   <div
@@ -198,7 +208,7 @@ export function Providers({ children }: ProvidersProps) {
                         <div
                           aria-hidden
                           className="w-full shrink-0"
-                          style={{ height: "var(--top-shell-reserved-height)" }}
+                          style={{ height: "var(--page-top-start)" }}
                         />
                       ) : null}
                       <div

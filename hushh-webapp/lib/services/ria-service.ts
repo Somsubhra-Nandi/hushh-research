@@ -75,6 +75,7 @@ export interface RiaClientAccess {
   id: string;
   investor_user_id?: string | null;
   status: string;
+  relationship_status?: string | null;
   granted_scope?: string | null;
   last_request_id?: string | null;
   investor_display_name?: string | null;
@@ -89,6 +90,61 @@ export interface RiaClientAccess {
   next_action?: string | null;
   scope_template_id?: string | null;
   is_invite_only?: boolean;
+  disconnect_allowed?: boolean;
+  is_self_relationship?: boolean;
+}
+
+export interface RiaAvailableScopeMetadata {
+  scope: string;
+  label: string;
+  description: string;
+  kind: string;
+  summary_only: boolean;
+  available?: boolean;
+  domain_key?: string | null;
+}
+
+export interface RiaClientRequestSummary {
+  request_id?: string | null;
+  scope?: string | null;
+  action: string;
+  issued_at?: number | string | null;
+  expires_at?: number | string | null;
+  bundle_id?: string | null;
+  bundle_label?: string | null;
+  scope_metadata?: RiaRequestScopeMetadata;
+}
+
+export interface RiaClientDetail {
+  investor_user_id: string;
+  investor_display_name?: string | null;
+  investor_headline?: string | null;
+  relationship_status: string;
+  granted_scope?: string | null;
+  last_request_id?: string | null;
+  consent_granted_at?: string | null;
+  consent_expires_at?: number | string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  disconnect_allowed: boolean;
+  is_self_relationship: boolean;
+  next_action?: string | null;
+  granted_scopes: Array<{
+    scope: string;
+    label: string;
+    expires_at?: number | string | null;
+    issued_at?: number | string | null;
+  }>;
+  request_history: RiaClientRequestSummary[];
+  invite_history: RiaInviteRecord[];
+  requestable_scope_templates: RiaRequestScopeTemplate[];
+  available_scope_metadata: RiaAvailableScopeMetadata[];
+  available_domains: string[];
+  domain_summaries: Record<string, unknown>;
+  total_attributes: number;
+  workspace_ready: boolean;
+  world_model_updated_at?: string | null;
 }
 
 export interface RiaRequestRecord {
@@ -157,6 +213,9 @@ export interface RiaInviteRecord {
   target_investor_user_id?: string | null;
   accepted_by_user_id?: string | null;
   accepted_request_id?: string | null;
+  delivery_status?: string | null;
+  delivery_message?: string | null;
+  delivery_message_id?: string | null;
 }
 
 export interface RiaPickUploadRecord {
@@ -225,6 +284,22 @@ export class RiaApiError extends Error {
     this.code = code;
     this.hint = hint;
   }
+}
+
+function normalizeMarketplaceRia(payload: MarketplaceRia): MarketplaceRia {
+  const firms = Array.isArray(payload?.firms)
+    ? payload.firms.filter(
+        (
+          firm
+        ): firm is NonNullable<MarketplaceRia["firms"]>[number] =>
+          Boolean(firm) && typeof firm === "object"
+      )
+    : [];
+
+  return {
+    ...payload,
+    firms,
+  };
 }
 
 export function isIAMSchemaNotReadyError(error: unknown): error is RiaApiError {
@@ -313,8 +388,9 @@ export class RiaService {
       method: "GET",
     });
     const payload = await toJsonOrThrow<{ items: MarketplaceRia[] }>(response);
-    cache.set(CACHE_KEYS.MARKETPLACE_RIAS_SEARCH(queryKey), payload.items, CACHE_TTL.MEDIUM);
-    return payload.items;
+    const normalized = payload.items.map(normalizeMarketplaceRia);
+    cache.set(CACHE_KEYS.MARKETPLACE_RIAS_SEARCH(queryKey), normalized, CACHE_TTL.MEDIUM);
+    return normalized;
   }
 
   static async searchInvestors(params: {
@@ -341,7 +417,7 @@ export class RiaService {
     const response = await ApiService.apiFetch(`/api/marketplace/ria/${encodeURIComponent(riaId)}`, {
       method: "GET",
     });
-    return toJsonOrThrow<MarketplaceRia>(response);
+    return normalizeMarketplaceRia(await toJsonOrThrow<MarketplaceRia>(response));
   }
 
   static async submitOnboarding(
@@ -438,6 +514,17 @@ export class RiaService {
     });
     const payload = await toJsonOrThrow<{ items: RiaClientAccess[] }>(response);
     return payload.items;
+  }
+
+  static async getClientDetail(
+    idToken: string,
+    investorUserId: string
+  ): Promise<RiaClientDetail> {
+    const response = await authFetch(`/api/ria/clients/${encodeURIComponent(investorUserId)}`, {
+      method: "GET",
+      idToken,
+    });
+    return toJsonOrThrow<RiaClientDetail>(response);
   }
 
   static async listRequests(idToken: string): Promise<RiaRequestRecord[]> {
@@ -618,7 +705,11 @@ export class RiaService {
     const response = await ApiService.apiFetch(`/api/invites/${encodeURIComponent(inviteToken)}`, {
       method: "GET",
     });
-    return toJsonOrThrow(response);
+    const payload = await toJsonOrThrow<RiaInviteResolution>(response);
+    return {
+      ...payload,
+      ria: normalizeMarketplaceRia(payload.ria),
+    };
   }
 
   static async acceptInvite(
@@ -636,6 +727,17 @@ export class RiaService {
       method: "POST",
       idToken,
     });
-    return toJsonOrThrow(response);
+    const payload = await toJsonOrThrow<{
+      invite_token: string;
+      request_id?: string;
+      status: string;
+      scope?: string;
+      expires_at?: number;
+      ria: MarketplaceRia;
+    }>(response);
+    return {
+      ...payload,
+      ria: normalizeMarketplaceRia(payload.ria),
+    };
   }
 }

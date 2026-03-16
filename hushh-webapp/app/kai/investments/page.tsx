@@ -13,7 +13,7 @@ export default function KaiInvestmentsPage() {
   }
 
   return (
-    <div className="relative w-full overflow-x-hidden">
+    <div className="app-page-shell relative w-full overflow-x-hidden">
       <div className="w-full pb-32">
         <InvestmentsMasterView
           userId={user.uid}

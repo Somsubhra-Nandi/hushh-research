@@ -1642,7 +1642,7 @@ export function DashboardMasterView({
 
   if (isSourcesLoading && !displayedPortfolio) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-center px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+      <div className="app-page-shell mx-auto flex w-full max-w-5xl items-center justify-center px-5 pb-6 sm:px-8">
         <Card variant="none" effect="glass" className="w-full rounded-[24px]">
           <CardContent className="flex items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1655,7 +1655,7 @@ export function DashboardMasterView({
 
   if (!displayedPortfolio) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6 overflow-x-hidden px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+      <div className="app-page-shell mx-auto w-full max-w-5xl space-y-6 overflow-x-hidden px-5 pb-6 sm:px-8">
         <PageHeader
           eyebrow="Kai Portfolio"
           title="Portfolio"
@@ -1705,7 +1705,7 @@ export function DashboardMasterView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 overflow-x-hidden px-5 pb-6 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+    <div className="app-page-shell mx-auto w-full max-w-5xl space-y-8 overflow-x-hidden px-5 pb-6 sm:px-8">
       <PageHeader
         eyebrow="Kai Portfolio"
         title="Portfolio"

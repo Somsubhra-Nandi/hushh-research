@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Shield,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
 import { usePersonaState } from "@/lib/persona/persona-context";
@@ -307,6 +308,9 @@ export function ConsentCenterView({
     Record<string, Record<string, string>>
   >({});
   const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
+  const [disconnectingCounterpartKey, setDisconnectingCounterpartKey] = useState<string | null>(
+    null
+  );
 
   const loadCenter = useCallback(
     async (options?: { force?: boolean; silent?: boolean }) => {
@@ -423,6 +427,43 @@ export function ConsentCenterView({
     params.set("view", resolveRequestView(actor, nextView));
     router.replace(`${ROUTES.CONSENTS}?${params.toString()}`);
   };
+
+  const handleDisconnectRelationship = useCallback(
+    async (entry: ConsentCenterEntry) => {
+      if (!user || !entry.counterpart_id) return;
+
+      const counterpartType = entry.counterpart_type;
+      if (!["ria", "investor"].includes(counterpartType)) {
+        return;
+      }
+
+      const counterpartKey = `${counterpartType}:${entry.counterpart_id}`;
+      try {
+        setDisconnectingCounterpartKey(counterpartKey);
+        const idToken = await user.getIdToken();
+        await ConsentCenterService.disconnectRelationship({
+          idToken,
+          investor_user_id:
+            counterpartType === "investor" ? String(entry.counterpart_id) : undefined,
+          ria_profile_id: counterpartType === "ria" ? String(entry.counterpart_id) : undefined,
+        });
+        toast.success("Relationship disconnected", {
+          description:
+            "Live access was revoked immediately. Consent history stays visible for audit.",
+        });
+        await loadCenter({ force: true, silent: true });
+      } catch (disconnectError) {
+        toast.error(
+          disconnectError instanceof Error
+            ? disconnectError.message
+            : "Failed to disconnect relationship"
+        );
+      } finally {
+        setDisconnectingCounterpartKey(null);
+      }
+    },
+    [loadCenter, user]
+  );
 
   const renderBundleCard = (bundle: ConsentBundleGroup) => {
     const durationMode = bundleDurationMode[bundle.bundleId] || "shared";
@@ -631,6 +672,15 @@ export function ConsentCenterView({
       entry.counterpart_type === "investor" &&
       entry.allowed_next_action === "open_workspace" &&
       entry.counterpart_id;
+    const canDisconnectRelationship =
+      surfaceView !== "previous" &&
+      entry.counterpart_id &&
+      ((actor === "investor" && entry.counterpart_type === "ria") ||
+        (actor === "ria" && entry.counterpart_type === "investor"));
+    const disconnectKey =
+      canDisconnectRelationship && entry.counterpart_id
+        ? `${entry.counterpart_type}:${entry.counterpart_id}`
+        : null;
 
     return (
       <div key={`${entry.kind}-${entry.id}`} className="space-y-4 px-5 py-5">
@@ -683,6 +733,21 @@ export function ConsentCenterView({
                 onClick={() => void handleRevoke(entry.scope || "")}
               >
                 Revoke
+              </Button>
+            ) : null}
+
+            {canDisconnectRelationship ? (
+              <Button
+                variant="none"
+                effect="fade"
+                size="sm"
+                onClick={() => void handleDisconnectRelationship(entry)}
+                disabled={disconnectKey === disconnectingCounterpartKey}
+              >
+                {disconnectKey === disconnectingCounterpartKey ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Disconnect
               </Button>
             ) : null}
 
@@ -1002,11 +1067,24 @@ export function ConsentCenterView({
   }
 
   return (
-    <div className={cn("mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6 md:py-8", className)}>
+    <div
+      className={cn(
+        "app-page-shell mx-auto w-full max-w-4xl space-y-6 px-4 pb-6 sm:px-6 md:pb-8",
+        className
+      )}
+    >
       <PageHeader
-        eyebrow="Consent Center"
-        title="Pending, active, and previous Kai access"
-        description="One place to review pending approvals, active grants, and the full consent log for the current persona."
+        eyebrow={actor === "ria" ? "Consent Workspace" : "Consent Center"}
+        title={
+          actor === "ria"
+            ? "Outgoing requests, invites, and live advisor access"
+            : "Pending, active, and previous Kai access"
+        }
+        description={
+          actor === "ria"
+            ? "Use the shared consent workspace to send request bundles, track investor decisions, and open ready workspaces without leaving the main shell."
+            : "One place to review pending approvals, active grants, and the full consent log for the current persona."
+        }
         icon={ClipboardList}
         actions={
           <Button

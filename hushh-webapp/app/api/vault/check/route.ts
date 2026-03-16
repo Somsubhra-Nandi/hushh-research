@@ -3,12 +3,11 @@
 /**
  * Check Vault Existence API
  *
- * SYMMETRIC WITH NATIVE:
- * This route proxies to Python backend /db/vault/check
- * to maintain consistency with iOS/Android native plugins.
+ * Legacy-compatible web vault existence check.
  *
- * Native (Swift/Kotlin): POST /db/vault/check -> Python
- * Web (Next.js): GET /api/vault/check -> Python (proxy)
+ * The public route shape stays `/api/vault/check`, but the web implementation
+ * now proxies through the current `/db/vault/bootstrap-state` backend contract
+ * so placeholder rows and vault status stay aligned with the modern shell.
  */
 
 import { NextRequest } from "next/server";
@@ -70,12 +69,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const response = await fetch(`${PYTHON_API_URL}/db/vault/check`, {
+    const response = await fetch(`${PYTHON_API_URL}/db/vault/bootstrap-state`, {
       method: "POST",
       headers: createUpstreamHeaders(requestId, {
         "Content-Type": "application/json",
         ...(authHeader ? { Authorization: authHeader } : {}),
       }),
+      signal: AbortSignal.timeout(15000),
       body: JSON.stringify({ userId }),
     });
 

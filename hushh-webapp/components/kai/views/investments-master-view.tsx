@@ -392,7 +392,7 @@ export function InvestmentsMasterView({
 
   if (isLoading && !workingPortfolio) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-center px-5 pb-10 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+      <div className="app-page-shell mx-auto flex w-full max-w-5xl items-center justify-center px-5 pb-10 sm:px-8">
         <div className="flex items-center gap-3 rounded-[24px] border border-border/70 bg-background/84 px-5 py-5 text-sm text-muted-foreground shadow-sm backdrop-blur-xl">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading investments...
@@ -402,7 +402,7 @@ export function InvestmentsMasterView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 overflow-x-hidden px-5 pb-10 pt-[var(--kai-view-top-gap,16px)] sm:px-8">
+    <div className="app-page-shell mx-auto w-full max-w-5xl space-y-6 overflow-x-hidden px-5 pb-10 sm:px-8">
       <PageHeader
         eyebrow="Kai Investments"
         title="Investments"
