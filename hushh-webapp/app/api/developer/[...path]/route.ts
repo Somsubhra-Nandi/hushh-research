@@ -25,7 +25,7 @@ async function proxyDeveloperRequest(
 
   const authHeader = request.headers.get("authorization") || "";
   const headers = createUpstreamHeaders(requestId, {
-    ...(authHeader ? { Authorization: authHeader } : {}),
+    ...(!isVersionedDeveloperApi && authHeader ? { Authorization: authHeader } : {}),
     ...(method === "POST" || method === "PATCH" ? { "Content-Type": "application/json" } : {}),
   });
 

@@ -20,10 +20,10 @@ export type LiveDocsResponse = {
   notes?: string[];
 };
 
-export type DeveloperPortalApiKey = {
+export type DeveloperPortalToken = {
   id: number;
   app_id: string;
-  key_prefix: string;
+  token_prefix: string;
   label?: string | null;
   created_at: number;
   revoked_at?: number | null;
@@ -51,9 +51,9 @@ export type DeveloperPortalAccess = {
   owner_display_name?: string | null;
   owner_provider_ids: string[];
   app?: DeveloperPortalApp | null;
-  active_key?: DeveloperPortalApiKey | null;
-  raw_api_key?: string | null;
-  developer_api_key_env_var: string;
+  active_token?: DeveloperPortalToken | null;
+  raw_token?: string | null;
+  developer_token_env_var: string;
   notes: string[];
 };
 
@@ -167,7 +167,7 @@ export function updateDeveloperAccessProfile(
   });
 }
 
-export function rotateDeveloperAccessKey(idToken: string) {
+export function rotateDeveloperAccessToken(idToken: string) {
   return requestPortal<DeveloperPortalAccess>("/api/developer/access/rotate-key", {
     method: "POST",
     idToken,

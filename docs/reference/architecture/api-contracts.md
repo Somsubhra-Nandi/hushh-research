@@ -22,12 +22,12 @@ POST /api/consent/vault-owner-token  (Firebase Bearer)
       └── Can delegate scoped tokens to MCP agents (7d)
 ```
 
-| Token Type            | Purpose                          | Duration | Auth Header Format              |
-| --------------------- | -------------------------------- | -------- | ------------------------------- |
+| Token Type            | Purpose                            | Duration | Auth Format                    |
+| --------------------- | ---------------------------------- | -------- | ------------------------------ |
 | Firebase ID Token     | Identity verification only       | 1 hour   | `Bearer <firebase-id-token>`   |
 | VAULT_OWNER Token     | Consent + identity for all data  | 24 hours | `Bearer <vault-owner-token>`   |
 | Agent Scoped Token    | Delegated MCP agent access       | 7 days   | `Bearer <consent-token>`       |
-| Developer API Key     | External API access              | N/A      | `Bearer <developer-api-key>` |
+| Developer Token       | External API and remote MCP access | N/A    | `?token=<developer-token>`     |
 
 ---
 
@@ -49,25 +49,25 @@ POST /api/consent/vault-owner-token  (Firebase Bearer)
 | GET | `/api/app-config/review-mode` | Review mode toggle (enabled only) |
 | POST | `/api/app-config/review-mode/session` | Mint Firebase custom token for `REVIEWER_UID` when review mode enabled |
 
-### Developer API (Developer API Key / Developer API Enabled)
+### Developer API (Developer Token / Developer API Enabled)
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET | `/api/v1` | Developer API root summary (`410` when developer API disabled) |
 | GET | `/api/v1/list-scopes` | Generic dynamic scope catalog (`410` when developer API disabled) |
 | GET | `/api/v1/tool-catalog` | Public-beta or app-filtered tool visibility |
-| GET | `/api/v1/user-scopes/{user_id}` | Discover dynamic user scopes for one user (requires bearer developer API key) |
+| GET | `/api/v1/user-scopes/{user_id}` | Discover dynamic user scopes for one user (requires `?token=<developer-token>`) |
 | GET | `/api/v1/consent-status` | Check app-scoped consent status by scope or request id |
-| POST | `/api/v1/request-consent` | Create or reuse consent for one discovered scope (requires bearer developer API key) |
+| POST | `/api/v1/request-consent` | Create or reuse consent for one discovered scope (requires `?token=<developer-token>`) |
 
 ### Developer Portal (Firebase Sign-In / Self-Serve)
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET | `/api/developer/access` | Read the self-serve developer workspace for the signed-in Kai account |
-| POST | `/api/developer/access/enable` | Create the self-serve developer app and first active API key |
+| POST | `/api/developer/access/enable` | Create the self-serve developer app and first active token |
 | PATCH | `/api/developer/access/profile` | Update the app identity shown during Kai consent review |
-| POST | `/api/developer/access/rotate-key` | Revoke the current developer API key and issue a replacement |
+| POST | `/api/developer/access/rotate-key` | Revoke the current developer token and issue a replacement |
 
 ### Debug (Dev Only)
 
@@ -348,11 +348,11 @@ External developers (MCP agents, third-party apps) use the `/api/v1` endpoints:
 
 ```
 1. GET /api/v1/user-scopes/{user_id}
-   Header: Authorization: Bearer <developer-api-key>
+   Query: ?token=<developer-token>
    → Returns: { user_id, available_domains, scopes }
 
 2. POST /api/v1/request-consent
-   Header: Authorization: Bearer <developer-api-key>
+   Query: ?token=<developer-token>
    Body: { user_id, scope, reason }
    → Returns: { request_id, status: "pending" }
 
@@ -389,7 +389,7 @@ attr.{domain}.{subintent}.{attribute}
 Scope strings are dynamic. Do not hardcode domain keys. Discover user-available scopes via:
 
 - `GET /api/world-model/scopes/{user_id}`
-- `GET /api/v1/user-scopes/{user_id}` with `Authorization: Bearer <developer-api-key>`
+- `GET /api/v1/user-scopes/{user_id}?token=<developer-token>`
 - `discover_user_domains(user_id)` in MCP
 
 ### Token Format

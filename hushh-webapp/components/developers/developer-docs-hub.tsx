@@ -44,7 +44,7 @@ import {
   enableDeveloperAccess,
   getDeveloperAccess,
   getLiveDeveloperDocs,
-  rotateDeveloperAccessKey,
+  rotateDeveloperAccessToken,
   updateDeveloperAccessProfile,
   type DeveloperPortalAccess,
   type LiveDocsResponse,
@@ -398,7 +398,7 @@ function SignedOutAccessCard({
             <EmptyTitle>Optional: unlock your personal developer workspace</EmptyTitle>
             <EmptyDescription>
               The docs and live contract stay open to everyone on this page. Sign in only when you
-              want a personal API key, editable app identity, and copy-ready snippets tied to your
+              want a personal developer token, editable app identity, and copy-ready snippets tied to your
               Kai account.
             </EmptyDescription>
           </EmptyHeader>
@@ -430,11 +430,12 @@ function AccessWorkspace({
   accessLoading,
   accessError,
   authLoading,
+  runtime,
   signedInEmail,
   signedInDisplayName,
   profileDraft,
   profileSaving,
-  revealedKey,
+  revealedToken,
   isMobile,
   onEnable,
   onProfileDraftChange,
@@ -446,11 +447,12 @@ function AccessWorkspace({
   accessLoading: boolean;
   accessError: string | null;
   authLoading: boolean;
+  runtime: DeveloperRuntime;
   signedInEmail?: string | null;
   signedInDisplayName?: string | null;
   profileDraft: ProfileDraft;
   profileSaving: boolean;
-  revealedKey: string | null;
+  revealedToken: string | null;
   isMobile: boolean;
   onEnable: () => Promise<void>;
   onProfileDraftChange: (field: keyof ProfileDraft, value: string) => void;
@@ -458,7 +460,7 @@ function AccessWorkspace({
   onSaveProfile: () => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
-  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "keys" | "profile" | "contract">(
+  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "tokens" | "profile" | "contract">(
     "overview"
   );
 
@@ -467,7 +469,7 @@ function AccessWorkspace({
       <SurfaceCard>
         <SurfaceCardHeader>
           <SurfaceCardTitle>Developer workspace</SurfaceCardTitle>
-          <SurfaceCardDescription>Loading your app identity and active key.</SurfaceCardDescription>
+          <SurfaceCardDescription>Loading your app identity and active token.</SurfaceCardDescription>
         </SurfaceCardHeader>
         <SurfaceCardContent className="space-y-4">
           <Skeleton className="h-24 rounded-3xl" />
@@ -484,7 +486,7 @@ function AccessWorkspace({
         <SurfaceCardHeader>
           <SurfaceCardTitle>Enable self-serve developer access</SurfaceCardTitle>
           <SurfaceCardDescription>
-            One developer app and one active API key are created for your Kai account. Consent still
+            One developer app and one active token are created for your Kai account. Consent still
             happens user-by-user in Kai.
           </SurfaceCardDescription>
         </SurfaceCardHeader>
@@ -514,7 +516,7 @@ function AccessWorkspace({
               </EmptyMedia>
               <EmptyTitle>Your developer workspace is not enabled yet</EmptyTitle>
               <EmptyDescription>
-                Turn on access once and your app identity, API key, and live setup snippets will be
+                Turn on access once and your app identity, developer token, and live setup snippets will be
                 generated from this signed-in Kai account.
               </EmptyDescription>
             </EmptyHeader>
@@ -548,7 +550,7 @@ function AccessWorkspace({
           <div className="space-y-1">
             <SurfaceCardTitle>Developer workspace</SurfaceCardTitle>
             <SurfaceCardDescription>
-              Manage the identity users see in Kai, keep one active API key, and copy setup
+              Manage the identity users see in Kai, keep one active token, and copy setup
               snippets without leaving this page.
             </SurfaceCardDescription>
           </div>
@@ -561,7 +563,7 @@ function AccessWorkspace({
               onClick={onRotateKey}
             >
               <RefreshCcw className="size-4" />
-              Rotate key
+              Rotate token
             </MorphyButton>
             <MorphyButton
               variant="none"
@@ -586,12 +588,12 @@ function AccessWorkspace({
           <SettingsSegmentedTabs
             value={workspaceTab}
             onValueChange={(value) =>
-              setWorkspaceTab(value as "overview" | "keys" | "profile" | "contract")
+              setWorkspaceTab(value as "overview" | "tokens" | "profile" | "contract")
             }
             mobileColumns={2}
             options={[
               { value: "overview", label: "Overview" },
-              { value: "keys", label: "Keys" },
+              { value: "tokens", label: "Tokens" },
               { value: "profile", label: "Profile" },
               { value: "contract", label: "Contract" },
             ]}
@@ -626,32 +628,32 @@ function AccessWorkspace({
                 </div>
               </SurfaceInset>
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-foreground">Current key</p>
+                <p className="text-sm font-semibold text-foreground">Current token</p>
                 <RuntimeValueRow
                   label="Prefix"
-                  value={access.active_key?.key_prefix || "No active key"}
-                  copyLabel="Key prefix"
+                  value={access.active_token?.token_prefix || "No active token"}
+                  copyLabel="Token prefix"
                   isMobile={isMobile}
                 />
-                {revealedKey ? (
+                {revealedToken ? (
                   <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm leading-6 text-amber-900 dark:text-amber-200">
-                    <p className="font-medium">New key revealed once</p>
+                    <p className="font-medium">New token revealed once</p>
                     <p className="mt-1">
                       Save this now. It will not be shown again after you leave this page.
                     </p>
                     <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
                       <code className="block max-w-full overflow-x-auto whitespace-nowrap rounded-lg bg-background/80 px-3 py-2 text-xs">
-                        {revealedKey}
+                        {revealedToken}
                       </code>
                       <MorphyButton
                         variant="none"
                         effect="glass"
                         size="sm"
                         className="w-full sm:w-auto"
-                        onClick={() => copyText(revealedKey, "API key")}
+                        onClick={() => copyText(revealedToken, "Developer token")}
                       >
                         <ClipboardCopy className="size-4" />
-                        Copy key
+                        Copy token
                       </MorphyButton>
                     </div>
                   </div>
@@ -660,21 +662,21 @@ function AccessWorkspace({
             </div>
           ) : null}
 
-          {workspaceTab === "keys" ? (
+          {workspaceTab === "tokens" ? (
             <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <p className="text-sm font-semibold text-foreground">Primary auth header</p>
-              <RuntimeValueRow
-                label="Header"
-                value={`Authorization: Bearer ${revealedKey || "<developer-api-key>"}`}
-                copyLabel="Authorization header"
-                isMobile={isMobile}
-              />
-              <RuntimeValueRow
-                label="Env"
-                value={`${access.developer_api_key_env_var}=${revealedKey || "<developer-api-key>"}`}
-                copyLabel="Developer env var"
-                isMobile={isMobile}
-              />
+                <p className="text-sm font-semibold text-foreground">Primary token setup</p>
+                <RuntimeValueRow
+                  label="MCP URL"
+                  value={`${runtime.mcpUrl}?token=${revealedToken || "<developer-token>"}`}
+                  copyLabel="Remote MCP URL"
+                  isMobile={isMobile}
+                />
+                <RuntimeValueRow
+                  label="Env"
+                  value={`${access.developer_token_env_var}=${revealedToken || "<developer-token>"}`}
+                  copyLabel="Developer env var"
+                  isMobile={isMobile}
+                />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <MorphyButton
                   variant="none"
@@ -684,10 +686,10 @@ function AccessWorkspace({
                   onClick={onRotateKey}
                 >
                   <RefreshCcw className="size-4" />
-                  Rotate key
+                  Rotate token
                 </MorphyButton>
                 <Badge variant="outline" className="justify-center px-3 py-1.5 text-xs sm:w-auto">
-                  Prefix: {access.active_key?.key_prefix}
+                  Prefix: {access.active_token?.token_prefix}
                 </Badge>
               </div>
             </div>
@@ -878,10 +880,10 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
   const [accessError, setAccessError] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(EMPTY_PROFILE_DRAFT);
   const [profileSaving, setProfileSaving] = useState(false);
-  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const initialHashHandledRef = useRef(false);
-  const workspaceSnippets = buildWorkspaceSnippets(runtime, revealedKey || "<developer-api-key>");
-  const developerAuthSnippet = `${workspaceSnippets.envVar}\n${workspaceSnippets.remoteAuthHeader}`;
+  const workspaceSnippets = buildWorkspaceSnippets(runtime, revealedToken || "<developer-token>");
+  const developerTokenSnippet = `${workspaceSnippets.envVar}\n${workspaceSnippets.remoteUrl}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -956,7 +958,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
     if (!currentUser) {
       setAccess(null);
       setAccessError(null);
-      setRevealedKey(null);
+      setRevealedToken(null);
       return;
     }
 
@@ -1007,7 +1009,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
       const idToken = await user.getIdToken();
       const payload = await enableDeveloperAccess(idToken);
       setAccess(payload);
-      setRevealedKey(payload.raw_api_key || null);
+      setRevealedToken(payload.raw_token || null);
       setAccessError(null);
       toast.success("Developer access enabled");
     } catch (error) {
@@ -1025,19 +1027,19 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
 
   async function handleRotateKey() {
     if (!user) {
-      toast.error("Sign in before rotating a key");
+      toast.error("Sign in before rotating a token");
       return;
     }
 
     try {
       const idToken = await user.getIdToken();
-      const payload = await rotateDeveloperAccessKey(idToken);
+      const payload = await rotateDeveloperAccessToken(idToken);
       setAccess(payload);
-      setRevealedKey(payload.raw_api_key || null);
+      setRevealedToken(payload.raw_token || null);
       setAccessError(null);
-      toast.success("Developer API key rotated");
+      toast.success("Developer token rotated");
     } catch (error) {
-      const message = formatDeveloperAccessError(error, runtime, "Could not rotate the API key.");
+      const message = formatDeveloperAccessError(error, runtime, "Could not rotate the token.");
       setAccessError(message);
       toast.error(message);
     }
@@ -1073,7 +1075,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
     try {
       await signOut({ redirectTo: ROUTES.DEVELOPERS });
       setAccess(null);
-      setRevealedKey(null);
+      setRevealedToken(null);
     } catch (error) {
       console.error("[developers] sign out failed", error);
       toast.error("Could not sign out");
@@ -1138,17 +1140,11 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                   </SurfaceCardTitle>
                   <SurfaceCardDescription className="max-w-3xl text-sm leading-6">
                     Public docs stay open. Sign in only if you want a personal developer workspace,
-                    self-serve API key, and consent prompts branded to your app identity.
+                    self-serve developer token, and consent prompts branded to your app identity.
                   </SurfaceCardDescription>
                 </SurfaceCardHeader>
                 <SurfaceCardContent className="space-y-5">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <RuntimeValueRow
-                      label="Docs"
-                      value={runtime.docsUrl}
-                      copyLabel="Developer docs URL"
-                      isMobile={isMobile}
-                    />
                     <RuntimeValueRow
                       label="REST"
                       value={runtime.apiBaseUrl}
@@ -1159,6 +1155,12 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                       label="MCP"
                       value={runtime.mcpUrl}
                       copyLabel="Remote MCP URL"
+                      isMobile={isMobile}
+                    />
+                    <RuntimeValueRow
+                      label="Token"
+                      value={workspaceSnippets.envVar}
+                      copyLabel="Developer env var"
                       isMobile={isMobile}
                     />
                     <RuntimeValueRow
@@ -1228,10 +1230,10 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                         copyLabel="npm MCP config"
                       />
                       <SnippetCard
-                        title="Developer auth"
-                        description="Keep the current environment auth values close at hand while wiring your host."
-                        code={developerAuthSnippet}
-                        copyLabel="Developer auth snippet"
+                        title="Developer token"
+                        description="Keep the current environment token values close at hand while wiring your host."
+                        code={developerTokenSnippet}
+                        copyLabel="Developer token snippet"
                       />
                     </div>
                   )}
@@ -1276,7 +1278,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                   </SurfaceCardHeader>
                   <SurfaceCardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
                     <p>
-                      One self-serve app per Kai account, one active API key, and the same contract
+                      One self-serve app per Kai account, one active token, and the same contract
                       surfaced through remote MCP, the API, and the npm bridge.
                     </p>
                     <p>
@@ -1435,7 +1437,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                 <SectionHeader
                   eyebrow="MCP"
                   title="Remote MCP when possible, npm bridge when needed"
-                  description="Hosts that support HTTP MCP can connect directly. Everyone else can still use the npm launcher with the same developer API key."
+                  description="Hosts that support HTTP MCP can connect directly. Everyone else can still use the npm launcher with the same developer token."
                   icon={Cable}
                   accent="rose"
                 />
@@ -1561,7 +1563,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                 <SectionHeader
                   eyebrow="Developer Access"
                   title="Turn the docs into a working integration workspace"
-                  description="The page is fully readable without login. Sign in only when you want self-serve keys and app identity controls."
+                  description="The page is fully readable without login. Sign in only when you want self-serve tokens and app identity controls."
                   icon={KeyRound}
                   accent="emerald"
                 />
@@ -1579,11 +1581,12 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                   accessLoading={accessLoading}
                   accessError={accessError}
                   authLoading={loading}
+                  runtime={runtime}
                   signedInEmail={user.email}
                   signedInDisplayName={user.displayName}
                   profileDraft={profileDraft}
                   profileSaving={profileSaving}
-                  revealedKey={revealedKey}
+                  revealedToken={revealedToken}
                   isMobile={isMobile}
                   onEnable={handleEnableAccess}
                   onProfileDraftChange={updateProfileDraft}
@@ -1602,21 +1605,21 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
                 </SurfaceCardHeader>
                 <SurfaceCardContent className="space-y-3">
                   <RuntimeValueRow
-                    label="Docs"
-                    value={workspaceSnippets.docsUrl}
-                    copyLabel="Docs URL"
-                    isMobile={isMobile}
-                  />
-                  <RuntimeValueRow
-                    label="Header"
-                    value={workspaceSnippets.remoteAuthHeader}
-                    copyLabel="Bearer header"
+                    label="MCP URL"
+                    value={workspaceSnippets.remoteUrl}
+                    copyLabel="Remote MCP URL"
                     isMobile={isMobile}
                   />
                   <RuntimeValueRow
                     label="Env"
                     value={workspaceSnippets.envVar}
                     copyLabel="Developer env var"
+                    isMobile={isMobile}
+                  />
+                  <RuntimeValueRow
+                    label="REST"
+                    value={workspaceSnippets.restQuery}
+                    copyLabel="REST token query"
                     isMobile={isMobile}
                   />
                 </SurfaceCardContent>
@@ -1655,7 +1658,7 @@ export function DeveloperDocsHub({ initialOrigin = null }: { initialOrigin?: str
               <SurfaceInset className="space-y-3">
                 <p className="text-sm font-semibold text-foreground">Quick checks</p>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  If remote MCP fails, confirm the developer API key is active, the environment URL
+                  If remote MCP fails, confirm the developer token is active, the environment URL
                   matches the page you are using, and the user has a populated indexed world model.
                 </p>
                 <p className="text-sm leading-6 text-muted-foreground">

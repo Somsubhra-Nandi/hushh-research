@@ -32,10 +32,7 @@ Remote MCP hosts that support direct HTTP transport can point at the UAT beta en
 {
   "mcpServers": {
     "hushh-consent-remote": {
-      "url": "https://api.uat.kai.hushh.ai/mcp",
-      "headers": {
-        "Authorization": "Bearer <developer-api-key>"
-      }
+      "url": "https://api.uat.kai.hushh.ai/mcp?token=<developer-token>"
     }
   }
 }
@@ -64,7 +61,7 @@ Provide configuration in one of two ways:
 For stdio hosts, the developer credential env var is:
 
 ```bash
-export HUSHH_DEVELOPER_API_KEY=<developer-api-key>
+export HUSHH_DEVELOPER_TOKEN=<developer-token>
 ```
 
 Example:

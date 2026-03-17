@@ -31,7 +31,7 @@ function printUsage() {
   console.log("  HUSHH_MCP_RUNTIME_DIR   Optional path to a consent-protocol runtime");
   console.log("  HUSHH_MCP_CACHE_DIR     Optional bootstrap cache directory");
   console.log("  HUSHH_MCP_PYTHON        Optional base Python interpreter for bootstrap");
-  console.log("  HUSHH_DEVELOPER_API_KEY Self-serve developer API key used by stdio MCP");
+  console.log("  HUSHH_DEVELOPER_TOKEN   Self-serve developer token used by stdio MCP");
   console.log("  HUSHH_MCP_SKIP_BOOTSTRAP  Set to 1 to skip venv creation and pip install");
 }
 
@@ -44,7 +44,7 @@ function printConfig() {
             command: "npx",
             args: ["-y", "@hushh/mcp@beta"],
             env: {
-              HUSHH_DEVELOPER_API_KEY: "<developer-api-key>",
+              HUSHH_DEVELOPER_TOKEN: "<developer-token>",
             },
           },
         },
@@ -60,7 +60,7 @@ function printCodexToml() {
   console.log('command = "npx"');
   console.log('args = ["-y", "@hushh/mcp@beta"]');
   console.log('[mcp_servers.hushh_consent.env]');
-  console.log('HUSHH_DEVELOPER_API_KEY = "<developer-api-key>"');
+  console.log('HUSHH_DEVELOPER_TOKEN = "<developer-token>"');
   console.log("enabled = true");
 }
 
@@ -70,10 +70,7 @@ function printRemoteConfig() {
       {
         mcpServers: {
           "hushh-consent-remote": {
-            url: "https://api.uat.kai.hushh.ai/mcp",
-            headers: {
-              Authorization: "Bearer <developer-api-key>",
-            },
+            url: "https://api.uat.kai.hushh.ai/mcp?token=<developer-token>",
           },
         },
       },

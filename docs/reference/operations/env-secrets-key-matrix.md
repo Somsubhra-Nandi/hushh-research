@@ -41,7 +41,7 @@ Profile bootstrap rule:
 | `DB_PASSWORD` | `consent-protocol/db/connection.py` | Y | N | Y | secret | N | secret | N | required |
 | `APP_REVIEW_MODE` | `consent-protocol/api/routes/health.py` | Y | N | Y | secret | N | secret | N | required |
 | `REVIEWER_UID` | `consent-protocol/api/routes/health.py` | N | N | Y | secret | N | secret | N | required |
-| `HUSHH_DEVELOPER_API_KEY` | `consent-protocol/api/routes/session.py` | Y | N | Y | secret | N | secret | N | required |
+| `HUSHH_DEVELOPER_TOKEN` | `consent-protocol/api/routes/session.py` | Y | N | Y | secret | N | secret | N | required |
 | `ENVIRONMENT` | `consent-protocol/hushh_mcp/config.py` | Y | N | N | env | N | env | N | required |
 | `GOOGLE_GENAI_USE_VERTEXAI` | runtime SDK config | Y | N | N | env | N | env | N | required |
 | `DB_HOST` | `consent-protocol/db/connection.py` | Y | N | N | env | N | env | N | required |

@@ -66,7 +66,6 @@
   - [x] `DB_PASSWORD`
   - [x] `APP_REVIEW_MODE`
   - [x] `REVIEWER_UID`
-  - [x] `MCP_DEVELOPER_TOKEN`
   
   **Note:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `CONSENT_SSE_ENABLED`, `SYNC_REMOTE_ENABLED`, `DEVELOPER_API_ENABLED`, and `CORS_ALLOWED_ORIGINS` are Cloud Run env vars (not secrets). Do not use `DATABASE_URL`; migrations use DB_* only. Delete `DATABASE_URL` from Secret Manager for strict parity.
 

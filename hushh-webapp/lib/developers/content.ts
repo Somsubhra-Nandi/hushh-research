@@ -76,7 +76,7 @@ export const DEVELOPER_SECTIONS: DeveloperSection[] = [
   {
     id: "access",
     label: "Developer Access",
-    summary: "Sign in, enable access, rotate keys, and update your app identity.",
+    summary: "Sign in, enable access, rotate tokens, and update your app identity.",
   },
   {
     id: "faq",
@@ -111,7 +111,7 @@ export const CONSENT_FLOW_STEPS: ConsentFlowStep[] = [
   {
     title: "Request",
     detail:
-      "Send one discovered scope at a time to POST /api/v1/request-consent with your developer API key.",
+      "Send one discovered scope at a time to POST /api/v1/request-consent?token=... with your developer token.",
   },
   {
     title: "Approve",
@@ -141,25 +141,25 @@ export const REST_ENDPOINTS: RestEndpoint[] = [
   {
     method: "GET",
     path: "/api/v1/tool-catalog",
-    auth: "Optional bearer key",
+    auth: "Optional ?token=...",
     purpose: "Current tool visibility for public beta or a specific developer app.",
   },
   {
     method: "GET",
     path: "/api/v1/user-scopes/{user_id}",
-    auth: "Developer API key required",
+    auth: "Developer token required",
     purpose: "Discovered scope strings and available domains for a specific user.",
   },
   {
     method: "GET",
     path: "/api/v1/consent-status",
-    auth: "Developer API key required",
+    auth: "Developer token required",
     purpose: "Poll the latest status for a scope or request id.",
   },
   {
     method: "POST",
     path: "/api/v1/request-consent",
-    auth: "Developer API key required",
+    auth: "Developer token required",
     purpose: "Create or reuse a consent request for one discovered scope.",
   },
 ];
@@ -173,7 +173,7 @@ export const FAQ_ITEMS: DeveloperFaqItem[] = [
   {
     question: "Does developer login grant data access?",
     answer:
-      "No. Login enables your developer workspace and app key. User data still requires a separate consent decision inside Kai.",
+      "No. Login enables your developer workspace and app token. User data still requires a separate consent decision inside Kai.",
   },
   {
     question: "What is the one scalable read path?",
@@ -194,7 +194,7 @@ export const FAQ_ITEMS: DeveloperFaqItem[] = [
 
 export const DEVELOPER_ACCESS_NOTES = [
   "One developer app is created per signed-in Kai account.",
-  "One active API key is kept at a time. Rotate it whenever you need a fresh credential.",
+  "One active developer token is kept at a time. Rotate it whenever you need a fresh credential.",
   "Consent prompts show your app identity, not a raw token or opaque agent id.",
 ];
 
@@ -270,7 +270,7 @@ export function buildIntegrationModes(runtime: DeveloperRuntime): IntegrationMod
       id: "remote-mcp",
       title: "Remote MCP",
       summary:
-        "Point remote-capable hosts at the branded MCP endpoint and send the developer API key as a bearer token.",
+        "Point remote-capable hosts at the MCP endpoint and append ?token=<developer-token> to the URL.",
     },
     {
       id: "rest",
@@ -287,14 +287,12 @@ export function buildIntegrationModes(runtime: DeveloperRuntime): IntegrationMod
   ];
 }
 
-export function buildRestSnippets(runtime: DeveloperRuntime, developerApiKey = "<developer-api-key>") {
+export function buildRestSnippets(runtime: DeveloperRuntime, developerToken = "<developer-token>") {
   return {
     base: `curl -s ${runtime.apiBaseUrl}`,
     discover: `curl -s \\
-  -H "Authorization: Bearer ${developerApiKey}" \\
-  ${runtime.apiBaseUrl}/user-scopes/user_123`,
+  "${runtime.apiBaseUrl}/user-scopes/user_123?token=${developerToken}"`,
     requestConsent: `curl -s -X POST \\
-  -H "Authorization: Bearer ${developerApiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "user_id": "user_123",
@@ -302,22 +300,18 @@ export function buildRestSnippets(runtime: DeveloperRuntime, developerApiKey = "
     "expiry_hours": 24,
     "reason": "Show portfolio-aware insights inside the user's external agent"
   }' \\
-  ${runtime.apiBaseUrl}/request-consent`,
+  "${runtime.apiBaseUrl}/request-consent?token=${developerToken}"`,
     checkStatus: `curl -s \\
-  -H "Authorization: Bearer ${developerApiKey}" \\
-  "${runtime.apiBaseUrl}/consent-status?user_id=user_123&scope=attr.financial.*"`,
+  "${runtime.apiBaseUrl}/consent-status?user_id=user_123&scope=attr.financial.*&token=${developerToken}"`,
   };
 }
 
-export function buildMcpSnippets(runtime: DeveloperRuntime, developerApiKey = "<developer-api-key>") {
+export function buildMcpSnippets(runtime: DeveloperRuntime, developerToken = "<developer-token>") {
   return {
     remote: `{
   "mcpServers": {
     "hushh-consent-remote": {
-      "url": "${runtime.mcpUrl}",
-      "headers": {
-        "Authorization": "Bearer ${developerApiKey}"
-      }
+      "url": "${runtime.mcpUrl}?token=${developerToken}"
     }
   }
 }`,
@@ -328,7 +322,7 @@ export function buildMcpSnippets(runtime: DeveloperRuntime, developerApiKey = "<
       "args": ["-y", "${runtime.npmPackage}"],
       "env": {
         "CONSENT_API_URL": "${runtime.apiOrigin}",
-        "HUSHH_DEVELOPER_API_KEY": "${developerApiKey}"
+        "HUSHH_DEVELOPER_TOKEN": "${developerToken}"
       }
     }
   }
@@ -336,10 +330,10 @@ export function buildMcpSnippets(runtime: DeveloperRuntime, developerApiKey = "<
   };
 }
 
-export function buildWorkspaceSnippets(runtime: DeveloperRuntime, developerApiKey = "<developer-api-key>") {
+export function buildWorkspaceSnippets(runtime: DeveloperRuntime, developerToken = "<developer-token>") {
   return {
-    envVar: `HUSHH_DEVELOPER_API_KEY=${developerApiKey}`,
-    remoteAuthHeader: `Authorization: Bearer ${developerApiKey}`,
-    docsUrl: `${runtime.docsUrl}`,
+    envVar: `HUSHH_DEVELOPER_TOKEN=${developerToken}`,
+    remoteUrl: `${runtime.mcpUrl}?token=${developerToken}`,
+    restQuery: `?token=${developerToken}`,
   };
 }

@@ -501,7 +501,7 @@ hydrate_backend_cloud_reference() {
   set_secret_key_or_cached "$file" "$profile" "$project" "DB_PASSWORD" "true" "$cache_file"
   set_secret_key_or_cached "$file" "$profile" "$project" "APP_REVIEW_MODE" "false" "$cache_file"
   set_secret_key_or_cached "$file" "$profile" "$project" "REVIEWER_UID" "false" "$cache_file"
-  set_secret_key_or_cached "$file" "$profile" "$project" "MCP_DEVELOPER_TOKEN" "true" "$cache_file"
+  set_secret_key_or_cached "$file" "$profile" "$project" "HUSHH_DEVELOPER_TOKEN" "true" "$cache_file"
   set_secret_key_or_cached "$file" "$profile" "$project" "FINNHUB_API_KEY" "false" "$cache_file"
   set_secret_key_or_cached "$file" "$profile" "$project" "PMP_API_KEY" "false" "$cache_file"
   set_secret_key_or_cached "$file" "$profile" "$project" "PLAID_CLIENT_ID" "false" "$cache_file"
