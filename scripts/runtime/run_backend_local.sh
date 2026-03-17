@@ -159,6 +159,7 @@ cleanup() {
     kill "$PROXY_PID" >/dev/null 2>&1 || true
     wait "$PROXY_PID" >/dev/null 2>&1 || true
   fi
+  cleanup_proxy_credentials
 }
 trap cleanup EXIT INT TERM
 
@@ -168,6 +169,15 @@ DB_PORT="${DB_PORT:-5432}"
 INSTANCE="$(read_env_value "$BACKEND_ENV_FILE" 'CLOUDSQL_INSTANCE_CONNECTION_NAME')"
 PROXY_PORT="$(read_env_value "$BACKEND_ENV_FILE" 'CLOUDSQL_PROXY_PORT')"
 PROXY_PORT="${PROXY_PORT:-$DB_PORT}"
+PROXY_CREDENTIALS_FILE="$(read_env_value "$BACKEND_ENV_FILE" 'CLOUDSQL_PROXY_CREDENTIALS_FILE')"
+PROXY_CREDENTIALS_JSON="$(read_env_value "$BACKEND_ENV_FILE" 'FIREBASE_SERVICE_ACCOUNT_JSON')"
+PROXY_CREDENTIALS_TEMP=""
+
+cleanup_proxy_credentials() {
+  if [ -n "${PROXY_CREDENTIALS_TEMP:-}" ] && [ -f "${PROXY_CREDENTIALS_TEMP:-}" ]; then
+    rm -f "$PROXY_CREDENTIALS_TEMP"
+  fi
+}
 
 if [ -n "$INSTANCE" ] && [[ "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "localhost" ]]; then
   if python3 - "$PROXY_PORT" <<'PY'
@@ -186,8 +196,35 @@ PY
       echo "Install it and rerun, or provide a reachable DB_HOST override in consent-protocol/.env.local-uatdb.local." >&2
       exit 1
     fi
-    echo "Starting Cloud SQL proxy for ${INSTANCE} on 127.0.0.1:${PROXY_PORT}..."
-    cloud-sql-proxy --address 127.0.0.1 --port "$PROXY_PORT" "$INSTANCE" >/tmp/hushh-cloud-sql-proxy.log 2>&1 &
+    proxy_cmd=(cloud-sql-proxy --address 127.0.0.1 --port "$PROXY_PORT")
+    if [ -z "$PROXY_CREDENTIALS_FILE" ] && [ -n "$PROXY_CREDENTIALS_JSON" ]; then
+      PROXY_CREDENTIALS_TEMP="$(mktemp /tmp/hushh-cloudsql-creds.XXXXXX.json)"
+      python3 - "$PROXY_CREDENTIALS_TEMP" "$PROXY_CREDENTIALS_JSON" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+raw = sys.argv[2]
+data = json.loads(raw)
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh)
+PY
+      chmod 600 "$PROXY_CREDENTIALS_TEMP"
+      PROXY_CREDENTIALS_FILE="$PROXY_CREDENTIALS_TEMP"
+    fi
+    if [ -z "$PROXY_CREDENTIALS_FILE" ]; then
+      echo "local-uatdb requires Cloud SQL proxy credentials from FIREBASE_SERVICE_ACCOUNT_JSON or CLOUDSQL_PROXY_CREDENTIALS_FILE." >&2
+      echo "Refusing to fall back to local gcloud/ADC credentials." >&2
+      exit 1
+    fi
+    if [ ! -f "$PROXY_CREDENTIALS_FILE" ]; then
+      echo "Cloud SQL proxy credentials file not found: $PROXY_CREDENTIALS_FILE" >&2
+      exit 1
+    fi
+    proxy_cmd+=(--credentials-file "$PROXY_CREDENTIALS_FILE")
+    echo "Starting Cloud SQL proxy for ${INSTANCE} on 127.0.0.1:${PROXY_PORT} using credentials file ${PROXY_CREDENTIALS_FILE}..."
+    proxy_cmd+=("$INSTANCE")
+    "${proxy_cmd[@]}" >/tmp/hushh-cloud-sql-proxy.log 2>&1 &
     PROXY_PID=$!
     if ! wait_for_port 127.0.0.1 "$PROXY_PORT"; then
       echo "Cloud SQL proxy failed to bind 127.0.0.1:${PROXY_PORT}. See /tmp/hushh-cloud-sql-proxy.log" >&2
