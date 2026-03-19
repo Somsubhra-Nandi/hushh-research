@@ -59,6 +59,7 @@ import {
   setSessionItem,
 } from "@/lib/utils/session-storage";
 import { toInvestorLoading, toInvestorStreamText } from "@/lib/copy/investor-language";
+import { ensureKaiVaultOwnerToken } from "@/lib/services/kai-token-guard";
 
 // =============================================================================
 // TYPES
@@ -714,7 +715,12 @@ export function KaiFlow({
 }: KaiFlowProps) {
   const router = useRouter();
   const { user } = useAuth();
-  const { vaultKey, vaultOwnerToken: contextVaultOwnerToken } = useVault();
+  const {
+    vaultKey,
+    vaultOwnerToken: contextVaultOwnerToken,
+    tokenExpiresAt,
+    unlockVault,
+  } = useVault();
   const initialVaultOwnerToken = vaultOwnerToken.trim().length > 0 ? vaultOwnerToken : null;
   const effectiveVaultOwnerToken =
     contextVaultOwnerToken || initialVaultOwnerToken || undefined;
@@ -1639,7 +1645,33 @@ export function KaiFlow({
         return;
       }
 
-      const tokenForImport = effectiveVaultOwnerToken;
+      const forceRefreshVaultOwnerToken = async (
+        currentToken: string | null
+      ): Promise<string> => {
+        const token = await ensureKaiVaultOwnerToken({
+          userId,
+          currentToken,
+          currentExpiresAt: tokenExpiresAt,
+          forceRefresh: true,
+          onIssued: (issuedToken, expiresAt) => {
+            if (vaultKey) {
+              unlockVault(vaultKey, issuedToken, expiresAt);
+            }
+          },
+        });
+        return token;
+      };
+
+      let tokenForImport = effectiveVaultOwnerToken;
+      try {
+        tokenForImport = await forceRefreshVaultOwnerToken(tokenForImport);
+      } catch (tokenError) {
+        console.warn("[KaiFlow] Failed to refresh VAULT_OWNER token before import:", tokenError);
+        const message = "Your session needs refresh. Please sign in again.";
+        setError(message);
+        toast.error(message);
+        return;
+      }
       lastImportFileRef.current = file;
       // Hard reset visual import state before any snapshot/resume branching so
       // previous-run completion bars never bleed into a new upload attempt.
@@ -1887,100 +1919,113 @@ export function KaiFlow({
         formData.append("file", file);
         formData.append("user_id", userId);
 
+        const runImportRequest = async (importToken: string): Promise<Response> => {
+          if (Capacitor.isNativePlatform()) {
+            return ApiService.importPortfolioStream({
+              formData,
+              vaultOwnerToken: importToken,
+              signal: abortControllerRef.current?.signal,
+            });
+          }
+
+          const startResponse = await ApiService.startPortfolioImportRun({
+            formData,
+            vaultOwnerToken: importToken,
+            signal: abortControllerRef.current?.signal,
+          });
+          if (startResponse.status === 409) {
+            const conflict = (await startResponse.json().catch(() => null)) as
+              | {
+                  detail?: {
+                    active_run?: { run_id?: unknown; latest_cursor?: unknown };
+                  };
+                }
+              | null;
+            const runIdFromConflict =
+              typeof conflict?.detail?.active_run?.run_id === "string"
+                ? conflict.detail.active_run.run_id.trim()
+                : "";
+            if (!runIdFromConflict) {
+              throw new Error(
+                "Another import is running, but its run id could not be resolved."
+              );
+            }
+            // Explicit upload action should always start a fresh run, not attach.
+            await ApiService.cancelPortfolioImportRun({
+              runId: runIdFromConflict,
+              userId,
+              vaultOwnerToken: importToken,
+            });
+            await new Promise((resolve) => window.setTimeout(resolve, 150));
+            const retryStart = await ApiService.startPortfolioImportRun({
+              formData,
+              vaultOwnerToken: importToken,
+              signal: abortControllerRef.current?.signal,
+            });
+            if (!retryStart.ok) {
+              return retryStart;
+            }
+            const retryPayload = (await retryStart.json()) as {
+              run?: { run_id?: unknown };
+            };
+            const retryRunId =
+              typeof retryPayload?.run?.run_id === "string"
+                ? retryPayload.run.run_id.trim()
+                : "";
+            if (!retryRunId) {
+              throw new Error("Import run started but no run id was returned.");
+            }
+            activeImportRunIdRef.current = retryRunId;
+            activeImportCursorRef.current = 0;
+            persistBackgroundSnapshot("running");
+            return ApiService.streamPortfolioImportRun({
+              runId: retryRunId,
+              userId,
+              vaultOwnerToken: importToken,
+              cursor: 0,
+              signal: abortControllerRef.current?.signal,
+            });
+          }
+          if (!startResponse.ok) {
+            return startResponse;
+          }
+          const startedPayload = (await startResponse.json()) as {
+            run?: { run_id?: unknown };
+          };
+          const runId =
+            typeof startedPayload?.run?.run_id === "string"
+              ? startedPayload.run.run_id.trim()
+              : "";
+          if (!runId) {
+            throw new Error("Import run started but no run id was returned.");
+          }
+          activeImportRunIdRef.current = runId;
+          activeImportCursorRef.current = 0;
+          persistBackgroundSnapshot("running");
+          return ApiService.streamPortfolioImportRun({
+            runId,
+            userId,
+            vaultOwnerToken: importToken,
+            cursor: 0,
+            signal: abortControllerRef.current?.signal,
+          });
+        };
+
         let response: Response;
         try {
-          if (Capacitor.isNativePlatform()) {
-            response = await ApiService.importPortfolioStream({
-              formData,
-              vaultOwnerToken: tokenForImport,
-              signal: abortControllerRef.current.signal,
-            });
-          } else {
-            const startResponse = await ApiService.startPortfolioImportRun({
-              formData,
-              vaultOwnerToken: tokenForImport,
-              signal: abortControllerRef.current.signal,
-            });
-            if (startResponse.status === 409) {
-              const conflict = (await startResponse.json().catch(() => null)) as
-                | {
-                    detail?: {
-                      active_run?: { run_id?: unknown; latest_cursor?: unknown };
-                    };
-                  }
-                | null;
-              const runIdFromConflict =
-                typeof conflict?.detail?.active_run?.run_id === "string"
-                  ? conflict.detail.active_run.run_id.trim()
-                  : "";
-              if (!runIdFromConflict) {
-                throw new Error(
-                  "Another import is running, but its run id could not be resolved."
-                );
-              }
-              // Explicit upload action should always start a fresh run, not attach.
-              await ApiService.cancelPortfolioImportRun({
-                runId: runIdFromConflict,
-                userId,
-                vaultOwnerToken: tokenForImport,
-              });
-              await new Promise((resolve) => window.setTimeout(resolve, 150));
-              const retryStart = await ApiService.startPortfolioImportRun({
-                formData,
-                vaultOwnerToken: tokenForImport,
-                signal: abortControllerRef.current.signal,
-              });
-              if (!retryStart.ok) {
-                response = retryStart;
-              } else {
-                const retryPayload = (await retryStart.json()) as {
-                  run?: { run_id?: unknown };
-                };
-                const retryRunId =
-                  typeof retryPayload?.run?.run_id === "string"
-                    ? retryPayload.run.run_id.trim()
-                    : "";
-                if (!retryRunId) {
-                  throw new Error("Import run started but no run id was returned.");
-                }
-                activeImportRunIdRef.current = retryRunId;
-                activeImportCursorRef.current = 0;
-                persistBackgroundSnapshot("running");
-                response = await ApiService.streamPortfolioImportRun({
-                  runId: retryRunId,
-                  userId,
-                  vaultOwnerToken: tokenForImport,
-                  cursor: 0,
-                  signal: abortControllerRef.current.signal,
-                });
-              }
-            } else if (!startResponse.ok) {
-              response = startResponse;
-            } else {
-              const startedPayload = (await startResponse.json()) as {
-                run?: { run_id?: unknown };
-              };
-              const runId =
-                typeof startedPayload?.run?.run_id === "string"
-                  ? startedPayload.run.run_id.trim()
-                  : "";
-              if (!runId) {
-                throw new Error("Import run started but no run id was returned.");
-              }
-              activeImportRunIdRef.current = runId;
-              activeImportCursorRef.current = 0;
-              persistBackgroundSnapshot("running");
-              response = await ApiService.streamPortfolioImportRun({
-                runId,
-                userId,
-                vaultOwnerToken: tokenForImport,
-                cursor: 0,
-                signal: abortControllerRef.current.signal,
-              });
-            }
+          response = await runImportRequest(tokenForImport);
+          if (response.status === 401) {
+            tokenForImport = await forceRefreshVaultOwnerToken(tokenForImport);
+            response = await runImportRequest(tokenForImport);
           }
         } catch (fetchError) {
           if (fetchError instanceof Error && fetchError.name === "AbortError") {
+            throw fetchError;
+          }
+          if (
+            fetchError instanceof Error &&
+            /session needs refresh|sign in again/i.test(fetchError.message)
+          ) {
             throw fetchError;
           }
           throw new Error("Connection issue. Please check your network and try again.");
@@ -2694,7 +2739,14 @@ export function KaiFlow({
         setBusyOperation("portfolio_import_stream", false);
       }
     },
-    [userId, vaultKey, effectiveVaultOwnerToken, setBusyOperation]
+    [
+      userId,
+      vaultKey,
+      effectiveVaultOwnerToken,
+      tokenExpiresAt,
+      unlockVault,
+      setBusyOperation,
+    ]
   );
 
   useEffect(() => {
