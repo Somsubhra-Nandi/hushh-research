@@ -8,11 +8,15 @@ source "$REPO_ROOT/scripts/env/runtime_profile_lib.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/runtime/run_backend_local.sh <local-uatdb> [--skip-activate] [--preflight-only] [--skip-preflight]
+  scripts/runtime/run_backend_local.sh <local-uatdb> [--skip-activate] [--preflight-only] [--skip-preflight] [--reload|--no-reload]
 
 Starts the local backend for a runtime profile.
 For local-uatdb, this will start a Cloud SQL proxy automatically when the
 active backend profile includes CLOUDSQL_INSTANCE_CONNECTION_NAME.
+
+Options:
+  --reload       Start backend with uvicorn autoreload enabled (slower)
+  --no-reload    Start backend without autoreload (default, faster)
 USAGE
 }
 
@@ -26,6 +30,7 @@ shift || true
 SKIP_ACTIVATE=false
 PREFLIGHT_ONLY=false
 SKIP_PREFLIGHT=false
+BACKEND_RELOAD="${BACKEND_RELOAD:-false}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -37,6 +42,12 @@ for arg in "$@"; do
       ;;
     --skip-preflight)
       SKIP_PREFLIGHT=true
+      ;;
+    --reload)
+      BACKEND_RELOAD=true
+      ;;
+    --no-reload)
+      BACKEND_RELOAD=false
       ;;
     -h|--help)
       usage
@@ -198,7 +209,7 @@ PY
     fi
     proxy_cmd=(cloud-sql-proxy --address 127.0.0.1 --port "$PROXY_PORT")
     if [ -z "$PROXY_CREDENTIALS_FILE" ] && [ -n "$PROXY_CREDENTIALS_JSON" ]; then
-      PROXY_CREDENTIALS_TEMP="$(mktemp /tmp/hushh-cloudsql-creds.XXXXXX.json)"
+      PROXY_CREDENTIALS_TEMP="$(mktemp /tmp/hushh-cloudsql-creds.XXXXXX)"
       python3 - "$PROXY_CREDENTIALS_TEMP" "$PROXY_CREDENTIALS_JSON" <<'PY'
 import json
 import sys
@@ -244,4 +255,15 @@ fi
 
 echo "Starting backend on :8000 for runtime profile ${PROFILE}..."
 cd "$REPO_ROOT/consent-protocol"
-python3 -m uvicorn server:app --reload --port 8000
+uvicorn_args=(server:app --port 8000)
+reload_mode="$(printf '%s' "$BACKEND_RELOAD" | tr '[:upper:]' '[:lower:]')"
+case "$reload_mode" in
+  1|true|yes|on)
+    uvicorn_args+=(--reload)
+    echo "Uvicorn autoreload enabled (dev watch mode)."
+    ;;
+  *)
+    echo "Uvicorn autoreload disabled (faster local runtime). Use --reload to enable watch mode."
+    ;;
+esac
+python3 -m uvicorn "${uvicorn_args[@]}"

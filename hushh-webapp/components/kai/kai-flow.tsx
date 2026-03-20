@@ -751,6 +751,8 @@ export function KaiFlow({
   const activeImportRunIdRef = useRef<string | null>(null);
   const activeImportCursorRef = useRef<number>(0);
   const resumeImportStreamInFlightRef = useRef(false);
+  const importStartInFlightRef = useRef(false);
+  const userRequestedImportCancelRef = useRef(false);
   const setBusyOperation = useKaiSession((s) => s.setBusyOperation);
 
   useEffect(() => {
@@ -1115,10 +1117,13 @@ export function KaiFlow({
               }
               case "aborted":
               case "error": {
-                const message = sanitizeInvestorCopy(
-                  readString(payload.message),
-                  "Import could not be completed."
-                );
+                const message =
+                  envelope.event === "aborted"
+                    ? "Import was interrupted before completion. Please retry."
+                    : sanitizeInvestorCopy(
+                        readString(payload.message),
+                        "Import could not be completed."
+                      );
                 applyStreaming((prev) => ({
                   ...prev,
                   stage: "error",
@@ -1844,6 +1849,15 @@ export function KaiFlow({
         return;
       }
 
+      if (importStartInFlightRef.current) {
+        toast.message("Portfolio import is already starting.", {
+          description: "Please wait a moment before starting another import.",
+        });
+        return;
+      }
+      importStartInFlightRef.current = true;
+      userRequestedImportCancelRef.current = false;
+
       try {
         // Fresh import intent: proactively cancel any lingering active backend run.
         try {
@@ -2538,12 +2552,7 @@ export function KaiFlow({
                 break;
               }
               case "aborted": {
-                const message = sanitizeInvestorCopy(
-                  typeof payload.message === "string"
-                    ? payload.message
-                    : "Import was stopped before completion",
-                  "Import was stopped before completion"
-                );
+                const message = "Import was interrupted before completion. Please retry.";
                 terminalStreamFailureMessage = message;
                 terminalStreamFailureDetails =
                   formatQualityGateDetails(payload.quality_gate);
@@ -2650,6 +2659,8 @@ export function KaiFlow({
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
+          const userInitiatedCancel = userRequestedImportCancelRef.current;
+          userRequestedImportCancelRef.current = false;
           if (streamStallAbortTriggered) {
             const stalledMessage =
               "Import stalled with no backend updates. Please retry this statement.";
@@ -2667,6 +2678,35 @@ export function KaiFlow({
               errorMessage: stalledMessage,
               statusMessage: stalledMessage,
             }));
+            setState("importing");
+            return;
+          }
+          if (!userInitiatedCancel) {
+            const interruptedMessage = "Import was interrupted before completion. Please retry.";
+            setError(interruptedMessage);
+            toast.error(interruptedMessage);
+            setStreaming((prev) => ({
+              ...prev,
+              stage: "error",
+              stageTrail: prev.stageTrail.includes(`[ERROR] ${interruptedMessage}`)
+                ? prev.stageTrail
+                : [...prev.stageTrail, `[ERROR] ${interruptedMessage}`],
+              rawStreamLines: appendRawStreamLines(prev.rawStreamLines, [
+                `[ERROR] ${interruptedMessage}`,
+              ]),
+              errorMessage: interruptedMessage,
+              statusMessage: interruptedMessage,
+            }));
+            persistBackgroundSnapshot("failed", {
+              errorMessage: interruptedMessage,
+            });
+            if (importTaskId) {
+              AppBackgroundTaskService.failTask(
+                importTaskId,
+                interruptedMessage,
+                "Portfolio import was interrupted. Please retry."
+              );
+            }
             setState("importing");
             return;
           }
@@ -2732,6 +2772,7 @@ export function KaiFlow({
         }
         setState("importing");
       } finally {
+        importStartInFlightRef.current = false;
         if (stallMonitorId !== null) {
           window.clearInterval(stallMonitorId);
         }
@@ -2794,6 +2835,7 @@ export function KaiFlow({
 
   // Handle cancel import
   const handleCancelImport = useCallback(() => {
+    userRequestedImportCancelRef.current = true;
     const runId = activeImportRunIdRef.current;
     if (runId && effectiveVaultOwnerToken) {
       void ApiService.cancelPortfolioImportRun({
