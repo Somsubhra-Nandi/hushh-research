@@ -91,9 +91,15 @@ export function KaiPreferencesWizard(props: {
   const [horizonDialogOpen, setHorizonDialogOpen] = useState(false);
   const [horizonAnchorChoice, setHorizonAnchorChoice] = useState<HorizonAnchorChoice>("from_now");
 
+  const answeredCount = useMemo(() => {
+    return QUESTIONS.reduce((count, question) => {
+      return answers[question.id] ? count + 1 : count;
+    }, 0);
+  }, [answers]);
+
   const progressValue = useMemo(() => {
-    return Math.round(((step + 1) / total) * 100);
-  }, [step, total]);
+    return Math.round((answeredCount / total) * 100);
+  }, [answeredCount, total]);
   const currentStep = step + 1;
 
   const isLast = step === total - 1;

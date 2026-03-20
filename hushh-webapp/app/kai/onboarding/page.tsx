@@ -272,7 +272,6 @@ export default function KaiOnboardingPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <Card
-              asChild
               preset="hero"
               variant="none"
               effect="glass"
@@ -322,7 +321,6 @@ export default function KaiOnboardingPage() {
             </Card>
 
             <Card
-              asChild
               preset="hero"
               variant="none"
               effect="glass"
