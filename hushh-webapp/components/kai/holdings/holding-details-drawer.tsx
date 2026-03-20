@@ -27,6 +27,7 @@ function formatShares(value: number): string {
 interface HoldingDetailsDrawerProps {
   open: boolean;
   holding: HoldingMobileCardViewModel | null;
+  canManageHoldings?: boolean;
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
   onToggleDelete: () => void;
@@ -44,6 +45,7 @@ function DetailRow({ label, value, valueClassName }: { label: string; value: str
 export function HoldingDetailsDrawer({
   open,
   holding,
+  canManageHoldings = true,
   onOpenChange,
   onEdit,
   onToggleDelete,
@@ -97,7 +99,7 @@ export function HoldingDetailsDrawer({
               size="sm"
               fullWidth
               className="app-button-text app-button-black"
-              disabled={!holding || holding.pendingDelete}
+              disabled={!canManageHoldings || !holding || holding.pendingDelete}
               onClick={onEdit}
             >
               Edit Holding
@@ -108,7 +110,7 @@ export function HoldingDetailsDrawer({
               size="sm"
               fullWidth
               className="app-button-text app-button-black"
-              disabled={!holding}
+              disabled={!canManageHoldings || !holding}
               onClick={onToggleDelete}
             >
               {holding?.pendingDelete ? "Restore" : "Delete"}

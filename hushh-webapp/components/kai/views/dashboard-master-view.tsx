@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -13,10 +12,10 @@ import {
   TrendingDown,
   TrendingUp,
   Loader2,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { DataTable } from "@/components/app-ui/data-table";
 import { PageHeader } from "@/components/app-ui/page-sections";
 import {
   ChartSurfaceCard,
@@ -35,7 +34,7 @@ import { SectorAllocationChart } from "@/components/kai/charts/sector-allocation
 import { StatementCashflowChart } from "@/components/kai/charts/statement-cashflow-chart";
 import { TransactionActivity } from "@/components/kai/cards/transaction-activity";
 import { PlaidBrokerageSummarySection } from "@/components/kai/plaid/plaid-brokerage-sections";
-import { HoldingRowActions } from "@/components/kai/holdings/holding-row-actions";
+import { HoldingsMobileList } from "@/components/kai/holdings/holdings-mobile-list";
 import { EditHoldingModal } from "@/components/kai/modals/edit-holding-modal";
 import type { Holding as PortfolioHolding, PortfolioData } from "@/components/kai/types/portfolio";
 import { ProfileBasedPicksList } from "@/components/kai/cards/profile-based-picks-list";
@@ -76,6 +75,10 @@ import {
   savePlaidOAuthResumeSession,
 } from "@/lib/kai/brokerage/plaid-oauth-session";
 import { PlaidPortfolioService } from "@/lib/kai/brokerage/plaid-portfolio-service";
+import {
+  buildPortfolioSharePayloadFromDashboardModel,
+  exportPortfolioPdf,
+} from "@/lib/portfolio-share/client";
 
 interface DashboardMasterViewProps {
   userId: string;
@@ -106,6 +109,8 @@ interface ComparableHolding {
   cost_basis: number;
   acquisition_date: string;
 }
+
+type DashboardMainTab = "overview" | "holdings" | "deep-dive";
 
 const ALLOCATION_COLOR_PALETTE = [
   "#2563eb",
@@ -152,6 +157,10 @@ function formatCurrency(value: number): string {
 
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
+}
+
+function isDashboardMainTab(value: string): value is DashboardMainTab {
+  return value === "overview" || value === "holdings" || value === "deep-dive";
 }
 
 function compareHoldingsByNameAsc<T extends { name?: string; symbol?: string }>(
@@ -414,9 +423,8 @@ export function DashboardMasterView({
   const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLinkingPlaid, setIsLinkingPlaid] = useState(false);
-  const [mobileHoldingsTab, _setMobileHoldingsTab] = useState<
-    "all" | "analyze" | "non-analyze" | "cash"
-  >("all");
+  const [isSharingPortfolioPdf, setIsSharingPortfolioPdf] = useState(false);
+  const [dashboardMainTab, setDashboardMainTab] = useState<DashboardMainTab>("overview");
   const statementEditablePortfolio = statementPortfolio ?? portfolioData ?? null;
   const canEditStatement = activeSource === "statement" && Boolean(statementEditablePortfolio);
   const displayedPortfolio = activeSource === "statement" ? statementEditablePortfolio : activePortfolio;
@@ -576,6 +584,19 @@ export function DashboardMasterView({
   const model = useMemo(
     () => mapPortfolioToDashboardViewModel(workingPortfolioData),
     [workingPortfolioData]
+  );
+  const portfolioSharePayload = useMemo(
+    () => buildPortfolioSharePayloadFromDashboardModel(model),
+    [model]
+  );
+  const hasShareablePortfolioData = useMemo(
+    () =>
+      portfolioSharePayload.portfolioValue > 0 ||
+      portfolioSharePayload.topHoldings.length > 0 ||
+      portfolioSharePayload.allocationMix.length > 0 ||
+      portfolioSharePayload.sectorAllocation.length > 0 ||
+      portfolioSharePayload.performance.length > 0,
+    [portfolioSharePayload]
   );
 
   const workflowPortfolio = activeSource === "statement" ? workingPortfolioData : activePortfolio;
@@ -863,23 +884,6 @@ export function DashboardMasterView({
     [activeSource, displayedPortfolio, sortedHoldingsDraft]
   );
 
-  const desktopHoldingTables = useMemo(
-    () => ({
-      all: sourceHoldingRows,
-      analyzeEligible: sourceHoldingRows.filter((holding) => isHoldingAnalyzeEligible(holding)),
-      nonAnalyzable: sourceHoldingRows.filter(
-        (holding) => !holding.is_cash_equivalent && !isHoldingAnalyzeEligible(holding)
-      ),
-      cashSweep: sourceHoldingRows.filter((holding) => holding.is_cash_equivalent === true),
-    }),
-    [sourceHoldingRows]
-  );
-  const _mobileHoldingsData = useMemo(() => {
-    if (mobileHoldingsTab === "analyze") return desktopHoldingTables.analyzeEligible;
-    if (mobileHoldingsTab === "non-analyze") return desktopHoldingTables.nonAnalyzable;
-    if (mobileHoldingsTab === "cash") return desktopHoldingTables.cashSweep;
-    return desktopHoldingTables.all;
-  }, [desktopHoldingTables, mobileHoldingsTab]);
   const holdingsBifurcation = useMemo(() => {
     let cashSweep = 0;
     let analyzeEligible = 0;
@@ -1511,121 +1515,32 @@ export function DashboardMasterView({
     );
   }, []);
 
-  const holdingsTableColumns = useMemo<ColumnDef<ManagedHolding>[]>(
-    () => [
-      {
-        id: "row_actions",
-        header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row }) => {
-          const holding = row.original;
-          const deleted = Boolean(holding.pending_delete);
-          return (
-            <div className="flex items-start justify-center pt-1">
-              <HoldingRowActions
-                symbol={holding.symbol}
-                isDeleted={deleted}
-                disableEdit={deleted || !canEditStatement}
-                layout="row"
-                className="w-auto"
-                onEdit={() => {
-                  if (!canEditStatement) return;
-                  handleEditHolding(holding.client_id);
-                }}
-                onToggleDelete={() => {
-                  if (!canEditStatement) return;
-                  handleToggleDeleteHolding(holding.client_id);
-                }}
-              />
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: "symbol",
-        header: "Holding",
-        cell: ({ row }) => {
-          const holding = row.original;
-          const deleted = Boolean(holding.pending_delete);
-          return (
-            <div
-              className={cn(
-                "min-w-[170px] max-w-[240px] sm:max-w-[280px] lg:max-w-[340px]",
-                deleted && "opacity-60"
-              )}
-            >
-              <p className={cn("font-semibold", deleted && "line-through")}>
-                {holding.symbol || "—"}
-              </p>
-              <p
-                title={holding.name || "Unnamed security"}
-                className={cn("truncate text-xs text-muted-foreground", deleted && "line-through")}
-              >
-                {holding.name || "Unnamed security"}
-              </p>
-            </div>
-          );
-        },
-      },
-      {
-        id: "position",
-        header: "Shares @ Price",
-        cell: ({ row }) => {
-          const holding = row.original;
-          return (
-            <span
-              className={cn(
-                "text-xs sm:text-sm leading-tight",
-                holding.pending_delete && "line-through text-muted-foreground"
-              )}
-            >
-              {Number(holding.quantity || 0).toLocaleString()} @ {formatCurrency(Number(holding.price || 0))}
-            </span>
-          );
-        },
-      },
-      {
-        accessorKey: "market_value",
-        header: "Market Value",
-        cell: ({ row }) => {
-          const holding = row.original;
-          return (
-            <span
-              className={cn(
-                "font-semibold text-xs sm:text-sm leading-tight",
-                holding.pending_delete && "line-through text-muted-foreground"
-              )}
-            >
-              {formatCurrency(Number(holding.market_value || 0))}
-            </span>
-          );
-        },
-      },
-      {
-        accessorKey: "unrealized_gain_loss",
-        header: "Gain / Loss",
-        cell: ({ row }) => {
-          const holding = row.original;
-          const gain = Number(holding.unrealized_gain_loss || 0);
-          const gainText = `${gain >= 0 ? "+" : ""}${formatCurrency(gain)}`;
-          return (
-            <span
-              className={cn(
-                "font-medium",
-                holding.pending_delete
-                  ? "line-through text-muted-foreground"
-                  : gain >= 0
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-rose-600 dark:text-rose-400"
-              )}
-            >
-              {gainText}
-            </span>
-          );
-        },
-      },
-    ],
-    [canEditStatement, handleEditHolding, handleToggleDeleteHolding]
-  );
+  const handleSharePortfolioPdf = useCallback(async () => {
+    if (isSharingPortfolioPdf || !hasShareablePortfolioData) return;
+
+    setIsSharingPortfolioPdf(true);
+    try {
+      const result = await exportPortfolioPdf(portfolioSharePayload);
+      if (result === "download") {
+        toast.success("Portfolio PDF exported.");
+      } else {
+        toast.success("Portfolio PDF shared.");
+      }
+    } catch (error) {
+      const message = String((error as Error)?.message || "").toLowerCase();
+      if (
+        message.includes("cancel") ||
+        message.includes("cancelled") ||
+        message.includes("canceled")
+      ) {
+        return;
+      }
+      console.error("[DashboardMasterView] Failed to share portfolio PDF:", error);
+      toast.error("Could not share portfolio PDF.");
+    } finally {
+      setIsSharingPortfolioPdf(false);
+    }
+  }, [hasShareablePortfolioData, isSharingPortfolioPdf, portfolioSharePayload]);
 
   const plaidItems = useMemo<PlaidItemSummary[]>(
     () => plaidStatus?.items || [],
@@ -1705,6 +1620,24 @@ export function DashboardMasterView({
         description="Your active source, holdings context, and brokerage connections stay in sync here before you move into investments, debate, or optimization."
         icon={Building2}
         accent="sky"
+        actions={
+          <MorphyButton
+            variant="none"
+            effect="fade"
+            size="sm"
+            onClick={() => void handleSharePortfolioPdf()}
+            disabled={!hasShareablePortfolioData || isSharingPortfolioPdf}
+            className="h-10 w-10 rounded-full border border-border/70 bg-background/85 p-0 text-foreground shadow-sm"
+            aria-label="Share portfolio PDF"
+            title={hasShareablePortfolioData ? "Share portfolio PDF" : "No shareable portfolio data yet"}
+          >
+            {isSharingPortfolioPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Share2 className="h-4 w-4" />
+            )}
+          </MorphyButton>
+        }
       />
       <PortfolioSourceSwitcher
         activeSource={activeSource}
@@ -1832,447 +1765,380 @@ export function DashboardMasterView({
         </SurfaceCardContent>
       </SurfaceCard>
 
-      <PlaidBrokerageSummarySection
-        items={plaidItems}
-        onRefreshItem={(itemId) => handleRefreshPlaid(itemId)}
-        onCancelRefresh={(params) => handleCancelPlaidRefresh(params)}
-        onManageConnection={(itemId) => void openPlaidLinkFlow(itemId)}
-        onViewInvestments={() => router.push(ROUTES.KAI_INVESTMENTS)}
-      />
+      <Tabs
+        value={dashboardMainTab}
+        onValueChange={(value) => {
+          if (!isDashboardMainTab(value)) return;
+          setDashboardMainTab(value);
+        }}
+        className="space-y-4"
+      >
+        <TabsList className="grid h-9 w-full grid-cols-3 rounded-lg bg-background/80 p-0.5">
+          <TabsTrigger value="overview" className="text-xs">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="holdings" className="text-xs">
+            Holdings
+          </TabsTrigger>
+          <TabsTrigger value="deep-dive" className="text-xs">
+            Deep Dive
+          </TabsTrigger>
+        </TabsList>
 
-      <section className="space-y-4">
-        {hasEquitySectorAllocation ? (
-          <SectorAllocationChart
-            className="min-w-0"
-            holdings={equitySectorChartHoldings}
-            title="Equity Sector Allocation"
-            subtitle={`${(equitySectorCoveragePct * 100).toFixed(0)}% of equity holdings have mapped sector labels. Denominator: ${formatCurrency(model.hero.totalValue)} total portfolio value.`}
+        <TabsContent value="overview" className="mt-0 space-y-4">
+          <PlaidBrokerageSummarySection
+            items={plaidItems}
+            onRefreshItem={(itemId) => handleRefreshPlaid(itemId)}
+            onCancelRefresh={(params) => handleCancelPlaidRefresh(params)}
+            onManageConnection={(itemId) => void openPlaidLinkFlow(itemId)}
+            onViewInvestments={() => router.push(ROUTES.KAI_INVESTMENTS)}
           />
-        ) : (
-          <FallbackSurfaceCard
-            title="Equity Sector Allocation"
-            detail="No equity holdings are currently available for sector-level allocation."
-          />
-        )}
 
-        {hasNonEquityAllocation ? (
-          <SectorAllocationChart
-            className="min-w-0"
-            holdings={nonEquityAllocationChartHoldings}
-            title="Non-Equity Allocation"
-            subtitle={`${(nonEquityCoveragePct * 100).toFixed(0)}% of non-equity holdings are mapped to canonical allocation buckets. Denominator: ${formatCurrency(model.hero.totalValue)} total portfolio value.`}
-          />
-        ) : (
-          <FallbackSurfaceCard
-            title="Non-Equity Allocation"
-            detail="No non-equity holdings are present in the current portfolio."
-          />
-        )}
-      </section>
-
-      {activeSource === "statement" && statementSnapshotRows.length > 0 ? (
-        <StatementCashflowChart data={statementChartData} />
-      ) : null}
-
-      <TransactionActivity
-        transactions={recentTransactions}
-        maxItems={6}
-        className="min-w-0"
-      />
-
-      <SurfaceCard>
-        <SurfaceCardHeader className="px-6 pb-2 pt-6 sm:px-7">
-          <SurfaceCardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
-            Investor Snapshot
-          </SurfaceCardTitle>
-        </SurfaceCardHeader>
-        <SurfaceCardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SurfaceInset className="p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Debate Readiness
-              </p>
-              <p className="mt-1 text-2xl font-black">{investorSnapshot.readinessScore}</p>
-              <p className="text-xs text-muted-foreground">Context quality score (0-100)</p>
-            </SurfaceInset>
-            <SurfaceInset className="p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Optimization Pressure
-              </p>
-              <p className="mt-1 text-2xl font-black">{formatPercent(investorSnapshot.optimizationPressurePct)}</p>
-              <p className="text-xs text-muted-foreground">
-                Portfolio value in losing positions
-              </p>
-            </SurfaceInset>
-            <SurfaceInset className="p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Top 3 Concentration
-              </p>
-              <p className="mt-1 text-2xl font-black">{formatPercent(investorSnapshot.top3ConcentrationPct)}</p>
-              <p className="text-xs text-muted-foreground">
-                Largest three holdings share
-              </p>
-            </SurfaceInset>
-            <SurfaceInset className="p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Estimated Annual Income
-              </p>
-              <p className="mt-1 text-2xl font-black">{formatCurrency(investorSnapshot.estimatedAnnualIncome)}</p>
-              <p className="text-xs text-muted-foreground">
-                Yield {formatPercent(investorSnapshot.annualYieldPct)}
-              </p>
-            </SurfaceInset>
-          </div>
-
-          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-            <SurfaceInset className="rounded-lg px-3 py-2">
-              {investorSnapshot.losersCount} losers / {investorSnapshot.winnersCount} winners
-            </SurfaceInset>
-            <SurfaceInset className="rounded-lg px-3 py-2">
-              {investorSnapshot.uniqueSectors} sector buckets represented
-            </SurfaceInset>
-            <SurfaceInset className="rounded-lg px-3 py-2">
-              Cash allocation {formatPercent(investorSnapshot.cashPct)}
-            </SurfaceInset>
-            <SurfaceInset className="rounded-lg px-3 py-2">
-              Fixed income {formatPercent(investorSnapshot.fixedIncomePct)} / Real assets{" "}
-              {formatPercent(investorSnapshot.realAssetsPct)}
-            </SurfaceInset>
-          </div>
-        </SurfaceCardContent>
-      </SurfaceCard>
-
-      <SurfaceCard className="min-w-0">
-        <SurfaceCardHeader className="px-6 pb-2 pt-6 sm:px-7">
-          <div className="flex items-center justify-between gap-2">
-            <SurfaceCardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
-              {isPlaidView ? "Brokerage Holdings" : "Current Holdings"}
-            </SurfaceCardTitle>
-            {canEditStatement ? (
-              <MorphyButton
-                variant="none"
-                effect="fade"
-                size="sm"
-                onClick={openAddHoldingModal}
-              >
-                <Icon icon={Plus} size="sm" className="mr-1" />
-                Add Holding
-              </MorphyButton>
+          <section className="space-y-4">
+            {hasEquitySectorAllocation ? (
+              <SectorAllocationChart
+                className="min-w-0"
+                holdings={equitySectorChartHoldings}
+                title="Equity Sector Allocation"
+                subtitle={`${(equitySectorCoveragePct * 100).toFixed(0)}% of equity holdings have mapped sector labels. Denominator: ${formatCurrency(model.hero.totalValue)} total portfolio value.`}
+              />
             ) : (
-              <span className="text-xs text-muted-foreground">Read-only source</span>
+              <FallbackSurfaceCard
+                title="Equity Sector Allocation"
+                detail="No equity holdings are currently available for sector-level allocation."
+              />
             )}
-          </div>
-        </SurfaceCardHeader>
 
-        <SurfaceCardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-          <SurfaceInset className="px-3 py-2.5 text-xs text-muted-foreground">
-            {canEditStatement ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-foreground">Change Summary</span>
-                <span className="rounded-full bg-background px-2 py-0.5">Added: {holdingsChangeSummary.added}</span>
-                <span className="rounded-full bg-background px-2 py-0.5">Edited: {holdingsChangeSummary.edited}</span>
-                <span className="rounded-full bg-background px-2 py-0.5">Deleted: {holdingsChangeSummary.deleted}</span>
-              </div>
+            {hasNonEquityAllocation ? (
+              <SectorAllocationChart
+                className="min-w-0"
+                holdings={nonEquityAllocationChartHoldings}
+                title="Non-Equity Allocation"
+                subtitle={`${(nonEquityCoveragePct * 100).toFixed(0)}% of non-equity holdings are mapped to canonical allocation buckets. Denominator: ${formatCurrency(model.hero.totalValue)} total portfolio value.`}
+              />
             ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-foreground">Plaid Snapshot</span>
-                <span className="rounded-full bg-background px-2 py-0.5">
-                  Sync: {freshness?.syncStatus || "idle"}
-                </span>
-                <span className="rounded-full bg-background px-2 py-0.5">
-                  Items: {freshness?.itemCount || 0}
-                </span>
-                <span className="rounded-full bg-background px-2 py-0.5">
-                  Accounts: {freshness?.accountCount || 0}
-                </span>
-              </div>
+              <FallbackSurfaceCard
+                title="Non-Equity Allocation"
+                detail="No non-equity holdings are present in the current portfolio."
+              />
             )}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-foreground">Bifurcation</span>
-              <span className="rounded-full bg-background px-2 py-0.5">
-                Equities: {holdingsBifurcation.analyzeEligible}
-              </span>
-              <span className="rounded-full bg-background px-2 py-0.5">
-                Other Assets: {holdingsBifurcation.nonAnalyzable}
-              </span>
-              <span className="rounded-full bg-background px-2 py-0.5">
-                Cash: {holdingsBifurcation.cashSweep}
-              </span>
-            </div>
-            {!canEditStatement ? (
-              <div className="mt-2 rounded-lg border border-dashed border-border/60 bg-muted/40 px-3 py-2 text-xs">
-                Plaid holdings are broker-sourced and cannot be edited in Kai.
-              </div>
-            ) : null}
-          </SurfaceInset>
+          </section>
 
-          <Tabs defaultValue="all" className="space-y-3">
-            <div className="pb-1">
-              <TabsList className="grid h-8 w-full grid-cols-4 gap-0.5 rounded-lg bg-background/80 p-0.5">
-                <TabsTrigger
-                  className="h-7 min-w-0 truncate px-1 text-[10px] leading-none sm:text-xs"
-                  value="all"
-                  title={`All holdings (${desktopHoldingTables.all.length})`}
-                >
-                  All ({desktopHoldingTables.all.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  className="h-7 min-w-0 truncate px-1 text-[10px] leading-none sm:text-xs"
-                  value="analyze"
-                  title={`Equities (${desktopHoldingTables.analyzeEligible.length})`}
-                >
-                  Equity ({desktopHoldingTables.analyzeEligible.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  className="h-7 min-w-0 truncate px-1 text-[10px] leading-none sm:text-xs"
-                  value="non-analyze"
-                  title={`Other assets (${desktopHoldingTables.nonAnalyzable.length})`}
-                >
-                  Other ({desktopHoldingTables.nonAnalyzable.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  className="h-7 min-w-0 truncate px-1 text-[10px] leading-none sm:text-xs"
-                  value="cash"
-                  title={`Cash holdings (${desktopHoldingTables.cashSweep.length})`}
-                >
-                  Cash ({desktopHoldingTables.cashSweep.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="all">
-              <DataTable
-                columns={holdingsTableColumns}
-                data={desktopHoldingTables.all}
-                globalSearchKeys={["symbol", "name"]}
-                searchPlaceholder="Search holdings by symbol or name..."
-                initialPageSize={5}
-                pageSizeOptions={[5, 10, 20]}
-                rowClassName={(holding) =>
-                  holding.pending_delete
-                    ? "bg-muted/45 text-muted-foreground"
-                    : "bg-transparent"
-                }
-                tableContainerClassName="w-full"
-                tableClassName="w-full"
-              />
-            </TabsContent>
-
-            <TabsContent value="analyze">
-              <DataTable
-                columns={holdingsTableColumns}
-                data={desktopHoldingTables.analyzeEligible}
-                globalSearchKeys={["symbol", "name"]}
-                searchPlaceholder="Search equities..."
-                initialPageSize={5}
-                pageSizeOptions={[5, 10, 20]}
-                rowClassName={(holding) =>
-                  holding.pending_delete
-                    ? "bg-muted/45 text-muted-foreground"
-                    : "bg-transparent"
-                }
-                tableContainerClassName="w-full"
-                tableClassName="w-full"
-              />
-            </TabsContent>
-
-            <TabsContent value="non-analyze">
-              <DataTable
-                columns={holdingsTableColumns}
-                data={desktopHoldingTables.nonAnalyzable}
-                globalSearchKeys={["symbol", "name"]}
-                searchPlaceholder="Search other assets..."
-                initialPageSize={5}
-                pageSizeOptions={[5, 10, 20]}
-                rowClassName={(holding) =>
-                  holding.pending_delete
-                    ? "bg-muted/45 text-muted-foreground"
-                    : "bg-transparent"
-                }
-                tableContainerClassName="w-full"
-                tableClassName="w-full"
-              />
-            </TabsContent>
-
-            <TabsContent value="cash">
-              <DataTable
-                columns={holdingsTableColumns}
-                data={desktopHoldingTables.cashSweep}
-                globalSearchKeys={["symbol", "name"]}
-                searchPlaceholder="Search cash holdings..."
-                initialPageSize={5}
-                pageSizeOptions={[5, 10, 20]}
-                rowClassName={(holding) =>
-                  holding.pending_delete
-                    ? "bg-muted/45 text-muted-foreground"
-                    : "bg-transparent"
-                }
-                tableContainerClassName="w-full"
-                tableClassName="w-full"
-              />
-            </TabsContent>
-          </Tabs>
-
-          {canEditStatement && hasHoldingsChanges ? (
-            <div className="pt-2">
-              <MorphyButton
-                variant="blue-gradient"
-                effect="fade"
-                fullWidth
-                onClick={() => void persistHoldingsChanges()}
-                disabled={isSavingHoldings}
-                className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
-              >
-                <Icon icon={Save} size="sm" className="mr-2" />
-                {isSavingHoldings ? "Saving Holdings..." : "Save Holdings Changes"}
-              </MorphyButton>
-            </div>
+          {activeSource === "statement" && statementSnapshotRows.length > 0 ? (
+            <StatementCashflowChart data={statementChartData} />
           ) : null}
-        </SurfaceCardContent>
-      </SurfaceCard>
 
-      <section className="space-y-3">
-        <h2 className="app-section-heading px-1 uppercase tracking-[0.12em] text-muted-foreground">
-          Portfolio Insights
-        </h2>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {model.quality.allocationReady ? (
-            <ChartSurfaceCard
-              title="Allocation Mix"
-              className="min-w-0"
-              contentClassName="space-y-0"
-            >
-              <SurfaceInset>
-                <AssetAllocationDonut data={allocationData} height={240} />
-              </SurfaceInset>
-            </ChartSurfaceCard>
-          ) : (
-            <FallbackSurfaceCard
-              title="Allocation Mix"
-              detail="Insufficient statement allocation fields to build a reliable mix chart."
-            />
-          )}
-
-          {model.quality.historyReady ? (
-            <PortfolioHistoryChart
-              data={model.history}
-              beginningValue={model.hero.beginningValue}
-              endingValue={model.hero.endingValue}
-              statementPeriod={model.hero.statementPeriod}
-              className="h-full min-w-0"
-            />
-          ) : (
-            <FallbackSurfaceCard
-              title="Portfolio History"
-              detail="Insufficient statement period values to plot a defensible history trend."
-            />
-          )}
-
-          {model.quality.gainLossReady ? (
-            <GainLossDistributionChart
-              className="min-w-0"
-              data={model.gainLossDistribution}
-            />
-          ) : (
-            <FallbackSurfaceCard
-              title="Gain/Loss Distribution"
-              detail="Statement lacks enough gain/loss percentages to build a reliable distribution."
-            />
-          )}
-
-          {model.quality.concentrationReady ? (
-            <HoldingsConcentrationChart
-              className="min-w-0"
-              data={model.concentration}
-            />
-          ) : (
-            <FallbackSurfaceCard
-              title="Holdings Concentration"
-              detail="Need at least three measurable holdings to compute concentration safely."
-            />
-          )}
-        </div>
-      </section>
-
-      <SurfaceCard className="min-w-0">
-        <SurfaceCardContent className="p-4 sm:p-5">
-          <ProfileBasedPicksList
-            userId={userId}
-            vaultOwnerToken={vaultOwnerToken}
-            symbols={holdingSymbols}
-            onAdd={handleAnalyzeFromDashboard}
+          <TransactionActivity
+            transactions={recentTransactions}
+            maxItems={6}
+            className="min-w-0"
           />
-        </SurfaceCardContent>
-      </SurfaceCard>
 
-      <SurfaceCard className="min-w-0">
-        <SurfaceCardHeader>
-          <SurfaceCardTitle>Recommendations</SurfaceCardTitle>
-        </SurfaceCardHeader>
-        <SurfaceCardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {KAI_EXPERIENCE_CONTRACT.decisionConviction.dashboardRecommendationsDescription}
-          </p>
-          {model.recommendations.map((item) => (
-            <SurfaceInset key={item.title} className="p-3">
-              <p className="text-sm font-semibold">{item.title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-            </SurfaceInset>
-          ))}
-        </SurfaceCardContent>
-      </SurfaceCard>
+          <SurfaceCard>
+            <SurfaceCardHeader className="px-6 pb-2 pt-6 sm:px-7">
+              <SurfaceCardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
+                Investor Snapshot
+              </SurfaceCardTitle>
+            </SurfaceCardHeader>
+            <SurfaceCardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SurfaceInset className="p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Debate Readiness
+                  </p>
+                  <p className="mt-1 text-2xl font-black">{investorSnapshot.readinessScore}</p>
+                  <p className="text-xs text-muted-foreground">Context quality score (0-100)</p>
+                </SurfaceInset>
+                <SurfaceInset className="p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Optimization Pressure
+                  </p>
+                  <p className="mt-1 text-2xl font-black">{formatPercent(investorSnapshot.optimizationPressurePct)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Portfolio value in losing positions
+                  </p>
+                </SurfaceInset>
+                <SurfaceInset className="p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Top 3 Concentration
+                  </p>
+                  <p className="mt-1 text-2xl font-black">{formatPercent(investorSnapshot.top3ConcentrationPct)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Largest three holdings share
+                  </p>
+                </SurfaceInset>
+                <SurfaceInset className="p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Estimated Annual Income
+                  </p>
+                  <p className="mt-1 text-2xl font-black">{formatCurrency(investorSnapshot.estimatedAnnualIncome)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Yield {formatPercent(investorSnapshot.annualYieldPct)}
+                  </p>
+                </SurfaceInset>
+              </div>
 
-      <SurfaceCard>
-        <SurfaceCardContent className="flex flex-col gap-3 p-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <p>
-            {canEditStatement
-              ? "Imported statement data is synced across dashboard and holdings views."
-              : "Plaid brokerage data is broker-sourced, refreshable, and read-only inside Kai."}
-          </p>
-          <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
-            <MorphyButton
-              variant="none"
-              effect="fade"
-              size="sm"
-              fullWidth
-              disabled={isDeletingImportedData}
-              onClick={canEditStatement ? onReupload : () => void openPlaidLinkFlow()}
-            >
-              {canEditStatement ? "Import Portfolio" : "Connect Another Brokerage"}
-            </MorphyButton>
-            {canEditStatement ? (
-              <MorphyButton
-                variant="none"
-                effect="fade"
-                size="sm"
-                fullWidth
-                className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-                disabled={isDeletingImportedData}
-                onClick={() => setDeleteImportedDialogOpen(true)}
-              >
-                {isDeletingImportedData ? (
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                <SurfaceInset className="rounded-lg px-3 py-2">
+                  {investorSnapshot.losersCount} losers / {investorSnapshot.winnersCount} winners
+                </SurfaceInset>
+                <SurfaceInset className="rounded-lg px-3 py-2">
+                  {investorSnapshot.uniqueSectors} sector buckets represented
+                </SurfaceInset>
+                <SurfaceInset className="rounded-lg px-3 py-2">
+                  Cash allocation {formatPercent(investorSnapshot.cashPct)}
+                </SurfaceInset>
+                <SurfaceInset className="rounded-lg px-3 py-2">
+                  Fixed income {formatPercent(investorSnapshot.fixedIncomePct)} / Real assets{" "}
+                  {formatPercent(investorSnapshot.realAssetsPct)}
+                </SurfaceInset>
+              </div>
+            </SurfaceCardContent>
+          </SurfaceCard>
+        </TabsContent>
+
+        <TabsContent value="holdings" className="mt-0 space-y-4">
+          <SurfaceCard className="min-w-0">
+            <SurfaceCardHeader className="px-6 pb-2 pt-6 sm:px-7">
+              <div className="flex items-center justify-between gap-2">
+                <SurfaceCardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
+                  {isPlaidView ? "Brokerage Holdings" : "Current Holdings"}
+                </SurfaceCardTitle>
+                {canEditStatement ? (
+                  <MorphyButton
+                    variant="none"
+                    effect="fade"
+                    size="sm"
+                    onClick={openAddHoldingModal}
+                  >
+                    <Icon icon={Plus} size="sm" className="mr-1" />
+                    Add Holding
+                  </MorphyButton>
                 ) : (
-                  <Trash2 className="mr-1 h-4 w-4" />
+                  <span className="text-xs text-muted-foreground">Read-only source</span>
                 )}
-                Delete Imported Data
-              </MorphyButton>
-            ) : (
-              <MorphyButton
-                variant="none"
-                effect="fade"
-                size="sm"
-                fullWidth
-                onClick={() => handleRefreshPlaid()}
-                disabled={isPlaidRefreshing}
-              >
-                <RefreshCw className={`mr-1 h-4 w-4 ${isPlaidRefreshing ? "animate-spin" : ""}`} />
-                Refresh Plaid
-              </MorphyButton>
-            )}
-          </div>
-        </SurfaceCardContent>
-      </SurfaceCard>
+              </div>
+            </SurfaceCardHeader>
+
+            <SurfaceCardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <SurfaceInset className="px-3 py-2.5 text-xs text-muted-foreground">
+                {canEditStatement ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-foreground">Change Summary</span>
+                    <span className="rounded-full bg-background px-2 py-0.5">Added: {holdingsChangeSummary.added}</span>
+                    <span className="rounded-full bg-background px-2 py-0.5">Edited: {holdingsChangeSummary.edited}</span>
+                    <span className="rounded-full bg-background px-2 py-0.5">Deleted: {holdingsChangeSummary.deleted}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-foreground">Plaid Snapshot</span>
+                    <span className="rounded-full bg-background px-2 py-0.5">
+                      Sync: {freshness?.syncStatus || "idle"}
+                    </span>
+                    <span className="rounded-full bg-background px-2 py-0.5">
+                      Items: {freshness?.itemCount || 0}
+                    </span>
+                    <span className="rounded-full bg-background px-2 py-0.5">
+                      Accounts: {freshness?.accountCount || 0}
+                    </span>
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground">Bifurcation</span>
+                  <span className="rounded-full bg-background px-2 py-0.5">
+                    Equities: {holdingsBifurcation.analyzeEligible}
+                  </span>
+                  <span className="rounded-full bg-background px-2 py-0.5">
+                    Other Assets: {holdingsBifurcation.nonAnalyzable}
+                  </span>
+                  <span className="rounded-full bg-background px-2 py-0.5">
+                    Cash: {holdingsBifurcation.cashSweep}
+                  </span>
+                </div>
+                {!canEditStatement ? (
+                  <div className="mt-2 rounded-lg border border-dashed border-border/60 bg-muted/40 px-3 py-2 text-xs">
+                    Plaid holdings are broker-sourced and cannot be edited in Kai.
+                  </div>
+                ) : null}
+              </SurfaceInset>
+
+              <HoldingsMobileList
+                holdings={sourceHoldingRows}
+                canManageHoldings={canEditStatement}
+                onEditHolding={(holdingId) => {
+                  if (!canEditStatement) return;
+                  handleEditHolding(holdingId);
+                }}
+                onToggleDeleteHolding={(holdingId) => {
+                  if (!canEditStatement) return;
+                  handleToggleDeleteHolding(holdingId);
+                }}
+              />
+
+              {canEditStatement && hasHoldingsChanges ? (
+                <div className="pt-2">
+                  <MorphyButton
+                    variant="blue-gradient"
+                    effect="fade"
+                    fullWidth
+                    onClick={() => void persistHoldingsChanges()}
+                    disabled={isSavingHoldings}
+                    className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+                  >
+                    <Icon icon={Save} size="sm" className="mr-2" />
+                    {isSavingHoldings ? "Saving Holdings..." : "Save Holdings Changes"}
+                  </MorphyButton>
+                </div>
+              ) : null}
+            </SurfaceCardContent>
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <SurfaceCardContent className="flex flex-col gap-3 p-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:p-6">
+              <p>
+                {canEditStatement
+                  ? "Imported statement data is synced across dashboard and holdings views."
+                  : "Plaid brokerage data is broker-sourced, refreshable, and read-only inside Kai."}
+              </p>
+              <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+                <MorphyButton
+                  variant="none"
+                  effect="fade"
+                  size="sm"
+                  fullWidth
+                  disabled={isDeletingImportedData}
+                  onClick={canEditStatement ? onReupload : () => void openPlaidLinkFlow()}
+                >
+                  {canEditStatement ? "Import Portfolio" : "Connect Another Brokerage"}
+                </MorphyButton>
+                {canEditStatement ? (
+                  <MorphyButton
+                    variant="none"
+                    effect="fade"
+                    size="sm"
+                    fullWidth
+                    className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+                    disabled={isDeletingImportedData}
+                    onClick={() => setDeleteImportedDialogOpen(true)}
+                  >
+                    {isDeletingImportedData ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-1 h-4 w-4" />
+                    )}
+                    Delete Imported Data
+                  </MorphyButton>
+                ) : (
+                  <MorphyButton
+                    variant="none"
+                    effect="fade"
+                    size="sm"
+                    fullWidth
+                    onClick={() => handleRefreshPlaid()}
+                    disabled={isPlaidRefreshing}
+                  >
+                    <RefreshCw className={`mr-1 h-4 w-4 ${isPlaidRefreshing ? "animate-spin" : ""}`} />
+                    Refresh Plaid
+                  </MorphyButton>
+                )}
+              </div>
+            </SurfaceCardContent>
+          </SurfaceCard>
+        </TabsContent>
+
+        <TabsContent value="deep-dive" className="mt-0 space-y-4">
+          <section className="space-y-3">
+            <h2 className="app-section-heading px-1 uppercase tracking-[0.12em] text-muted-foreground">
+              Portfolio Insights
+            </h2>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {model.quality.allocationReady ? (
+                <ChartSurfaceCard
+                  title="Allocation Mix"
+                  className="min-w-0"
+                  contentClassName="space-y-0"
+                >
+                  <SurfaceInset>
+                    <AssetAllocationDonut data={allocationData} height={240} />
+                  </SurfaceInset>
+                </ChartSurfaceCard>
+              ) : (
+                <FallbackSurfaceCard
+                  title="Allocation Mix"
+                  detail="Insufficient statement allocation fields to build a reliable mix chart."
+                />
+              )}
+
+              {model.quality.historyReady ? (
+                <PortfolioHistoryChart
+                  data={model.history}
+                  beginningValue={model.hero.beginningValue}
+                  endingValue={model.hero.endingValue}
+                  statementPeriod={model.hero.statementPeriod}
+                  className="h-full min-w-0"
+                />
+              ) : (
+                <FallbackSurfaceCard
+                  title="Portfolio History"
+                  detail="Insufficient statement period values to plot a defensible history trend."
+                />
+              )}
+
+              {model.quality.gainLossReady ? (
+                <GainLossDistributionChart
+                  className="min-w-0"
+                  data={model.gainLossDistribution}
+                />
+              ) : (
+                <FallbackSurfaceCard
+                  title="Gain/Loss Distribution"
+                  detail="Statement lacks enough gain/loss percentages to build a reliable distribution."
+                />
+              )}
+
+              {model.quality.concentrationReady ? (
+                <HoldingsConcentrationChart
+                  className="min-w-0"
+                  data={model.concentration}
+                />
+              ) : (
+                <FallbackSurfaceCard
+                  title="Holdings Concentration"
+                  detail="Need at least three measurable holdings to compute concentration safely."
+                />
+              )}
+            </div>
+          </section>
+
+          <SurfaceCard className="min-w-0">
+            <SurfaceCardContent className="p-4 sm:p-5">
+              <ProfileBasedPicksList
+                userId={userId}
+                vaultOwnerToken={vaultOwnerToken}
+                symbols={holdingSymbols}
+                onAdd={handleAnalyzeFromDashboard}
+              />
+            </SurfaceCardContent>
+          </SurfaceCard>
+
+          <SurfaceCard className="min-w-0">
+            <SurfaceCardHeader>
+              <SurfaceCardTitle>Recommendations</SurfaceCardTitle>
+            </SurfaceCardHeader>
+            <SurfaceCardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {KAI_EXPERIENCE_CONTRACT.decisionConviction.dashboardRecommendationsDescription}
+              </p>
+              {model.recommendations.map((item) => (
+                <SurfaceInset key={item.title} className="p-3">
+                  <p className="text-sm font-semibold">{item.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
+                </SurfaceInset>
+              ))}
+            </SurfaceCardContent>
+          </SurfaceCard>
+        </TabsContent>
+      </Tabs>
 
       <EditHoldingModal
         isOpen={isModalOpen}

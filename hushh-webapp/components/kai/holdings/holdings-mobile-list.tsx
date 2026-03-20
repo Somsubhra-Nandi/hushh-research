@@ -21,6 +21,7 @@ export type HoldingsListItem = PortfolioHolding & {
 
 interface HoldingsMobileListProps {
   holdings: HoldingsListItem[];
+  canManageHoldings?: boolean;
   onEditHolding: (holdingId: string) => void;
   onToggleDeleteHolding: (holdingId: string) => void;
 }
@@ -118,6 +119,7 @@ const HOLDINGS_PAGE_SIZE = 5;
 
 export function HoldingsMobileList({
   holdings,
+  canManageHoldings = true,
   onEditHolding,
   onToggleDeleteHolding,
 }: HoldingsMobileListProps) {
@@ -309,6 +311,7 @@ export function HoldingsMobileList({
       <HoldingDetailsDrawer
         open={Boolean(selectedHolding)}
         holding={selectedHolding}
+        canManageHoldings={canManageHoldings}
         onOpenChange={(open) => {
           if (!open) setSelectedHoldingId(null);
         }}
