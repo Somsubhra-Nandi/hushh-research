@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Migrate financial world-model data to Kai V2 canonical structure.
+"""Migrate financial PKM data to Kai V2 canonical structure.
 
 Modes:
-1. Index-only migration (default): updates `world_model_index_v2.domain_summaries.financial`
+1. Index-only migration (default): updates `pkm_index.domain_summaries.financial`
    with V2 counters/fields where possible without decrypting user blobs.
 2. Deep migration (user-scoped): with --user-id and --passphrase, decrypts the user's
-   world-model blob, ensures `financial.portfolio` and `financial.analytics` are present,
+   PKM blob, ensures `financial.portfolio` and `financial.analytics` are present,
    then re-encrypts and persists updated blob + index summary.
 """
 
@@ -262,29 +262,29 @@ async def _deep_migrate_user(
     db: Any,
     user_id: str,
     passphrase: str,
+    wrapper_method: str | None,
     dry_run: bool,
 ) -> dict[str, Any]:
-    wrapper_rows = (
-        db.table("vault_key_wrappers")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-        .data
-        or []
-    )
+    wrapper_query = db.table("vault_key_wrappers").select("*").eq("user_id", user_id)
+    if wrapper_method:
+        wrapper_query = wrapper_query.eq("method", wrapper_method)
+    elif passphrase:
+        wrapper_query = wrapper_query.eq("method", "passphrase")
+    wrapper_rows = wrapper_query.order("created_at", desc=True).execute().data or []
     if not wrapper_rows:
-        return {"user_id": user_id, "status": "skipped", "reason": "no_wrapper"}
+        return {
+            "user_id": user_id,
+            "status": "skipped",
+            "reason": "no_wrapper",
+            "wrapper_method": wrapper_method or "passphrase",
+        }
 
     vault_key_hex = _unwrap_vault_key(passphrase, wrapper_rows[0])
 
-    blob_rows = db.table("world_model_data").select("*").eq("user_id", user_id).execute().data or []
-    index_rows = (
-        db.table("world_model_index_v2").select("*").eq("user_id", user_id).execute().data or []
-    )
+    blob_rows = db.table("pkm_data").select("*").eq("user_id", user_id).execute().data or []
+    index_rows = db.table("pkm_index").select("*").eq("user_id", user_id).execute().data or []
     if not blob_rows:
-        return {"user_id": user_id, "status": "skipped", "reason": "no_world_model_blob"}
+        return {"user_id": user_id, "status": "skipped", "reason": "no_pkm_blob"}
 
     blob_row = blob_rows[0]
     payload = EncryptedPayload(
@@ -295,11 +295,11 @@ async def _deep_migrate_user(
         algorithm=blob_row.get("algorithm", "aes-256-gcm"),
     )
     decrypted = decrypt_data(payload, vault_key_hex)
-    world_model_blob = json.loads(decrypted)
-    if not isinstance(world_model_blob, dict):
+    pkm_blob = json.loads(decrypted)
+    if not isinstance(pkm_blob, dict):
         return {"user_id": user_id, "status": "skipped", "reason": "invalid_blob"}
 
-    financial = world_model_blob.get("financial")
+    financial = pkm_blob.get("financial")
     if not isinstance(financial, dict):
         return {"user_id": user_id, "status": "skipped", "reason": "no_financial_domain"}
 
@@ -318,13 +318,13 @@ async def _deep_migrate_user(
     financial["analytics"] = analytics
     financial["schema_version"] = max(int(financial.get("schema_version") or 0), 3)
     financial["updated_at"] = _now_iso()
-    world_model_blob["financial"] = financial
+    pkm_blob["financial"] = financial
 
     summary = _build_summary_from_financial(financial)
 
     if not dry_run:
-        encrypted = encrypt_data(json.dumps(world_model_blob), vault_key_hex)
-        db.table("world_model_data").update(
+        encrypted = encrypt_data(json.dumps(pkm_blob), vault_key_hex)
+        db.table("pkm_data").update(
             {
                 "encrypted_data_ciphertext": encrypted.ciphertext,
                 "encrypted_data_iv": encrypted.iv,
@@ -336,7 +336,7 @@ async def _deep_migrate_user(
 
         if index_rows:
             next_index = _update_index_summary_v2(index_rows[0], summary)
-            db.table("world_model_index_v2").update(
+            db.table("pkm_index").update(
                 {
                     "domain_summaries": next_index.get("domain_summaries") or {},
                     "available_domains": next_index.get("available_domains") or [],
@@ -354,7 +354,7 @@ async def _deep_migrate_user(
 
 
 def _index_only_migration(db: Any, *, user_id: str | None, dry_run: bool) -> dict[str, Any]:
-    query = db.table("world_model_index_v2").select("*")
+    query = db.table("pkm_index").select("*")
     if user_id:
         query = query.eq("user_id", user_id)
     rows = query.execute().data or []
@@ -393,7 +393,7 @@ def _index_only_migration(db: Any, *, user_id: str | None, dry_run: bool) -> dic
             available_domains.append("financial")
 
         if not dry_run and uid:
-            db.table("world_model_index_v2").update(
+            db.table("pkm_index").update(
                 {
                     "domain_summaries": summaries,
                     "available_domains": available_domains,
@@ -410,6 +410,12 @@ async def main() -> None:
     parser.add_argument("--user-id", type=str, default=None, help="Target user id (optional)")
     parser.add_argument(
         "--passphrase", type=str, default=None, help="Passphrase for deep migration"
+    )
+    parser.add_argument(
+        "--wrapper-method",
+        type=str,
+        default=None,
+        help="Explicit wrapper method to use for unwrapping (defaults to passphrase when --passphrase is provided).",
     )
     parser.add_argument("--dry-run", action="store_true", help="Do not persist updates")
     parser.add_argument(
@@ -447,6 +453,7 @@ async def main() -> None:
         db=db,
         user_id=user_id,
         passphrase=passphrase,
+        wrapper_method=args.wrapper_method,
         dry_run=args.dry_run,
     )
     print(json.dumps({"stage": "deep_migration", **result}, indent=2))

@@ -21,10 +21,10 @@ from api.middleware import require_vault_owner_token
 from hushh_mcp.operons.kai.fetchers import fetch_market_data, fetch_market_news
 from hushh_mcp.services.market_cache_store import get_market_cache_store_service
 from hushh_mcp.services.market_insights_cache import market_insights_cache
+from hushh_mcp.services.personal_knowledge_model_service import get_pkm_service
 from hushh_mcp.services.renaissance_service import TIER_WEIGHTS, get_renaissance_service
 from hushh_mcp.services.ria_iam_service import RIAIAMService
 from hushh_mcp.services.symbol_master_service import get_symbol_master_service
-from hushh_mcp.services.world_model_service import get_world_model_service
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,9 @@ def _default_pick_source() -> dict[str, Any]:
         "kind": "default",
         "state": "ready",
         "is_default": True,
+        "share_status": None,
+        "share_origin": "default",
+        "share_granted_at": None,
     }
 
 
@@ -886,7 +889,7 @@ async def _fetch_finnhub_candles(symbol: str) -> list[dict[str, float]]:
                 market_insights_cache.mark_provider_cooldown(cooldown_key, cooldown_seconds)
             if status_code in {401, 403, 429}:
                 # Expected quota/plan constraints for candle data; fall back to cached/derived sparkline.
-                logger.info(
+                logger.debug(
                     "[Kai Market] sparkline candles unavailable for %s (status=%s)",
                     symbol,
                     status_code,
@@ -1079,7 +1082,7 @@ async def _fetch_sector_rotation_from_etf_quotes(
                 quote = await fetch_market_data(etf_symbol, user_id, consent_token)
                 return sector_name, quote or {}
             except Exception as exc:
-                logger.info(
+                logger.debug(
                     "[Kai Market] sector ETF quote unavailable for %s (%s): %r",
                     sector_name,
                     etf_symbol,
@@ -1376,8 +1379,8 @@ async def _build_sparkline_points(
 
 async def _get_financial_summary(user_id: str) -> dict[str, Any]:
     try:
-        world_model = get_world_model_service()
-        index = await world_model.get_index_v2(user_id)
+        pkm_service = get_pkm_service()
+        index = await pkm_service.get_index_v2(user_id)
         if index is None:
             return {}
         return dict((index.domain_summaries or {}).get("financial") or {})
@@ -1405,8 +1408,10 @@ def _market_refresh_interval_seconds() -> int:
 
 
 async def _refresh_public_market_modules_once() -> None:
+    refresh_summary: list[str] = []
+
     try:
-        await _get_or_refresh_public_module(
+        _, stale, age_seconds, tier, cache_hit = await _get_or_refresh_public_module(
             key="macro:us",
             fresh_ttl_seconds=QUOTES_FRESH_TTL_SECONDS,
             stale_ttl_seconds=QUOTES_STALE_TTL_SECONDS,
@@ -1414,11 +1419,14 @@ async def _refresh_public_market_modules_once() -> None:
             warm_source="startup",
             serve_stale_while_revalidate=False,
         )
+        refresh_summary.append(
+            f"macro:tier={tier},hit={str(cache_hit).lower()},stale={str(stale).lower()},age={age_seconds}s"
+        )
     except Exception as exc:
         logger.warning("[Kai Market] background macro refresh failed: %s", exc)
 
     try:
-        await _get_or_refresh_public_module(
+        _, stale, age_seconds, tier, cache_hit = await _get_or_refresh_public_module(
             key="movers:us",
             fresh_ttl_seconds=MOVERS_FRESH_TTL_SECONDS,
             stale_ttl_seconds=MOVERS_STALE_TTL_SECONDS,
@@ -1426,17 +1434,23 @@ async def _refresh_public_market_modules_once() -> None:
             warm_source="startup",
             serve_stale_while_revalidate=False,
         )
+        refresh_summary.append(
+            f"movers:tier={tier},hit={str(cache_hit).lower()},stale={str(stale).lower()},age={age_seconds}s"
+        )
     except Exception as exc:
         logger.warning("[Kai Market] background movers refresh failed: %s", exc)
 
     try:
-        await _get_or_refresh_public_module(
+        _, stale, age_seconds, tier, cache_hit = await _get_or_refresh_public_module(
             key="sectors:us",
             fresh_ttl_seconds=SECTORS_FRESH_TTL_SECONDS,
             stale_ttl_seconds=SECTORS_STALE_TTL_SECONDS,
             fetcher=lambda: _fetch_sector_rotation_from_fmp(),
             warm_source="startup",
             serve_stale_while_revalidate=False,
+        )
+        refresh_summary.append(
+            f"sectors:tier={tier},hit={str(cache_hit).lower()},stale={str(stale).lower()},age={age_seconds}s"
         )
     except Exception as exc:
         logger.warning("[Kai Market] background sectors refresh failed: %s", exc)
@@ -1445,6 +1459,9 @@ async def _refresh_public_market_modules_once() -> None:
             await get_market_cache_store_service().delete_expired(max_rows=250)
         except Exception as exc:
             logger.debug("[Kai Market] L2 cleanup skipped: %s", exc)
+
+    if refresh_summary:
+        logger.debug("[Kai Market] warm refresh %s", " | ".join(refresh_summary))
 
 
 async def _run_refresh_with_advisory_lock() -> None:
@@ -1463,9 +1480,6 @@ async def _run_refresh_with_advisory_lock() -> None:
 async def _market_refresh_loop() -> None:
     interval = _market_refresh_interval_seconds()
     logger.info("[Kai Market] background refresh loop started (interval=%ss)", interval)
-    # Startup jitter avoids synchronized bursts across instances.
-    startup_jitter = 0.5 + (secrets.randbelow(1501) / 1000.0)
-    await asyncio.sleep(startup_jitter)
     while True:
         await _run_refresh_with_advisory_lock()
         jitter_max = max(5.0, interval * 0.12)
@@ -1571,13 +1585,22 @@ async def get_market_insights(
                                 market_insights_cache.append_series_point("sparkline:SPY", price)
                         return symbol, payload, "ok"
                     except Exception as exc:
-                        logger.warning("[Kai Market] quote failed for %s: %s", symbol, exc)
+                        logger.debug("[Kai Market] quote failed for %s: %s", symbol, exc)
                         return symbol, {}, _provider_status_from_exception(exc)
 
             results = await asyncio.gather(*(fetch_symbol_quote(symbol) for symbol in symbol_set))
+            degraded_quotes: list[str] = []
             for symbol, payload, status_value in results:
                 quotes_by_symbol[symbol] = payload
                 statuses[f"quote:{symbol}"] = status_value
+                if status_value != "ok":
+                    degraded_quotes.append(f"{symbol}:{status_value}")
+            if degraded_quotes:
+                logger.warning(
+                    "[Kai Market] quote bundle degraded for %s symbols: %s",
+                    len(degraded_quotes),
+                    ", ".join(degraded_quotes[:6]),
+                )
             return {
                 "quotes": quotes_by_symbol,
                 "provider_status": statuses,
@@ -1846,14 +1869,17 @@ async def get_market_insights(
                         )
                         return symbol, (articles or []), ("ok" if articles else "partial")
                     except Exception as exc:
-                        logger.warning("[Kai Market] news failed for %s: %s", symbol, exc)
+                        logger.debug("[Kai Market] news failed for %s: %s", symbol, exc)
                         return symbol, [], _provider_status_from_exception(exc)
 
             news_results = await asyncio.gather(
                 *(fetch_symbol_news(symbol) for symbol in news_symbols)
             )
+            degraded_news: list[str] = []
             for symbol, articles, status_value in news_results:
                 statuses[f"news:{symbol}"] = status_value
+                if status_value not in {"ok", "partial"}:
+                    degraded_news.append(f"{symbol}:{status_value}")
                 for article in articles[:4]:
                     rows.append(
                         {
@@ -1874,6 +1900,12 @@ async def get_market_insights(
                             "degraded": False,
                         }
                     )
+            if degraded_news:
+                logger.warning(
+                    "[Kai Market] news bundle degraded for %s symbols: %s",
+                    len(degraded_news),
+                    ", ".join(degraded_news[:6]),
+                )
 
             deduped: list[dict[str, Any]] = []
             seen: set[str] = set()
@@ -1944,7 +1976,7 @@ async def get_market_insights(
             "as_of": (spy_quote or {}).get("fetched_at")
             if isinstance((spy_quote or {}).get("fetched_at"), str)
             else _now_iso(),
-            "source_tags": sorted(set([*(sparkline_sources or []), "World Model"])),
+            "source_tags": sorted(set([*(sparkline_sources or []), "PKM"])),
             "degraded": bool(hero_degraded or sparkline_degraded),
             "holdings_count": holdings_count,
             "portfolio_value_bucket": financial_summary.get("portfolio_value_bucket"),
@@ -2094,6 +2126,17 @@ async def get_market_insights(
     if payload.get("provider_status"):
         meta["provider_status"] = payload.get("provider_status")
     payload["meta"] = meta
+
+    logger.debug(
+        "[Kai Market] home tier=%s stale=%s age=%ss watchlist=%s picks=%s headlines=%s source=%s",
+        meta["cache_tier"],
+        meta["stale"],
+        home_age_seconds,
+        len(payload.get("watchlist") or []),
+        len(payload.get("pick_rows") or []),
+        len(payload.get("news_tape") or []),
+        payload.get("active_pick_source") or "default",
+    )
 
     return payload
 

@@ -50,7 +50,7 @@ SERVER_INFO = {
     "version": "1.0.0",
     "protocol": "HushhMCP",
     "transport": "stdio",
-    "description": "Consent-first personal data access for AI agents; no data without explicit user approval. Scopes are dynamic (from world model/registry); use discover_user_domains to get per-user scope strings.",
+    "description": "Consent-first personal data access for AI agents; no data without explicit user approval. Scopes are dynamic from the Personal Knowledge Model registry; use discover_user_domains to get per-user scope strings.",
     "tools_count": 6,
     "tools": [
         {"name": "request_consent", "purpose": "Request user consent for a data scope"},
@@ -67,8 +67,8 @@ SERVER_INFO = {
             "purpose": "List dynamic consent scope categories from backend registry",
         },
         {
-            "name": "get_scoped_data",
-            "purpose": "Recommended generic data-access tool for any approved dynamic scope",
+            "name": "get_encrypted_scoped_export",
+            "purpose": "Fetch the encrypted wrapped-key export for any approved dynamic scope",
         },
         {
             "name": "check_consent_status",
@@ -88,10 +88,10 @@ SERVER_INFO = {
 # SCOPE MAPPINGS
 # ============================================================================
 
-# Canonical scopes only.
+# Canonical PKM scopes.
 SCOPE_API_MAP = {
-    "world_model.read": "world_model.read",
-    "world_model.write": "world_model.write",
+    "pkm.read": "pkm.read",
+    "pkm.write": "pkm.write",
 }
 
 
@@ -99,7 +99,7 @@ def resolve_scope_api(scope: str) -> str | None:
     """Resolve scope input to canonical dot notation.
 
     Accepts:
-    - canonical static scopes (world_model.read/write)
+    - canonical static scopes (pkm.read/write)
     - canonical dynamic scopes (attr.{domain}.*, attr.{domain}.{subintent}.*,
       or specific paths like attr.{domain}.{attribute})
 

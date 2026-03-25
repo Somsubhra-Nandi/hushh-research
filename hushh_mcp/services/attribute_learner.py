@@ -3,7 +3,7 @@
 Attribute Learner - Extracts user attributes from conversation and auto-classifies into domains.
 
 This service uses LLM to analyze conversations and extract structured user preferences,
-then stores them in the world model with appropriate domain classification.
+then stores them in the PKM with appropriate domain classification.
 """
 
 import json
@@ -59,12 +59,12 @@ class AttributeLearner:
     Extracts user attributes from conversation and auto-classifies into domains.
 
     Uses Google Gemini to analyze conversation and extract structured data,
-    then stores it in the world model for future context.
+    then stores it in the PKM for future context.
     """
 
     def __init__(self):
         self._client = None
-        self._world_model = None
+        self._pkm_service = None
 
     @property
     def client(self):
@@ -78,12 +78,12 @@ class AttributeLearner:
         return self._client
 
     @property
-    def world_model(self):
-        if self._world_model is None:
-            from hushh_mcp.services.world_model_service import get_world_model_service
+    def pkm_service(self):
+        if self._pkm_service is None:
+            from hushh_mcp.services.personal_knowledge_model_service import get_pkm_service
 
-            self._world_model = get_world_model_service()
-        return self._world_model
+            self._pkm_service = get_pkm_service()
+        return self._pkm_service
 
     async def extract_attributes(
         self,
@@ -151,11 +151,12 @@ class AttributeLearner:
         assistant_response: str,
     ) -> list[dict]:
         """
-        Extract attributes from conversation and store as domain summaries.
+        Extract attributes from conversation and record them as mutation events.
 
-        Inferred attributes are written to world_model_index_v2.domain_summaries
-        (non-sensitive metadata only). Sensitive data should be stored via the
-        client-side BYOK flow in world_model_data.
+        Learned attributes are no longer written into the legacy summary index tables.
+        Sensitive semantic state belongs in the BYOK-encrypted domain payloads, not the
+        discovery index. We still emit structured mutation events so the research flow
+        remains auditable and replayable.
 
         Args:
             user_id: The user's ID
@@ -172,20 +173,26 @@ class AttributeLearner:
             return []
 
         stored = []
-        # Group attributes by domain so we do one update_domain_summary per domain
         domain_attrs: dict[str, dict] = {}
         for attr in attributes:
             domain_attrs.setdefault(attr.domain, {})[attr.key] = attr.value
 
-        for domain, summary_patch in domain_attrs.items():
+        for domain, inferred_payload in domain_attrs.items():
             try:
-                success = await self.world_model.update_domain_summary(
+                success = await self.pkm_service.record_mutation_event(
                     user_id=user_id,
                     domain=domain,
-                    summary=summary_patch,
+                    operation_type="attribute_inference",
+                    path_set=sorted(inferred_payload.keys()),
+                    source_agent="attribute_learner",
+                    confidence=max(
+                        (attr.confidence for attr in attributes if attr.domain == domain),
+                        default=0.8,
+                    ),
+                    metadata={"attributes": inferred_payload},
                 )
                 if success:
-                    for key, value in summary_patch.items():
+                    for key, value in inferred_payload.items():
                         stored.append(
                             {
                                 "domain": domain,
@@ -195,10 +202,10 @@ class AttributeLearner:
                             }
                         )
                         logger.info(
-                            f"Stored learned attribute summary: {domain}.{key} for user {user_id}"
+                            f"Recorded learned attribute inference: {domain}.{key} for user {user_id}"
                         )
             except Exception as e:
-                logger.error(f"Error storing domain summary for {domain}: {e}")
+                logger.error(f"Error storing inferred attribute event for {domain}: {e}")
 
         return stored
 

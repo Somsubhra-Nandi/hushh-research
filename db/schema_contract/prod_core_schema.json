@@ -4,7 +4,7 @@
   "required_functions": [
     "merge_domain_summary",
     "remove_domain_summary_key",
-    "upsert_world_model_data_blob"
+    "upsert_pkm_data_blob"
   ],
   "required_tables": {
     "vault_keys": [
@@ -47,7 +47,7 @@
       "action",
       "issued_at"
     ],
-    "world_model_data": [
+    "pkm_data": [
       "user_id",
       "encrypted_data_ciphertext",
       "encrypted_data_iv",
@@ -57,7 +57,7 @@
       "created_at",
       "updated_at"
     ],
-    "world_model_index_v2": [
+    "pkm_index": [
       "user_id",
       "domain_summaries",
       "available_domains",
@@ -76,9 +76,31 @@
       "iv",
       "tag",
       "export_key",
+      "wrapped_key_bundle",
+      "connector_key_id",
+      "connector_wrapping_alg",
       "scope",
+      "export_revision",
+      "export_generated_at",
+      "source_content_revision",
+      "source_manifest_revision",
+      "refresh_status",
       "expires_at",
       "created_at"
+    ],
+    "consent_export_refresh_jobs": [
+      "id",
+      "user_id",
+      "consent_token",
+      "granted_scope",
+      "status",
+      "trigger_domain",
+      "trigger_paths",
+      "requested_at",
+      "last_error",
+      "attempt_count",
+      "created_at",
+      "updated_at"
     ],
     "kai_market_cache_entries": [
       "cache_key",

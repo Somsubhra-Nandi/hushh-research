@@ -101,6 +101,10 @@ class RIAClientDetailResponse(BaseModel):
     disconnect_allowed: bool = True
     is_self_relationship: bool = False
     next_action: str | None = None
+    relationship_shares: list[dict] = Field(default_factory=list)
+    picks_feed_status: str | None = None
+    picks_feed_granted_at: str | None = None
+    has_active_pick_upload: bool = False
     granted_scopes: list[dict] = Field(default_factory=list)
     request_history: list[dict] = Field(default_factory=list)
     invite_history: list[dict] = Field(default_factory=list)
@@ -110,7 +114,7 @@ class RIAClientDetailResponse(BaseModel):
     domain_summaries: dict = Field(default_factory=dict)
     total_attributes: int = 0
     workspace_ready: bool = False
-    world_model_updated_at: str | None = None
+    pkm_updated_at: str | None = None
 
 
 def _iam_schema_not_ready_response(message: str | None = None) -> JSONResponse:

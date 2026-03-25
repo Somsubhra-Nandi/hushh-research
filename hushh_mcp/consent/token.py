@@ -56,7 +56,7 @@ def issue_token(
         f"{CONSENT_TOKEN_PREFIX}:{base64.urlsafe_b64encode(raw.encode()).decode()}.{signature}"
     )
 
-    # Map dynamic scopes (attr.*) to WORLD_MODEL_READ enum for type compatibility
+    # Map dynamic scopes (attr.*) to PKM_READ enum for type alignment
     scope_enum = scope if isinstance(scope, ConsentScope) else _scope_str_to_enum(scope_str)
 
     return HushhConsentToken(
@@ -74,16 +74,20 @@ def issue_token(
 def _scope_str_to_enum(scope_str: str) -> ConsentScope:
     """
     Map a scope string to its ConsentScope enum equivalent.
-    Dynamic scopes (attr.*) map to WORLD_MODEL_READ.
+    Dynamic scopes (attr.*) map to PKM_READ.
     """
     try:
         return ConsentScope(scope_str)
     except ValueError:
-        # Dynamic scope (e.g., attr.financial.*) - map to WORLD_MODEL_READ
+        if scope_str == "pkm.read":
+            return ConsentScope.PKM_READ
+        if scope_str == "pkm.write":
+            return ConsentScope.PKM_WRITE
+        # Dynamic scope (e.g., attr.financial.*) - map to PKM_READ
         if scope_str.startswith("attr."):
-            return ConsentScope.WORLD_MODEL_READ
-        # Unknown scope - default to WORLD_MODEL_READ
-        return ConsentScope.WORLD_MODEL_READ
+            return ConsentScope.PKM_READ
+        # Unknown scope - default to PKM_READ
+        return ConsentScope.PKM_READ
 
 
 # ========== Token Verifier ==========
@@ -116,7 +120,7 @@ def validate_token(
         decoded = base64.urlsafe_b64decode(encoded.encode()).decode()
         user_id, agent_id, scope_str, issued_at_str, expires_at_str = decoded.split("|")
 
-        # Map scope string to enum (for type compatibility)
+        # Map scope string to enum (for type alignment)
         # IMPORTANT: Don't fail for dynamic scopes - they're valid!
         scope_enum = _scope_str_to_enum(scope_str)
 

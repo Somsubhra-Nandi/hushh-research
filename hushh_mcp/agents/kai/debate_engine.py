@@ -333,6 +333,34 @@ class DebateEngine:
         # stream.py calculates this manually, so we just finish.
         pass
 
+    async def orchestrate_debate(
+        self,
+        fundamental_insight: FundamentalInsight,
+        sentiment_insight: SentimentInsight,
+        valuation_insight: ValuationInsight,
+        user_context: Optional[Dict[str, Any]] = None,
+    ) -> DebateResult:
+        """
+        Non-streaming compatibility wrapper for callers that need a final DebateResult.
+
+        The debate engine's canonical implementation is streaming-first. This helper
+        consumes the stream internally, then builds the same final consensus object
+        used by the streaming route.
+        """
+        async for _event in self.orchestrate_debate_stream(
+            fundamental_insight=fundamental_insight,
+            sentiment_insight=sentiment_insight,
+            valuation_insight=valuation_insight,
+            user_context=user_context,
+        ):
+            pass
+
+        return await self._build_consensus(
+            fundamental=fundamental_insight,
+            sentiment=sentiment_insight,
+            valuation=valuation_insight,
+        )
+
     async def _stream_agent_turn(
         self,
         round_num: int,
@@ -890,7 +918,7 @@ class DebateEngine:
 
         CONTEXT FUSION RULES (MANDATORY):
         - Reference at least one Renaissance screening signal (tier, investable/avoid, rubric criteria).
-        - Reference at least one world-model portfolio fact (holdings, concentration, coverage, or statement signal).
+        - Reference at least one PKM portfolio fact (holdings, concentration, coverage, or statement signal).
         - Explicitly frame risk tradeoff (concentration/diversification/downside) for this user.
         - If your view conflicts with Renaissance screening, state the conflict and mitigation.
         - Avoid raw data dumps; use only the highest-signal facts.
@@ -1112,7 +1140,7 @@ class DebateEngine:
             if tier in {"ACE", "KING"} and scores["fundamental"] > 0:
                 shift += 0.05
 
-        # User preference overlays from world model context.
+        # User preference overlays from PKM context.
         preferences = self.user_context.get("preferences", {}) if self.user_context else {}
         style = str(preferences.get("investment_style") or "").lower()
         horizon = str(preferences.get("investment_horizon") or "").lower()

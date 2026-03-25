@@ -13,7 +13,7 @@ class ConsentScope(str, Enum):
     Consent scopes for MCP-compliant data access.
 
     Design Principles:
-    - VAULT_OWNER grants full world model access (user's own data)
+    - VAULT_OWNER grants full PKM access (user's own data)
     - Dynamic attr.{domain}.{key} scopes are validated via DynamicScopeGenerator
     - Static operation scopes are defined in this enum
 
@@ -40,10 +40,10 @@ class ConsentScope(str, Enum):
     EMBEDDING_PROFILE_READ = "embedding.profile.read"
     EMBEDDING_PROFILE_COMPUTE = "embedding.profile.compute"
 
-    # ==================== WORLD MODEL OPERATIONS ====================
-    WORLD_MODEL_READ = "world_model.read"
-    WORLD_MODEL_WRITE = "world_model.write"
-    WORLD_MODEL_METADATA = "world_model.metadata"
+    # ==================== PKM OPERATIONS ====================
+    PKM_READ = "pkm.read"
+    PKM_WRITE = "pkm.write"
+    PKM_METADATA = "pkm.metadata"
 
     # ==================== KAI AGENT OPERATIONS ====================
     AGENT_KAI_ANALYZE = "agent.kai.analyze"
@@ -58,7 +58,7 @@ class ConsentScope(str, Enum):
     EXTERNAL_MARKET_DATA = "external.market.data"
     EXTERNAL_RENAISSANCE = "external.renaissance.data"
 
-    # Data access uses world_model.read, world_model.write, and dynamic attr.{domain}.* scopes.
+    # Data access uses pkm.read, pkm.write, and dynamic attr.{domain}.* scopes.
 
     @classmethod
     def list(cls):
@@ -175,9 +175,9 @@ class ConsentScope(str, Enum):
             cls.CHAT_HISTORY_WRITE,
             cls.EMBEDDING_PROFILE_READ,
             cls.EMBEDDING_PROFILE_COMPUTE,
-            cls.WORLD_MODEL_READ,
-            cls.WORLD_MODEL_WRITE,
-            cls.WORLD_MODEL_METADATA,
+            cls.PKM_READ,
+            cls.PKM_WRITE,
+            cls.PKM_METADATA,
         ]
 
     @classmethod

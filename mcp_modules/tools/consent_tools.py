@@ -2,7 +2,7 @@
 """
 Consent request and status check handlers.
 
-Only world-model scopes are supported: world_model.read, world_model.write,
+Canonical PKM scopes are supported: pkm.read, pkm.write,
 attr.{domain}.*, and optional nested attr.{domain}.{subintent}.* scopes.
 
 Regulated cutover note:
@@ -46,7 +46,7 @@ async def resolve_email_to_uid(user_id: str) -> tuple[Optional[str], str | None,
             lookup_response = await client.get(
                 f"{FASTAPI_URL}/api/user/lookup",
                 params={"email": user_id, **token_query},
-                timeout=5.0,
+                timeout=10.0,
             )
 
             if lookup_response.status_code == 200:
@@ -76,6 +76,23 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
     """
     user_id = args.get("user_id")
     scope_str = args.get("scope")
+    reason = str(args.get("reason") or "").strip() or None
+    expiry_hours = args.get("expiry_hours")
+    approval_timeout_minutes = args.get("approval_timeout_minutes")
+    connector_public_key = str(args.get("connector_public_key") or "").strip()
+    connector_key_id = str(args.get("connector_key_id") or "").strip()
+    connector_wrapping_alg = str(args.get("connector_wrapping_alg") or "").strip()
+
+    try:
+        resolved_expiry_hours = int(expiry_hours) if expiry_hours is not None else 24
+    except (TypeError, ValueError):
+        resolved_expiry_hours = 24
+    try:
+        resolved_approval_timeout_minutes = (
+            int(approval_timeout_minutes) if approval_timeout_minutes is not None else 24 * 60
+        )
+    except (TypeError, ValueError):
+        resolved_approval_timeout_minutes = 24 * 60
 
     original_identifier = user_id
     user_id, user_email, user_display_name = await resolve_email_to_uid(user_id)
@@ -105,8 +122,8 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
                         "status": "error",
                         "error": f"Invalid scope: {scope_str}",
                         "valid_scopes": [
-                            "world_model.read",
-                            "world_model.write",
+                            "pkm.read",
+                            "pkm.write",
                             "attr.{domain}.*",
                             "attr.{domain}.{subintent}.*",
                         ],
@@ -161,6 +178,25 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
 
     display_id = user_display_name or user_email or user_id
     logger.info("Requesting consent for %s / %s", display_id, scope_str)
+    if not all([connector_public_key, connector_key_id, connector_wrapping_alg]):
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "error": (
+                            "Strict zero-knowledge mode requires connector_public_key, "
+                            "connector_key_id, and connector_wrapping_alg."
+                        ),
+                        "hint": (
+                            "Generate an X25519 keypair in the external connector, keep the private key there, "
+                            "and pass the public bundle into request_consent."
+                        ),
+                    }
+                ),
+            )
+        ]
 
     try:
         async with httpx.AsyncClient() as client:
@@ -170,7 +206,12 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
                 json={
                     "user_id": user_id,
                     "scope": scope_dot,
-                    "expiry_hours": 24,
+                    "reason": reason,
+                    "expiry_hours": resolved_expiry_hours,
+                    "approval_timeout_minutes": resolved_approval_timeout_minutes,
+                    "connector_public_key": connector_public_key,
+                    "connector_key_id": connector_key_id,
+                    "connector_wrapping_alg": connector_wrapping_alg,
                 },
                 timeout=10.0,
             )
@@ -230,7 +271,22 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
                                 "consent_token": data.get("consent_token"),
                                 "user_id": user_id,
                                 "scope": data.get("scope", scope_dot),
-                                "message": "Consent already granted.",
+                                "requested_scope": data.get(
+                                    "requested_scope", data.get("scope", scope_dot)
+                                ),
+                                "granted_scope": data.get(
+                                    "granted_scope", data.get("scope", scope_dot)
+                                ),
+                                "coverage_kind": data.get("coverage_kind", "exact"),
+                                "covered_by_existing_grant": data.get(
+                                    "covered_by_existing_grant", True
+                                ),
+                                "expiry_hours": data.get("expiry_hours"),
+                                "request_url": data.get("request_url"),
+                                "requester_label": data.get("requester_label"),
+                                "requester_image_url": data.get("requester_image_url"),
+                                "reason": data.get("reason"),
+                                "message": data.get("message", "Consent already granted."),
                             }
                         ),
                     )
@@ -271,9 +327,31 @@ async def handle_request_consent(args: dict) -> list[TextContent]:
                             "status": "pending",
                             "user_id": user_id,
                             "scope": data.get("scope", scope_dot),
+                            "requested_scope": data.get(
+                                "requested_scope", data.get("scope", scope_dot)
+                            ),
+                            "granted_scope": data.get("granted_scope"),
+                            "coverage_kind": data.get("coverage_kind"),
+                            "covered_by_existing_grant": data.get(
+                                "covered_by_existing_grant", False
+                            ),
                             "request_id": request_id,
-                            "message": "Consent request submitted. User approval is pending in Hushh app.",
+                            "message": data.get(
+                                "message",
+                                "Consent request submitted. User approval is pending in Hushh app.",
+                            ),
                             "approval_surface": data.get("approval_surface", "/consents"),
+                            "request_url": data.get("request_url"),
+                            "approval_timeout_at": data.get("approval_timeout_at")
+                            or data.get("poll_timeout_at"),
+                            "approval_timeout_minutes": data.get("approval_timeout_minutes"),
+                            "expiry_hours": data.get("expiry_hours"),
+                            "requester_label": data.get("requester_label"),
+                            "requester_image_url": data.get("requester_image_url"),
+                            "reason": data.get("reason"),
+                            "is_scope_upgrade": data.get("is_scope_upgrade"),
+                            "existing_granted_scopes": data.get("existing_granted_scopes"),
+                            "additional_access_summary": data.get("additional_access_summary"),
                             "next_step": "Call check_consent_status later, or wait for user confirmation.",
                         }
                     ),

@@ -28,6 +28,12 @@ class AccountService:
 
     def __init__(self):
         self._supabase = None
+        self._table_exists_cache: dict[str, bool] = {}
+        self._delete_by_user_queries = {
+            "kai_plaid_user_profile_cache": text(
+                "DELETE FROM kai_plaid_user_profile_cache WHERE user_id = :user_id"
+            ),
+        }
 
     @property
     def supabase(self):
@@ -69,6 +75,35 @@ class AccountService:
         if target in {"investor", "ria"}:
             return target
         return "both"
+
+    def _table_exists(self, conn, table_name: str) -> bool:
+        cached = self._table_exists_cache.get(table_name)
+        if cached is not None:
+            return cached
+
+        exists = bool(
+            conn.execute(
+                text("SELECT to_regclass(:regclass_name) IS NOT NULL"),
+                {"regclass_name": f"public.{table_name}"},
+            ).scalar()
+        )
+        self._table_exists_cache[table_name] = exists
+        return exists
+
+    def _delete_user_rows_if_table_exists(
+        self,
+        conn,
+        *,
+        table_name: str,
+        params: dict[str, Any],
+    ) -> None:
+        if not self._table_exists(conn, table_name):
+            logger.info("Skipping cleanup for missing table: %s", table_name)
+            return
+        query = self._delete_by_user_queries.get(table_name)
+        if query is None:
+            raise ValueError(f"Unsafe or unsupported cleanup table requested: {table_name}")
+        conn.execute(query, params)
 
     async def delete_account(
         self,
@@ -125,8 +160,13 @@ class AccountService:
     ) -> Dict[str, Any]:
         logger.warning("🚨 FULL ACCOUNT DELETION requested for %s", user_id)
         results = {
-            "world_model_data": False,
-            "world_model_index": False,
+            "pkm_data": False,
+            "pkm_index": False,
+            "pkm_blobs": False,
+            "pkm_manifests": False,
+            "pkm_manifest_paths": False,
+            "pkm_scope_registry": False,
+            "pkm_events": False,
             "plaid_items": False,
             "plaid_refresh_runs": False,
             "plaid_link_sessions": False,
@@ -151,17 +191,30 @@ class AccountService:
                 results["plaid_link_sessions"] = True
                 conn.execute(text("DELETE FROM kai_plaid_items WHERE user_id = :user_id"), params)
                 results["plaid_items"] = True
-                conn.execute(
-                    text("DELETE FROM kai_plaid_user_profile_cache WHERE user_id = :user_id"),
-                    params,
+                self._delete_user_rows_if_table_exists(
+                    conn,
+                    table_name="kai_plaid_user_profile_cache",
+                    params=params,
                 )
                 results["plaid_profile_cache"] = True
+                conn.execute(text("DELETE FROM pkm_events WHERE user_id = :user_id"), params)
+                results["pkm_events"] = True
                 conn.execute(
-                    text("DELETE FROM world_model_index_v2 WHERE user_id = :user_id"), params
+                    text("DELETE FROM pkm_scope_registry WHERE user_id = :user_id"), params
                 )
-                results["world_model_index"] = True
-                conn.execute(text("DELETE FROM world_model_data WHERE user_id = :user_id"), params)
-                results["world_model_data"] = True
+                results["pkm_scope_registry"] = True
+                conn.execute(
+                    text("DELETE FROM pkm_manifest_paths WHERE user_id = :user_id"), params
+                )
+                results["pkm_manifest_paths"] = True
+                conn.execute(text("DELETE FROM pkm_manifests WHERE user_id = :user_id"), params)
+                results["pkm_manifests"] = True
+                conn.execute(text("DELETE FROM pkm_blobs WHERE user_id = :user_id"), params)
+                results["pkm_blobs"] = True
+                conn.execute(text("DELETE FROM pkm_index WHERE user_id = :user_id"), params)
+                results["pkm_index"] = True
+                self._delete_user_rows_if_table_exists(conn, table_name="pkm_data", params=params)
+                results["pkm_data"] = True
                 conn.execute(
                     text(
                         """
@@ -326,8 +379,13 @@ class AccountService:
     ) -> Dict[str, Any]:
         logger.warning("🚨 Investor persona deletion requested for %s", user_id)
         results = {
-            "world_model_data": False,
-            "world_model_index": False,
+            "pkm_data": False,
+            "pkm_index": False,
+            "pkm_blobs": False,
+            "pkm_manifests": False,
+            "pkm_manifest_paths": False,
+            "pkm_scope_registry": False,
+            "pkm_events": False,
             "plaid_items": False,
             "plaid_refresh_runs": False,
             "plaid_link_sessions": False,
@@ -354,17 +412,30 @@ class AccountService:
                 results["plaid_link_sessions"] = True
                 conn.execute(text("DELETE FROM kai_plaid_items WHERE user_id = :user_id"), params)
                 results["plaid_items"] = True
-                conn.execute(
-                    text("DELETE FROM kai_plaid_user_profile_cache WHERE user_id = :user_id"),
-                    params,
+                self._delete_user_rows_if_table_exists(
+                    conn,
+                    table_name="kai_plaid_user_profile_cache",
+                    params=params,
                 )
                 results["plaid_profile_cache"] = True
+                conn.execute(text("DELETE FROM pkm_events WHERE user_id = :user_id"), params)
+                results["pkm_events"] = True
                 conn.execute(
-                    text("DELETE FROM world_model_index_v2 WHERE user_id = :user_id"), params
+                    text("DELETE FROM pkm_scope_registry WHERE user_id = :user_id"), params
                 )
-                results["world_model_index"] = True
-                conn.execute(text("DELETE FROM world_model_data WHERE user_id = :user_id"), params)
-                results["world_model_data"] = True
+                results["pkm_scope_registry"] = True
+                conn.execute(
+                    text("DELETE FROM pkm_manifest_paths WHERE user_id = :user_id"), params
+                )
+                results["pkm_manifest_paths"] = True
+                conn.execute(text("DELETE FROM pkm_manifests WHERE user_id = :user_id"), params)
+                results["pkm_manifests"] = True
+                conn.execute(text("DELETE FROM pkm_blobs WHERE user_id = :user_id"), params)
+                results["pkm_blobs"] = True
+                conn.execute(text("DELETE FROM pkm_index WHERE user_id = :user_id"), params)
+                results["pkm_index"] = True
+                self._delete_user_rows_if_table_exists(conn, table_name="pkm_data", params=params)
+                results["pkm_data"] = True
                 conn.execute(
                     text(
                         "DELETE FROM advisor_investor_relationships WHERE investor_user_id = :user_id"
@@ -467,8 +538,8 @@ class AccountService:
 
         Returns a dictionary containing:
         - Vault Keys (Encrypted)
-        - World Model Index
-        - World Model Data (Encrypted)
+        - PKM Index
+        - PKM Data (Encrypted)
         - Identity (Encrypted)
         """
         # TODO: Implement full export if needed.
