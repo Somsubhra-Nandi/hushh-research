@@ -16,6 +16,47 @@ export interface AccountDeletionResult {
   details?: Record<string, unknown>;
 }
 
+export interface AccountExportResult {
+  schema_version: number;
+  exported_at: string;
+  user_id: string;
+  actor_profile: {
+    personas: string[];
+    last_active_persona: string;
+    investor_marketplace_opt_in: boolean;
+    created_at: string | null;
+    updated_at: string | null;
+  } | null;
+  pkm_index: {
+    available_domains: string[];
+    computed_tags: string[];
+    domain_summaries: Record<string, unknown>;
+    activity_score: number | null;
+    last_active_at: string | null;
+    total_attributes: number;
+    model_version: number;
+    updated_at: string | null;
+  } | null;
+  vault_metadata: {
+    primary_method: string;
+    wrapper_count: number;
+    note: string;
+    created_at: string | null;
+    updated_at: string | null;
+  } | null;
+  pkm_manifests: Array<{
+    domain: string;
+    path: string;
+    version: number;
+    updated_at: string | null;
+  }>;
+  pkm_scope_registry: Array<{
+    scope: string;
+    granted_at: string | null;
+    expires_at: string | null;
+  }>;
+}
+
 export class AccountServiceImpl {
   /**
    * Delete the user's account and all data.
@@ -86,11 +127,58 @@ export class AccountServiceImpl {
   }
 
   /**
-   * Export user data.
+   * Export all user data as a portable JSON bundle.
+   *
+   * Requires VAULT_OWNER token (vault must be unlocked to export).
+   *
+   * BYOK guarantee: raw vault key material is never included.
+   * The returned bundle is automatically downloaded as a .json file
+   * on web. On native, the JSON string is returned for the caller
+   * to handle via the platform share sheet.
+   *
+   * @param vaultOwnerToken - The VAULT_OWNER consent token (REQUIRED)
+   * @returns AccountExportResult — the full portable data bundle
    */
-  async exportData(): Promise<any> {
-    // TODO: Implement export
-    return {};
+  async exportData(vaultOwnerToken: string): Promise<AccountExportResult> {
+    if (!vaultOwnerToken) {
+      throw new Error("VAULT_OWNER token required - vault must be unlocked");
+    }
+
+    trackEvent("account_export_requested", {});
+
+    try {
+      const result = await apiJson<AccountExportResult>(
+        "/api/account/export",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${vaultOwnerToken}`,
+          },
+        }
+      );
+
+      trackEvent("account_export_completed", { result: "success" });
+
+      // On web: trigger a browser download automatically.
+      if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
+        const json = JSON.stringify(result, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `hushh-export-${result.exported_at.slice(0, 10)}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Account export failed:", error);
+      trackEvent("account_export_completed", { result: "error" });
+      throw error;
+    }
   }
 }
 
