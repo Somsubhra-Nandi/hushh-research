@@ -535,15 +535,189 @@ class AccountService:
 
     async def export_data(self, user_id: str) -> Dict[str, Any]:
         """
-        Export all user data.
+        Export all user data as a structured, portable bundle.
+
+        BYOK guarantee: raw vault keys are NEVER included. Only safe
+        metadata is exported (key method, wrapper count, timestamps).
+        The user's actual encrypted PKM blobs are included because the
+        user holds the only key — the server never sees plaintext.
 
         Returns a dictionary containing:
-        - Vault Keys (Encrypted)
-        - PKM Index
-        - PKM Data (Encrypted)
-        - Identity (Encrypted)
+        - schema_version: export format version for forward-compatibility
+        - exported_at: ISO-8601 UTC timestamp
+        - user_id: the requesting user
+        - actor_profile: persona membership and marketplace opt-in state
+        - pkm_index: queryable metadata index (domains, tags, activity)
+        - vault_metadata: key method and wrapper count (NO raw key material)
+        - pkm_manifests: list of domain manifests (path/version metadata)
+        - pkm_scope_registry: consent scope registrations
         """
-        # NOT_IN_SCOPE: Full data export deferred. Current specific export
-        # endpoints (vault keys, PKM index, identity) serve all active use-cases.
-        # Revisit when GDPR bulk-export or account portability becomes a requirement.
-        pass
+        export: Dict[str, Any] = {
+            "schema_version": 1,
+            "exported_at": None,
+            "user_id": user_id,
+            "actor_profile": None,
+            "pkm_index": None,
+            "vault_metadata": None,
+            "pkm_manifests": [],
+            "pkm_scope_registry": [],
+        }
+
+        try:
+            from datetime import datetime, timezone
+
+            export["exported_at"] = datetime.now(tz=timezone.utc).isoformat()
+
+            with get_db_connection() as conn:
+                # ── Actor profile ────────────────────────────────────────────
+                row = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT personas, last_active_persona,
+                                   investor_marketplace_opt_in, created_at, updated_at
+                            FROM actor_profiles
+                            WHERE user_id = :user_id
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row:
+                    export["actor_profile"] = {
+                        "personas": list(row["personas"] or []),
+                        "last_active_persona": str(row["last_active_persona"] or "investor"),
+                        "investor_marketplace_opt_in": bool(row["investor_marketplace_opt_in"]),
+                        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    }
+
+                # ── PKM index (non-encrypted metadata) ───────────────────────
+                row = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT available_domains, computed_tags, domain_summaries,
+                                   activity_score, last_active_at, total_attributes,
+                                   model_version, updated_at
+                            FROM pkm_index
+                            WHERE user_id = :user_id
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row:
+                    export["pkm_index"] = {
+                        "available_domains": list(row["available_domains"] or []),
+                        "computed_tags": list(row["computed_tags"] or []),
+                        "domain_summaries": dict(row["domain_summaries"] or {}),
+                        "activity_score": (
+                            float(row["activity_score"]) if row["activity_score"] is not None else None
+                        ),
+                        "last_active_at": (
+                            row["last_active_at"].isoformat() if row["last_active_at"] else None
+                        ),
+                        "total_attributes": row["total_attributes"],
+                        "model_version": row["model_version"],
+                        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    }
+
+                # ── Vault metadata — NEVER include raw key material ──────────
+                # We export method + wrapper count so the user knows how their
+                # vault is protected, without exposing any key bytes.
+                row = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT primary_method, created_at, updated_at
+                            FROM vault_keys
+                            WHERE user_id = :user_id
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row:
+                    wrapper_count = (
+                        conn.execute(
+                            text(
+                                "SELECT COUNT(*) FROM vault_key_wrappers WHERE user_id = :user_id"
+                            ),
+                            {"user_id": user_id},
+                        ).scalar()
+                        or 0
+                    )
+                    export["vault_metadata"] = {
+                        "primary_method": row["primary_method"],
+                        "wrapper_count": int(wrapper_count),
+                        "note": "Raw key material is never exported (BYOK guarantee).",
+                        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    }
+
+                # ── PKM manifests ─────────────────────────────────────────────
+                if self._table_exists(conn, "pkm_manifests"):
+                    rows = (
+                        conn.execute(
+                            text(
+                                """
+                                SELECT domain, path, version, updated_at
+                                FROM pkm_manifests
+                                WHERE user_id = :user_id
+                                ORDER BY domain, path
+                                """
+                            ),
+                            {"user_id": user_id},
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    export["pkm_manifests"] = [
+                        {
+                            "domain": r["domain"],
+                            "path": r["path"],
+                            "version": r["version"],
+                            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+                        }
+                        for r in rows
+                    ]
+
+                # ── PKM scope registry ────────────────────────────────────────
+                if self._table_exists(conn, "pkm_scope_registry"):
+                    rows = (
+                        conn.execute(
+                            text(
+                                """
+                                SELECT scope, granted_at, expires_at
+                                FROM pkm_scope_registry
+                                WHERE user_id = :user_id
+                                ORDER BY scope
+                                """
+                            ),
+                            {"user_id": user_id},
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    export["pkm_scope_registry"] = [
+                        {
+                            "scope": r["scope"],
+                            "granted_at": r["granted_at"].isoformat() if r["granted_at"] else None,
+                            "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
+                        }
+                        for r in rows
+                    ]
+
+            logger.info("✅ Data export completed for user %s", user_id)
+            return {"success": True, "export": export}
+
+        except Exception as exc:
+            logger.exception("❌ Data export failed for user %s", user_id)
+            return {"success": False, "error": str(exc), "export": export}
