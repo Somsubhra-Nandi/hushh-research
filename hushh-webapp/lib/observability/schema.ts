@@ -49,6 +49,8 @@ const EVENT_ALLOWED_KEYS: Record<ObservabilityEventName, readonly string[]> = {
   profile_method_switch_result: [...BASE_ALLOWED_KEYS, "result"],
   account_delete_requested: [...BASE_ALLOWED_KEYS, "result"],
   account_delete_completed: [...BASE_ALLOWED_KEYS, "result", "status_bucket"],
+  account_export_requested: [...BASE_ALLOWED_KEYS],
+  account_export_completed: [...BASE_ALLOWED_KEYS, "result"],
   gmail_connect_started: [...BASE_ALLOWED_KEYS, "action", "result"],
   gmail_connect_result: [...BASE_ALLOWED_KEYS, "action", "result"],
   gmail_disconnect_result: [...BASE_ALLOWED_KEYS, "result"],

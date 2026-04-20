@@ -66,6 +66,8 @@ export type ObservabilityEventName =
   | "profile_method_switch_result"
   | "account_delete_requested"
   | "account_delete_completed"
+  | "account_export_requested"
+  | "account_export_completed"
   | "gmail_connect_started"
   | "gmail_connect_result"
   | "gmail_disconnect_result"
@@ -223,6 +225,10 @@ export interface EventPayloadMap {
   account_delete_completed: {
     result: EventResult;
     status_bucket?: StatusBucket;
+  };
+  account_export_requested: Record<string, never>;
+  account_export_completed: {
+    result: EventResult;
   };
   gmail_connect_started: {
     action: "incremental" | "full";
