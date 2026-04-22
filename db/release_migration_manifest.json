@@ -13,7 +13,17 @@
     "033_atomic_pkm_storage_rename.sql",
     "034_pkm_upgrade_engine.sql",
     "035_strict_zero_knowledge_consent_exports.sql",
-    "036_relationship_share_grants.sql"
+    "036_relationship_share_grants.sql",
+    "037_actor_identity_cache.sql",
+    "038_kai_alpaca_funding_orchestration.sql",
+    "039_kai_gmail_watch_history_sync.sql",
+    "040_kai_receipt_memory_artifacts.sql",
+    "041_ria_pick_package_metadata.sql",
+    "042_ria_pick_single_active_record.sql",
+    "043_ria_pick_share_artifacts.sql",
+    "044_kai_alpaca_connect_sessions.sql",
+    "045_kai_funding_trade_intents.sql",
+    "046_kai_gmail_receipt_total.sql"
   ],
   "groups": {
     "iam": [
@@ -23,7 +33,11 @@
       "025_ria_pick_lists_and_bundle_notify.sql",
       "027_relationship_disconnect_status.sql",
       "028_professional_regulatory_capabilities.sql",
-      "036_relationship_share_grants.sql"
+      "036_relationship_share_grants.sql",
+      "037_actor_identity_cache.sql",
+      "041_ria_pick_package_metadata.sql",
+      "042_ria_pick_single_active_record.sql",
+      "043_ria_pick_share_artifacts.sql"
     ],
     "pkm": [
       "030_pkm_cutover.sql",
@@ -31,7 +45,8 @@
       "032_pkm_metadata_rpc_compat.sql",
       "033_atomic_pkm_storage_rename.sql",
       "034_pkm_upgrade_engine.sql",
-      "035_strict_zero_knowledge_consent_exports.sql"
+      "035_strict_zero_knowledge_consent_exports.sql",
+      "043_ria_pick_share_artifacts.sql"
     ]
   }
 }

@@ -30,6 +30,7 @@ class AccountService:
         self._supabase = None
         self._table_exists_cache: dict[str, bool] = {}
         self._delete_by_user_queries = {
+            "pkm_data": text("DELETE FROM pkm_data WHERE user_id = :user_id"),
             "kai_plaid_user_profile_cache": text(
                 "DELETE FROM kai_plaid_user_profile_cache WHERE user_id = :user_id"
             ),
@@ -542,6 +543,7 @@ class AccountService:
         - PKM Data (Encrypted)
         - Identity (Encrypted)
         """
-        # TODO: Implement full export if needed.
-        # For now, we reuse the existing specific export endpoints.
+        # NOT_IN_SCOPE: Full data export deferred. Current specific export
+        # endpoints (vault keys, PKM index, identity) serve all active use-cases.
+        # Revisit when GDPR bulk-export or account portability becomes a requirement.
         pass

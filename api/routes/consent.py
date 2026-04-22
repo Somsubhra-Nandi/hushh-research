@@ -11,21 +11,29 @@ This ensures consistent consent-first architecture throughout the system.
 """
 
 import logging
+import re
 import time
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError as SqlalchemyOperationalError
 
 from api.middleware import require_firebase_auth, require_vault_owner_token
 from api.utils.firebase_auth import verify_firebase_bearer
+from db.db_client import DatabaseExecutionError
 from hushh_mcp.consent.scope_helpers import get_scope_description as get_dynamic_scope_description
 from hushh_mcp.consent.scope_helpers import resolve_scope_to_enum
 from hushh_mcp.consent.token import issue_token, revoke_token, validate_token
 from hushh_mcp.constants import ConsentScope
+from hushh_mcp.services.actor_identity_service import ActorIdentityService
 from hushh_mcp.services.consent_center_service import ConsentCenterService
 from hushh_mcp.services.consent_db import ConsentDBService
-from hushh_mcp.services.ria_iam_service import RIAIAMPolicyError, RIAIAMService
+from hushh_mcp.services.ria_iam_service import (
+    IAMSchemaNotReadyError,
+    RIAIAMPolicyError,
+    RIAIAMService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +42,33 @@ router = APIRouter(prefix="/api/consent", tags=["Consent Management"])
 # NOTE: Export data is now persisted to database via ConsentDBService.store_consent_export()
 # The in-memory dict is kept as a fast cache but database is the source of truth
 _consent_exports: Dict[str, Dict] = {}
+_UUID_LIKE_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_CONSENT_STORAGE_ERROR_PATTERNS = (
+    "connection refused",
+    "server closed the connection unexpectedly",
+    "db operation failed",
+    "timed out",
+    "timeout",
+)
+
+
+def _is_consent_storage_unavailable(exc: Exception) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (DatabaseExecutionError, SqlalchemyOperationalError)):
+            return True
+        if isinstance(current, (ConnectionError, OSError, TimeoutError)):
+            return True
+        message = str(current).strip().lower()
+        if message and any(pattern in message for pattern in _CONSENT_STORAGE_ERROR_PATTERNS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def get_scope_description(scope: str) -> str:
@@ -45,6 +80,60 @@ def get_scope_description(scope: str) -> str:
     return get_dynamic_scope_description(scope)
 
 
+def _looks_technical_requester_label(
+    value: object | None, *, counterpart_id: str | None = None
+) -> bool:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return True
+    if counterpart_id and normalized == counterpart_id:
+        return True
+    if normalized.lower().startswith("ria:"):
+        return True
+    if _UUID_LIKE_PATTERN.match(normalized):
+        return True
+    return False
+
+
+async def _hydrate_pending_requester_labels(pending_items: list[dict]) -> list[dict]:
+    if not pending_items:
+        return pending_items
+
+    identity_ids: list[str] = []
+    pending_identity_map: list[str | None] = []
+    for item in pending_items:
+        metadata = item.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        agent_id = str(item.get("agent_id") or item.get("developer") or "").strip()
+        counterpart_id = str(metadata.get("requester_entity_id") or "").strip() or None
+        requester_actor_type = str(metadata.get("requester_actor_type") or "").strip().lower()
+        identity_id: str | None = None
+        if requester_actor_type == "ria" or agent_id.lower().startswith("ria:"):
+            identity_id = counterpart_id
+            if not identity_id and agent_id.lower().startswith("ria:"):
+                identity_id = agent_id.split(":", 1)[1].strip() or None
+        pending_identity_map.append(identity_id)
+        if identity_id:
+            identity_ids.append(identity_id)
+
+    identities = await ActorIdentityService().ensure_many(identity_ids)
+
+    for item, identity_id in zip(pending_items, pending_identity_map, strict=False):
+        if not identity_id:
+            continue
+        identity = identities.get(identity_id) or {}
+        display_name = str(identity.get("display_name") or "").strip()
+        photo_url = str(identity.get("photo_url") or "").strip()
+        current_label = str(item.get("requesterLabel") or "").strip()
+        if display_name and _looks_technical_requester_label(
+            current_label, counterpart_id=identity_id
+        ):
+            item["requesterLabel"] = display_name
+        if photo_url and not str(item.get("requesterImageUrl") or "").strip():
+            item["requesterImageUrl"] = photo_url
+    return pending_items
+
+
 # ============================================================================
 # PENDING CONSENT MANAGEMENT
 # ============================================================================
@@ -53,6 +142,13 @@ def get_scope_description(scope: str) -> str:
 class CancelConsentRequest(BaseModel):
     userId: str
     requestId: str
+
+
+class PendingConsentOpenedRequest(BaseModel):
+    userId: str
+    requestId: str | None = None
+    bundleId: str | None = None
+    openedVia: str | None = None
 
 
 class GenericConsentRequestCreate(BaseModel):
@@ -109,9 +205,40 @@ async def get_pending_consents(
         raise HTTPException(status_code=403, detail="User ID does not match authenticated user")
 
     service = ConsentDBService()
-    pending_from_db = await service.get_pending_requests(userId)
-    logger.info("consent.pending_fetched count=%s", len(pending_from_db))
-    return {"pending": pending_from_db}
+    try:
+        pending_from_db = await service.get_pending_requests(userId)
+        pending_from_db = await _hydrate_pending_requester_labels(pending_from_db)
+        logger.info("consent.pending_fetched count=%s", len(pending_from_db))
+        return {"pending": pending_from_db}
+    except Exception as exc:
+        if _is_consent_storage_unavailable(exc):
+            logger.warning(
+                "consent.pending_degraded user_id=%s reason=%s",
+                userId,
+                exc,
+            )
+            return {"pending": [], "degraded": True}
+        raise
+
+
+@router.post("/pending/opened")
+async def mark_pending_consent_opened(
+    body: PendingConsentOpenedRequest,
+    token_data: dict = Depends(require_vault_owner_token),
+):
+    if token_data["user_id"] != body.userId:
+        raise HTTPException(status_code=403, detail="User ID does not match authenticated user")
+
+    service = ConsentDBService()
+    opened = await service.mark_pending_request_opened(
+        user_id=body.userId,
+        request_id=body.requestId,
+        bundle_id=body.bundleId,
+        opened_via=body.openedVia,
+    )
+    if opened is None:
+        return {"ok": True, "acknowledged": False}
+    return {"ok": True, "acknowledged": True, **opened}
 
 
 @router.post("/pending/approve")
@@ -497,6 +624,40 @@ async def get_consent_center(firebase_uid: str = Depends(require_firebase_auth))
     return await service.get_center(firebase_uid)
 
 
+@router.get("/center/summary")
+async def get_consent_center_summary(
+    actor: str = Query(default="investor"),
+    mode: str = Query(default="consents"),
+    firebase_uid: str = Depends(require_firebase_auth),
+):
+    service = ConsentCenterService()
+    return await service.get_center_summary(firebase_uid, actor=actor, mode=mode)
+
+
+@router.get("/center/list")
+async def get_consent_center_list(
+    actor: str = Query(default="investor"),
+    surface: str = Query(default="pending"),
+    mode: str = Query(default="consents"),
+    q: str | None = Query(default=None),
+    top: int | None = Query(default=None, ge=1, le=10),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    firebase_uid: str = Depends(require_firebase_auth),
+):
+    service = ConsentCenterService()
+    return await service.list_center(
+        firebase_uid,
+        actor=actor,
+        surface=surface,
+        mode=mode,
+        query=q,
+        top=top,
+        page=page,
+        limit=limit,
+    )
+
+
 @router.get("/requests/outgoing")
 async def get_outgoing_requests(firebase_uid: str = Depends(require_firebase_auth)):
     service = ConsentCenterService()
@@ -508,6 +669,17 @@ async def create_generic_consent_request(
     payload: GenericConsentRequestCreate,
     firebase_uid: str = Depends(require_firebase_auth),
 ):
+    # If the requester is an RIA, enforce verification before allowing
+    # consent requests to investors (mirrors the gate on POST /api/ria/requests).
+    if payload.requester_actor_type == "ria":
+        service = RIAIAMService()
+        try:
+            await service.require_ria_verified(firebase_uid)
+        except IAMSchemaNotReadyError as exc:
+            raise HTTPException(status_code=503, detail="Verification service unavailable") from exc
+        except RIAIAMPolicyError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
     try:
         return await RIAIAMService().create_ria_consent_request(
             firebase_uid,
@@ -523,6 +695,25 @@ async def create_generic_consent_request(
         )
     except RIAIAMPolicyError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/handshake/history")
+async def get_handshake_history(
+    counterpart_id: str = Query(..., min_length=1),
+    actor: str = Query(default="investor"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    firebase_uid: str = Depends(require_firebase_auth),
+):
+    """Consent handshake timeline between the caller and a counterpart."""
+    service = ConsentCenterService()
+    return await service.get_handshake_history(
+        firebase_uid,
+        counterpart_id=counterpart_id,
+        actor=actor,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.post("/relationships/disconnect")

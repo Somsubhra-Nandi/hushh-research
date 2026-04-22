@@ -3,6 +3,17 @@
 > **Status:** UAT public beta  
 > **Audience:** External developers, MCP hosts, and internal teams building against Kai consent flows
 
+
+## Visual Context
+
+Canonical visual owner: [consent-protocol](../README.md). Use that map for the top-down system view; this page is the narrower detail beneath it.
+
+For public host setup and install examples, use the npm package page first:
+
+- [`@hushh/mcp`](https://www.npmjs.com/package/@hushh/mcp)
+
+This page is the API and wire-contract reference, not the primary onboarding surface.
+
 ---
 
 ## Overview
@@ -295,7 +306,7 @@ If `granted_scope` is broader than `expected_scope`, narrow the decrypted JSON l
 
 ## Developer MCP Surface
 
-The public beta machine flow is:
+The public developer MCP flow is:
 
 1. `discover_user_domains(user_id)`
 2. `request_consent(user_id, discovered_scope)`

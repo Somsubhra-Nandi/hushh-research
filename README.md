@@ -2,6 +2,53 @@
 
 > Consent-first backend for Hushh Personal Data Agents. Python 3.13 / FastAPI / Google ADK / Supabase.
 
+
+## Visual Map
+
+```mermaid
+flowchart TB
+  ingress["Clients / web proxies / native plugins / MCP callers"]
+
+  subgraph api["FastAPI ingress"]
+    routes["Routers<br/>consent, PKM, Kai, IAM, RIA, marketplace"]
+    middleware["Middleware and request policy<br/>auth, rate limits, tracing"]
+  end
+
+  subgraph domain["Domain services"]
+    consent["Consent + IAM services"]
+    pkm["PKM + domain registry services"]
+    kai["Kai market, portfolio, analysis services"]
+    appsvc["Account, notifications, marketplace, invites"]
+  end
+
+  subgraph intelligence["Agent execution model"]
+    agents["Agents"]
+    tools["Tools"]
+    operons["Operons"]
+  end
+
+  subgraph data["Persistence and external systems"]
+    relational["Postgres relational data"]
+    blobs["Encrypted PKM blobs + metadata/index"]
+    providers["Market, push, auth, external APIs"]
+  end
+
+  ingress --> routes
+  routes --> middleware
+  middleware --> consent
+  middleware --> pkm
+  middleware --> kai
+  middleware --> appsvc
+  kai --> agents --> tools --> operons
+  consent --> relational
+  pkm --> blobs
+  pkm --> relational
+  kai --> relational
+  kai --> providers
+  appsvc --> relational
+  operons --> providers
+```
+
 [![CI](https://github.com/hushh-labs/consent-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/hushh-labs/consent-protocol/actions/workflows/ci.yml)
 
 ---
@@ -25,8 +72,8 @@ If you are working inside the `hushh-research` monorepo, use the repo-root boots
 
 ```bash
 cd ..
-make bootstrap
-make backend PROFILE=local-uatdb
+./bin/hushh bootstrap
+./bin/hushh terminal backend --mode local --reload
 ```
 
 Standalone subtree/backend-only setup:
@@ -36,25 +83,20 @@ Standalone subtree/backend-only setup:
 git clone https://github.com/hushh-labs/consent-protocol.git
 cd consent-protocol
 
-# Virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # For linting, testing
+# Install backend toolchain
+uv sync --frozen --group dev
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your Supabase, Gemini, and Firebase credentials
 
 # Run server
-make local-backend
+./bin/consent-protocol dev
 ```
 
 Health check: `curl http://localhost:8000/health`
 
-**Available commands:** Run `make help` to see all available targets (local, uat, prod, lint, test, ci-local).
+**Available commands:** Run `./bin/consent-protocol --help` to see the supported standalone backend commands.
 
 ## Using This In a Host Monorepo
 
@@ -108,9 +150,10 @@ PostgreSQL (Supabase)
 consent-protocol/
 ├── server.py                     # FastAPI app, CORS, rate limiting
 ├── consent_db.py                 # DatabaseClient singleton
-├── pyproject.toml                # Tooling config (ruff, mypy, bandit, pytest)
-├── requirements.txt              # Runtime dependencies
-├── requirements-dev.txt          # Dev dependencies (ruff, mypy, pytest, bandit)
+├── pyproject.toml                # Canonical dependency + tooling contract
+├── uv.lock                       # Canonical locked Python dependency graph
+├── requirements.txt              # Generated runtime artifact for MCP packaging
+├── requirements-dev.txt          # Generated compatibility artifact
 ├── Dockerfile                    # Cloud Run container
 ├── .env.example                  # Environment variable template
 │
@@ -136,14 +179,20 @@ consent-protocol/
 │   ├── consent/                   # Token crypto, scope helpers
 │   └── config.py                  # Environment config
 │
-├── mcp_modules/                   # MCP server tools for Claude Desktop
-├── db/migrations/                 # SQL migration files
+├── mcp_modules/                   # MCP server tools and resources
+├── db/migrations/                 # Authoritative numbered release migrations
+├── db/contracts/                  # Frozen vs integrated schema contracts
+├── db/legacy/                     # Legacy/bootstrap SQL, never release authority
+├── db/verify/                     # Read-only DB contract verification helpers
+├── db/seeds/                      # Disposable local/UAT seed utilities
+├── db/repair/                     # Historical repair scripts, not contributor setup
+├── db/release_migration_manifest.json  # Authoritative ordered release lane
 ├── tests/                         # pytest test suite
 │
 └── docs/                          # Documentation
     ├── README.md                  # Docs entry point
     ├── manifesto.md               # Hushh philosophy
-    ├── mcp-setup.md               # MCP server setup
+    ├── mcp-setup.md               # MCP technical companion
     └── reference/
         ├── agent-development.md   # DNA model, operons, contribution guide
         ├── personal-knowledge-model.md  # PKM architecture, BYOK
@@ -164,7 +213,7 @@ consent-protocol/
 | [docs/reference/kai-agents.md](docs/reference/kai-agents.md) | Multi-agent financial analysis |
 | [docs/reference/consent-protocol.md](docs/reference/consent-protocol.md) | Consent token lifecycle |
 | [docs/reference/fcm-notifications.md](docs/reference/fcm-notifications.md) | FCM push notifications |
-| [docs/mcp-setup.md](docs/mcp-setup.md) | MCP server for Claude Desktop |
+| [docs/mcp-setup.md](docs/mcp-setup.md) | MCP runtime and contributor-local technical companion |
 | [docs/monorepo-integration.md](docs/monorepo-integration.md) | Host monorepo subtree + hook setup |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
 
@@ -172,13 +221,31 @@ consent-protocol/
 
 ## Linting and Testing
 
+Standalone contributor contract:
+
+- License: Apache-2.0
+- Signoff: use `git commit -s`
+- Python installs: `uv sync --frozen --group dev`
+
+Checks:
+
 ```bash
-make lint           # Lint with ruff
-make format         # Format code
-make typecheck      # Type check with mypy
-make test           # Run tests with pytest
-make security       # Security scan with bandit
-make ci-local       # Run all checks (same as CI)
+./bin/consent-protocol ci
+```
+
+Migration authority:
+
+- authoritative release lane: `db/migrations/` + `db/release_migration_manifest.json`
+- legacy/bootstrap SQL and one-off maintenance scripts are not release authority
+- see [`../docs/reference/operations/migration-governance.md`](../docs/reference/operations/migration-governance.md) when you need the cross-repo governance view
+
+```bash
+./bin/consent-protocol lint         # Lint with ruff
+./bin/consent-protocol format       # Format code
+./bin/consent-protocol typecheck    # Type check with mypy
+./bin/consent-protocol test         # Run tests with pytest
+./bin/consent-protocol security     # Security scan with bandit
+./bin/consent-protocol ci           # Run all checks (same as CI)
 ```
 
 All checks run automatically in CI on every PR to `main`.
@@ -221,4 +288,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The short version:
 
 ## License
 
-MIT
+Apache-2.0

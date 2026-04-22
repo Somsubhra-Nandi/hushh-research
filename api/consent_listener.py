@@ -6,16 +6,21 @@ metadata, send the initial delivery, and fan out to any in-app SSE listeners.
 
 Also runs:
 - a timeout job that emits TIMEOUT events for pending requests that expired
-- a reminder job that schedules up to two additional bounded reminders for
-  still-pending requests without mutating the original request rows
+- a reminder job that schedules one final reminder for still-pending requests
+  without mutating the original request rows
 """
 
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Any, Dict
 
+from api.utils.consent_notifications import next_pending_notification
+from api.utils.fcm_messages import build_push_message
+from db.db_client import DatabaseExecutionError
+from hushh_mcp.services.actor_identity_service import ActorIdentityService
 from hushh_mcp.services.consent_request_links import (
     build_consent_request_path,
     build_consent_request_url,
@@ -26,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Interval for timeout job (seconds)
 TIMEOUT_JOB_INTERVAL = 120
 NOTIFICATION_JOB_INTERVAL = 60
+JOB_DB_RECOVERY_DELAY_SECONDS = 15
 FINAL_REMINDER_LEAD_MS = 30 * 60 * 1000
 MIN_FINAL_REMINDER_WINDOW_MS = 2 * 60 * 60 * 1000
 
@@ -38,6 +44,19 @@ _listener_active = False
 _notify_received_count = 0
 _last_notify_user_id: str | None = None
 _last_notify_action: str | None = None
+_UUID_LIKE_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_DB_UNAVAILABLE_PATTERNS = (
+    "connection refused",
+    "server closed the connection unexpectedly",
+    "could not connect to server",
+    "connection reset by peer",
+    "timed out",
+    "timeout",
+    "db operation failed",
+)
 
 
 def _as_string_map(payload: Dict[str, Any]) -> Dict[str, str]:
@@ -52,28 +71,38 @@ def _as_string_map(payload: Dict[str, Any]) -> Dict[str, str]:
     return normalized
 
 
-def _object_map(value: object | None) -> Dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    return {}
+def _looks_technical_requester_label(
+    value: object | None, *, counterpart_id: str | None = None
+) -> bool:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return True
+    if counterpart_id and normalized == counterpart_id:
+        return True
+    if normalized.lower().startswith("ria:"):
+        return True
+    if _UUID_LIKE_PATTERN.match(normalized):
+        return True
+    return False
 
 
-def _coerce_optional_int(value: object | None) -> int | None:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        normalized = value.strip()
-        if not normalized:
-            return None
-        try:
-            return int(normalized)
-        except ValueError:
-            return None
-    return None
+def _iter_exception_chain(exc: BaseException):
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _is_database_unavailable_error(exc: Exception) -> bool:
+    for current in _iter_exception_chain(exc):
+        if isinstance(current, (DatabaseExecutionError, ConnectionError, OSError, TimeoutError)):
+            return True
+        message = str(current).strip().lower()
+        if message and any(pattern in message for pattern in _DB_UNAVAILABLE_PATTERNS):
+            return True
+    return False
 
 
 async def _push_to_consent_queue(user_id: str, data: Dict[str, Any]) -> None:
@@ -268,6 +297,25 @@ async def _enrich_notify_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             or data.get("agent_id")
             or ""
         )
+        requester_entity_id = str(metadata.get("requester_entity_id") or "").strip() or None
+        requester_actor_type = str(metadata.get("requester_actor_type") or "").strip().lower()
+        agent_id = str(data.get("agent_id") or row.get("agent_id") or "").strip()
+        if requester_actor_type == "ria" or agent_id.lower().startswith("ria:"):
+            identity_id = requester_entity_id
+            if not identity_id and agent_id.lower().startswith("ria:"):
+                identity_id = agent_id.split(":", 1)[1].strip() or None
+            if identity_id and _looks_technical_requester_label(
+                requester_label, counterpart_id=identity_id
+            ):
+                identity = (await ActorIdentityService().ensure_many([identity_id])).get(
+                    identity_id
+                ) or {}
+                identity_label = str(identity.get("display_name") or "").strip()
+                identity_photo = str(identity.get("photo_url") or "").strip()
+                if identity_label:
+                    requester_label = identity_label
+                if identity_photo and not str(data.get("requester_image_url") or "").strip():
+                    data["requester_image_url"] = identity_photo
 
         return {
             **data,
@@ -328,11 +376,13 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
             logger.info("FCM skipped: no push tokens for user_id=%s", user_id)
             return
         from api.utils.firebase_admin import ensure_firebase_admin
+        from hushh_mcp.runtime_settings import FIREBASE_ADMIN_CREDENTIALS_JSON_ENV
 
         configured, _ = ensure_firebase_admin()
         if not configured:
             logger.warning(
-                "FCM skipped: Firebase Admin not configured (set FIREBASE_SERVICE_ACCOUNT_JSON)"
+                "FCM skipped: Firebase Admin not configured (set %s)",
+                FIREBASE_ADMIN_CREDENTIALS_JSON_ENV,
             )
             return
         from firebase_admin import messaging
@@ -359,9 +409,7 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
         reason = str(data.get("reason", "")).strip()
         additional_access_summary = str(data.get("additional_access_summary", "")).strip()
         title = "Consent request"
-        if delivery_reason == "midpoint_reminder":
-            title = "Consent reminder"
-        elif delivery_reason == "final_reminder":
+        if delivery_reason == "final_reminder":
             title = "Consent expires soon"
 
         if action.upper() == "REQUESTED":
@@ -369,11 +417,6 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
                 body = (
                     f"{agent_label or 'An agent'} still needs approval for "
                     f"{scope_description or scope or 'your data'}. Expires soon."
-                )
-            elif delivery_reason == "midpoint_reminder":
-                body = (
-                    f"{agent_label or 'An agent'} is still requesting access to "
-                    f"{scope_description or scope or 'your data'}."
                 )
             else:
                 body = (
@@ -388,9 +431,16 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
             title = "Consent updated"
             body = f"Request {request_id}: {action}"
 
+        message_type = "consent_resolved"
+        normalized_action = action.upper()
+        if normalized_action == "REQUESTED":
+            message_type = "consent_request"
+        elif normalized_action == "NOTIFICATION_OPENED":
+            message_type = "consent_opened"
+
         message_data = _as_string_map(
             {
-                "type": "consent_request" if action.upper() == "REQUESTED" else "consent_resolved",
+                "type": message_type,
                 "request_id": request_id,
                 "action": action,
                 "user_id": user_id,
@@ -422,21 +472,30 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
                 "notification_sequence": notification_sequence,
                 "delivery_reason": delivery_reason,
                 "notification_tag": f"consent-request:{bundle_id or request_id}",
+                "notification_category": "CONSENT_REQUEST"
+                if message_type == "consent_request"
+                else "",
             }
         )
+        seen_tokens: set[str] = set()
         for row in result.data:
             token = row.get("token")
             if not token:
                 continue
-            message = messaging.Message(
-                data=message_data,
+            if token in seen_tokens:
+                continue
+            seen_tokens.add(token)
+            platform = str(row.get("platform") or "").strip().lower()
+            message = build_push_message(
+                messaging,
                 token=token,
-                notification=messaging.Notification(
-                    title=title,
-                    body=body,
-                )
-                if action.upper() == "REQUESTED"
-                else None,
+                platform=platform,
+                data=message_data,
+                title=title,
+                body=body,
+                request_url=request_url,
+                notification_tag=message_data["notification_tag"],
+                show_alert=action.upper() == "REQUESTED",
             )
             try:
                 messaging.send(message)
@@ -454,56 +513,6 @@ async def _send_fcm_for_user(user_id: str, data: Dict[str, Any]):
                 logger.warning("FCM send failed for user %s: %s", user_id, e)
     except Exception as e:
         logger.exception("FCM send for user %s failed: %s", user_id, e)
-
-
-def _next_pending_notification(
-    payload: Dict[str, Any],
-    events: list[Dict[str, Any]],
-    *,
-    now_ms: int,
-) -> tuple[int, str] | None:
-    max_sequence = 0
-    delivery_reasons: set[str] = set()
-    for event in events:
-        metadata = _object_map(event.get("metadata"))
-        raw_sequence = _coerce_optional_int(metadata.get("notification_sequence"))
-        if raw_sequence is None:
-            continue
-        max_sequence = max(max_sequence, raw_sequence)
-        reason = str(metadata.get("delivery_reason") or "").strip()
-        if reason:
-            delivery_reasons.add(reason)
-
-    approval_timeout_at = payload.get("approval_timeout_at")
-    issued_at = payload.get("issued_at")
-    if not isinstance(approval_timeout_at, (int, float)) or not isinstance(issued_at, (int, float)):
-        return None
-
-    approval_timeout_at = int(approval_timeout_at)
-    issued_at = int(issued_at)
-    if approval_timeout_at <= now_ms:
-        return None
-
-    window_ms = max(approval_timeout_at - issued_at, 0)
-    midpoint_due = issued_at + (window_ms // 2)
-    final_due = (
-        approval_timeout_at - FINAL_REMINDER_LEAD_MS
-        if window_ms >= MIN_FINAL_REMINDER_WINDOW_MS
-        else None
-    )
-
-    if max_sequence <= 0:
-        return 1, "initial_request"
-    if max_sequence == 1:
-        if final_due is not None and now_ms >= final_due:
-            return 2, "final_reminder"
-        if now_ms >= midpoint_due:
-            return 2, "midpoint_reminder"
-        return None
-    if max_sequence == 2 and final_due is not None and "final_reminder" not in delivery_reasons:
-        if now_ms >= final_due:
-            return 3, "final_reminder"
-    return None
 
 
 async def _notification_job_loop():
@@ -524,7 +533,7 @@ async def _notification_job_loop():
                     for item in pending_requests
                     if str(item.get("request_id") or "").strip()
                 ],
-                actions=["NOTIFICATION_SENT", "REMINDER_SENT"],
+                actions=["NOTIFICATION_SENT", "REMINDER_SENT", "NOTIFICATION_OPENED"],
             )
             events_by_request: Dict[str, list[Dict[str, Any]]] = {}
             for event in notification_events:
@@ -538,7 +547,7 @@ async def _notification_job_loop():
                 request_id = str(pending.get("request_id") or "").strip()
                 if not request_id:
                     continue
-                next_delivery = _next_pending_notification(
+                next_delivery = next_pending_notification(
                     pending,
                     events_by_request.get(request_id, []),
                     now_ms=now_ms,
@@ -581,6 +590,14 @@ async def _notification_job_loop():
         except asyncio.CancelledError:
             break
         except Exception as exc:
+            if _is_database_unavailable_error(exc):
+                logger.warning(
+                    "Consent notification job database unavailable; retrying in %ss: %s",
+                    JOB_DB_RECOVERY_DELAY_SECONDS,
+                    exc,
+                )
+                await asyncio.sleep(JOB_DB_RECOVERY_DELAY_SECONDS)
+                continue
             logger.warning("Consent notification job error: %s", exc)
 
 
@@ -597,6 +614,14 @@ async def _timeout_job_loop():
         except asyncio.CancelledError:
             break
         except Exception as e:
+            if _is_database_unavailable_error(e):
+                logger.warning(
+                    "Timeout job database unavailable; retrying in %ss: %s",
+                    JOB_DB_RECOVERY_DELAY_SECONDS,
+                    e,
+                )
+                await asyncio.sleep(JOB_DB_RECOVERY_DELAY_SECONDS)
+                continue
             logger.warning("Timeout job error: %s", e)
 
 

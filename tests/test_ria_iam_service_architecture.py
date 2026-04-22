@@ -1,9 +1,15 @@
+import json
+from types import SimpleNamespace
+
 import pytest
 
 from hushh_mcp.services.consent_center_service import ConsentCenterService
 from hushh_mcp.services.renaissance_service import RenaissanceService
 from hushh_mcp.services.ria_iam_service import RIAIAMPolicyError, RIAIAMService
-from hushh_mcp.services.ria_verification import validate_regulated_runtime_configuration
+from hushh_mcp.services.ria_verification import (
+    NameVerificationResult,
+    validate_regulated_runtime_configuration,
+)
 
 
 def test_runtime_persona_only_overrides_for_setup_mode():
@@ -117,6 +123,28 @@ def test_professional_inputs_accept_dual_capability_payload():
     assert payload["disclosures_url"] == "https://example.com/disclosures"
 
 
+def test_name_first_inputs_allow_missing_manual_regulatory_identity():
+    payload = RIAIAMService._prepare_professional_onboarding_inputs(
+        display_name="Advisor Alpha",
+        requested_capabilities=["advisory"],
+        individual_legal_name="",
+        individual_crd="",
+        advisory_firm_legal_name="",
+        advisory_firm_iapd_number="",
+        broker_firm_legal_name=None,
+        broker_firm_crd=None,
+        bio=None,
+        strategy=None,
+        disclosures_url=None,
+        require_regulatory_identity=False,
+        require_advisory_firm_identifiers=False,
+    )
+
+    assert payload["display_name"] == "Advisor Alpha"
+    assert payload["individual_legal_name"] is None
+    assert payload["advisory_firm_iapd_number"] is None
+
+
 def test_ria_verified_status_helper_matches_expected_statuses():
     assert RIAIAMService._is_verified_ria_status("verified") is True
     assert RIAIAMService._is_verified_ria_status("active") is True
@@ -152,6 +180,132 @@ def test_regulated_runtime_guard_rejects_prod_bypass(monkeypatch):
         assert "BYPASS" in str(exc)
     else:
         raise AssertionError("Expected production runtime guard to reject bypass flags")
+
+
+@pytest.mark.asyncio
+async def test_verify_ria_name_serializes_verified_stage1_lookup(monkeypatch):
+    service = RIAIAMService()
+
+    async def _mock_lookup(*, query: str, use_cache: bool = True):
+        assert query == "Advisor Alpha"
+        assert use_cache is True
+        return NameVerificationResult(
+            status="verified",
+            matched_name="Advisor Alpha",
+            crd_number="12345",
+            current_firm="Advisor Alpha LLC",
+            sec_number="801-12345",
+            provider="ria_intelligence_stage1",
+        )
+
+    monkeypatch.setattr(service._name_verification_gateway, "verify_name", _mock_lookup)
+
+    result = await service.verify_ria_name("Advisor Alpha")
+
+    assert result["status"] == "verified"
+    assert result["matched_name"] == "Advisor Alpha"
+    assert result["crd_number"] == "12345"
+
+
+@pytest.mark.asyncio
+async def test_verify_ria_name_serializes_reason_code_for_broad_queries(monkeypatch):
+    service = RIAIAMService()
+
+    async def _mock_lookup(*, query: str, use_cache: bool = True):
+        assert query == "Andrew G"
+        assert use_cache is True
+        return NameVerificationResult(
+            status="not_verified",
+            matched_name=None,
+            crd_number=None,
+            current_firm=None,
+            sec_number=None,
+            reason=(
+                "The query 'Andrew G' is too broad and lacks a full last name or firm context."
+            ),
+            reason_code="query_too_broad",
+            suggested_names=["Andrew Garrett Kirkland"],
+            provider="ria_intelligence_stage1",
+        )
+
+    monkeypatch.setattr(service._name_verification_gateway, "verify_name", _mock_lookup)
+
+    result = await service.verify_ria_name("Andrew G")
+
+    assert result["status"] == "not_verified"
+    assert result["reason_code"] == "query_too_broad"
+    assert result["suggested_names"] == ["Andrew Garrett Kirkland"]
+
+
+@pytest.mark.asyncio
+async def test_submit_ria_onboarding_reverifies_stage1_before_granting_access(monkeypatch):
+    service = RIAIAMService()
+
+    class _FakeTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _FakeConn:
+        def transaction(self):
+            return _FakeTransaction()
+
+        async def fetchrow(self, query: str, *_args):
+            if "INSERT INTO ria_profiles" in query:
+                return {"id": "ria-profile-1", "user_id": "user-1", "display_name": "Advisor Alpha"}
+            if "INSERT INTO ria_firms" in query:
+                return {"id": "firm-1"}
+            return None
+
+        async def execute(self, *_args, **_kwargs):
+            return None
+
+        async def close(self):
+            return None
+
+    async def _fake_conn():
+        return _FakeConn()
+
+    async def _fake_schema_ready(_conn):
+        return None
+
+    async def _fake_vault_user_row(_conn, _user_id):
+        return None
+
+    async def _fake_runtime_persona(_conn, _user_id, _persona):
+        return None
+
+    async def _fake_verify_name_result(query: str, *, use_cache: bool = True):
+        assert query == "Advisor Alpha"
+        assert use_cache is True
+        return NameVerificationResult(
+            status="verified",
+            matched_name="Advisor Alpha",
+            crd_number="12345",
+            current_firm="Advisor Alpha LLC",
+            sec_number="801-12345",
+            provider="ria_intelligence_stage1",
+        )
+
+    monkeypatch.setattr(service, "_conn", _fake_conn)
+    monkeypatch.setattr(service, "_ensure_iam_schema_ready", _fake_schema_ready)
+    monkeypatch.setattr(service, "_ensure_vault_user_row", _fake_vault_user_row)
+    monkeypatch.setattr(service, "_set_runtime_last_persona", _fake_runtime_persona)
+    monkeypatch.setattr(service, "_verify_ria_name_result", _fake_verify_name_result)
+
+    result = await service.submit_ria_onboarding(
+        "user-1",
+        display_name="Advisor Alpha",
+        requested_capabilities=["advisory"],
+        strategy="Long-term planning",
+    )
+
+    assert result["verification_status"] == "verified"
+    assert result["advisory_status"] == "verified"
+    assert result["professional_access_granted"] is True
+    assert result["individual_crd"] == "12345"
 
 
 def test_renaissance_service_exposes_generic_security_list_descriptors():
@@ -227,6 +381,221 @@ def test_consent_center_outgoing_request_preserves_additional_access_summary():
     )
 
 
+def test_consent_center_pending_surface_excludes_duplicate_developer_entries():
+    center = {
+        "incoming_requests": [{"id": "req_1", "status": "pending", "kind": "incoming_request"}],
+        "developer_requests": [{"id": "req_1", "status": "pending", "kind": "incoming_request"}],
+    }
+
+    items = ConsentCenterService()._entries_for_surface(
+        center,
+        actor="investor",
+        surface="pending",
+    )
+
+    assert [item["id"] for item in items] == ["req_1"]
+
+
+def test_consent_center_pending_surface_only_returns_actionable_ria_rows():
+    center = {
+        "outgoing_requests": [
+            {"id": "req_pending", "status": "request_pending", "kind": "outgoing_request"},
+            {"id": "req_denied", "status": "denied", "kind": "outgoing_request"},
+            {"id": "req_expired", "status": "expired", "kind": "outgoing_request"},
+        ],
+        "invites": [
+            {"id": "invite_sent", "status": "sent", "kind": "invite"},
+            {"id": "invite_accepted", "status": "accepted", "kind": "invite"},
+        ],
+        "history": [
+            {"id": "history_requested", "status": "request_pending", "kind": "history"},
+            {"id": "history_denied", "status": "denied", "kind": "history"},
+        ],
+    }
+
+    service = ConsentCenterService()
+
+    pending = service._entries_for_surface(center, actor="ria", surface="pending")
+    previous = service._entries_for_surface(center, actor="ria", surface="previous")
+
+    assert [item["id"] for item in pending] == ["req_pending", "invite_sent"]
+    assert {item["id"] for item in previous} == {
+        "history_denied",
+        "req_denied",
+        "req_expired",
+        "invite_accepted",
+    }
+
+
+@pytest.mark.asyncio
+async def test_consent_center_summary_uses_surface_loaders_without_get_center(monkeypatch):
+    service = ConsentCenterService()
+
+    async def _unexpected_get_center(*_args, **_kwargs):  # noqa: ANN002,ANN003
+        raise AssertionError("get_center should not be used for summary counts")
+
+    async def _pending(_user_id: str):
+        return [{"id": "pending_1"}, {"id": "pending_2"}]
+
+    async def _active(_user_id: str):
+        return [{"id": "active_1"}]
+
+    async def _previous(_user_id: str):
+        return [{"id": "history_1"}, {"id": "history_2"}, {"id": "history_3"}]
+
+    monkeypatch.setattr(service, "get_center", _unexpected_get_center)
+    monkeypatch.setattr(service, "_load_investor_pending_entries", _pending)
+    monkeypatch.setattr(service, "_load_investor_active_entries", _active)
+    monkeypatch.setattr(service, "_load_investor_previous_entries", _previous)
+
+    payload = await service.get_center_summary("investor_1", actor="investor")
+
+    assert payload["counts"] == {"pending": 2, "active": 1, "previous": 3}
+
+
+@pytest.mark.asyncio
+async def test_consent_center_list_investor_pending_avoids_monolithic_center(monkeypatch):
+    service = ConsentCenterService()
+
+    async def _unexpected_get_center(*_args, **_kwargs):  # noqa: ANN002,ANN003
+        raise AssertionError("get_center should not be used for paged list loading")
+
+    async def _pending(_user_id: str):
+        return [
+            {
+                "id": "req_3",
+                "issued_at": 300,
+                "counterpart_label": "Later request",
+                "status": "pending",
+            },
+            {
+                "id": "req_2",
+                "issued_at": 200,
+                "counterpart_label": "Kai Access",
+                "status": "pending",
+            },
+            {
+                "id": "req_1",
+                "issued_at": 100,
+                "counterpart_label": "Earlier request",
+                "status": "pending",
+            },
+        ]
+
+    monkeypatch.setattr(service, "get_center", _unexpected_get_center)
+    monkeypatch.setattr(service, "_load_investor_pending_entries", _pending)
+
+    payload = await service.list_center(
+        "investor_1",
+        actor="investor",
+        surface="pending",
+        query="kai",
+        page=1,
+        limit=20,
+    )
+
+    assert payload["total"] == 1
+    assert payload["has_more"] is False
+    assert [item["id"] for item in payload["items"]] == ["req_2"]
+
+
+@pytest.mark.asyncio
+async def test_consent_center_list_preview_top_caps_page_and_limit(monkeypatch):
+    service = ConsentCenterService()
+
+    async def _pending(_user_id: str):
+        return [
+            {"id": "req_6", "issued_at": 600, "counterpart_label": "Six", "status": "pending"},
+            {"id": "req_5", "issued_at": 500, "counterpart_label": "Five", "status": "pending"},
+            {"id": "req_4", "issued_at": 400, "counterpart_label": "Four", "status": "pending"},
+            {"id": "req_3", "issued_at": 300, "counterpart_label": "Three", "status": "pending"},
+            {"id": "req_2", "issued_at": 200, "counterpart_label": "Two", "status": "pending"},
+            {"id": "req_1", "issued_at": 100, "counterpart_label": "One", "status": "pending"},
+        ]
+
+    monkeypatch.setattr(service, "_load_investor_pending_entries", _pending)
+
+    payload = await service.list_center(
+        "investor_1",
+        actor="investor",
+        surface="pending",
+        top=5,
+        page=9,
+        limit=99,
+    )
+
+    assert payload["page"] == 1
+    assert payload["limit"] == 5
+    assert payload["total"] == 6
+    assert payload["has_more"] is True
+    assert [item["id"] for item in payload["items"]] == [
+        "req_6",
+        "req_5",
+        "req_4",
+        "req_3",
+        "req_2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_consent_center_list_ria_active_uses_relationship_roster(monkeypatch):
+    service = ConsentCenterService()
+
+    async def _ria_active(
+        _user_id: str, *, query: str | None = None, page: int = 1, limit: int = 20
+    ):
+        assert query == "taylor"
+        assert page == 2
+        assert limit == 20
+        return {
+            "page": page,
+            "limit": limit,
+            "total": 21,
+            "has_more": False,
+            "items": [
+                {
+                    "id": "relationship_1",
+                    "kind": "active_grant",
+                    "status": "active",
+                    "counterpart_label": "Taylor",
+                    "scope": "attr.financial.*",
+                }
+            ],
+        }
+
+    async def _connection_entries(_user_id: str, *, actor: str):
+        return [
+            {
+                "id": f"rel_{i}",
+                "kind": "active_grant",
+                "status": "active",
+                "relationship_state": "approved",
+                "counterpart_label": "Taylor" if i == 0 else f"Client {i}",
+                "counterpart_id": f"investor_{i}",
+                "scope": "attr.financial.*",
+            }
+            for i in range(21)
+        ]
+
+    monkeypatch.setattr(service, "_load_connection_entries_for_actor", _connection_entries)
+
+    payload = await service.list_center(
+        "ria_user_1",
+        actor="ria",
+        surface="active",
+        mode="connections",
+        query="taylor",
+        page=1,
+        limit=20,
+    )
+
+    assert payload["actor"] == "ria"
+    assert payload["surface"] == "active"
+    assert payload["mode"] == "connections"
+    assert payload["total"] >= 1
+    assert any(item.get("counterpart_label") == "Taylor" for item in payload["items"])
+
+
 @pytest.mark.asyncio
 async def test_list_investor_pick_sources_requires_active_relationship_share(monkeypatch):
     class _FakeConn:
@@ -237,7 +606,9 @@ async def test_list_investor_pick_sources_requires_active_relationship_share(mon
                     "ria_profile_id": "ria_profile_1",
                     "ria_user_id": "ria_user_1",
                     "label": "Advisor Alpha",
-                    "upload_id": "upload_1",
+                    "artifact_id": "artifact_1",
+                    "artifact_updated_at": "2026-04-02T12:34:56Z",
+                    "source_data_version": 7,
                     "share_status": "active",
                     "share_granted_at": "2026-03-24T00:00:00Z",
                     "share_metadata": {"share_origin": "relationship_implicit"},
@@ -263,7 +634,9 @@ async def test_list_investor_pick_sources_requires_active_relationship_share(mon
     assert len(items) == 1
     assert items[0]["id"] == "ria:ria_profile_1"
     assert items[0]["state"] == "ready"
-    assert items[0]["upload_id"] == "upload_1"
+    assert items[0]["artifact_id"] == "artifact_1"
+    assert items[0]["artifact_updated_at"] == "2026-04-02T12:34:56Z"
+    assert items[0]["source_data_version"] == 7
     assert items[0]["share_status"] == "active"
     assert items[0]["share_origin"] == "relationship_implicit"
 
@@ -297,6 +670,57 @@ async def test_get_pick_rows_for_source_returns_empty_without_active_relationshi
     rows = await service.get_pick_rows_for_source("investor_1", "ria:ria_profile_1")
 
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_get_pick_rows_for_source_prefers_active_share_artifact(monkeypatch):
+    class _FakeConn:
+        async def fetchrow(self, query: str, *_args):
+            if "relationship_share_grants share" in query and "SELECT 1" in query:
+                return {"exists": 1}
+            if "JOIN ria_pick_share_artifacts artifact" in query:
+                return {
+                    "artifact_projection": json.dumps(
+                        {
+                            "top_picks": [
+                                {
+                                    "ticker": "AAPL",
+                                    "company_name": "Apple Inc.",
+                                    "sector": "Technology",
+                                    "tier": "CORE",
+                                    "tier_rank": 1,
+                                    "sort_order": 1,
+                                    "conviction_weight": 1.0,
+                                    "investment_thesis": "Installed base moat",
+                                }
+                            ],
+                            "avoid_rows": [],
+                            "screening_sections": [],
+                            "package_note": "Smoke package",
+                        }
+                    )
+                }
+            raise AssertionError(f"Unexpected fetchrow query: {query}")
+
+        async def close(self):
+            return None
+
+    service = RIAIAMService()
+
+    async def _fake_conn():
+        return _FakeConn()
+
+    async def _fake_schema_ready(_conn):
+        return None
+
+    monkeypatch.setattr(service, "_conn", _fake_conn)
+    monkeypatch.setattr(service, "_ensure_iam_schema_ready", _fake_schema_ready)
+    monkeypatch.setattr(service, "_build_pick_package_projection", lambda package: package)
+
+    rows = await service.get_pick_rows_for_source("investor_1", "ria:ria_profile_1")
+
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "AAPL"
 
 
 @pytest.mark.asyncio
@@ -408,3 +832,88 @@ async def test_sync_relationship_from_consent_action_uses_active_tokens_over_lat
 
     assert updates == [("relationship_1", "approved")]
     assert materialized and materialized[0]["relationship_id"] == "relationship_1"
+
+
+@pytest.mark.asyncio
+async def test_queue_ria_invite_email_delivery_records_queue_and_success_metadata(monkeypatch):
+    import hushh_mcp.services.ria_iam_service as ria_module
+
+    service = ria_module.RIAIAMService()
+    metadata_updates: list[tuple[str, dict[str, object]]] = []
+    captured: dict[str, object] = {}
+
+    class _FakeConfig:
+        configured = True
+        delivery_mode = "test"
+        test_to_email = "qa@example.com"
+        from_email = "kai@hushh.ai"
+        support_to_email = "support@hushh.ai"
+        delegated_user = "support@hushh.ai"
+
+    class _FakeInviteEmailService:
+        config = _FakeConfig()
+
+        def _effective_recipient(self, target_email: str) -> str:
+            _ = target_email
+            return "qa@example.com"
+
+        def send_ria_invite(self, **kwargs):  # noqa: ANN003
+            captured["send_kwargs"] = kwargs
+            return SimpleNamespace(
+                accepted=True,
+                message_id="msg_1",
+                recipient="qa@example.com",
+                intended_recipient=kwargs["target_email"],
+                delivery_mode="test",
+                from_email="kai@hushh.ai",
+            )
+
+    class _FakeQueue:
+        async def enqueue(self, **kwargs):  # noqa: ANN003
+            captured["enqueue_kwargs"] = kwargs
+            return {
+                "accepted": True,
+                "delivery_status": "queued",
+                "job_id": "job_1",
+                "kind": kwargs["kind"],
+                "queued_at": "2026-04-13T00:00:00Z",
+            }
+
+    async def _record_update(self, invite_id: str, metadata_patch: dict[str, object]):
+        metadata_updates.append((invite_id, metadata_patch))
+
+    monkeypatch.setattr(
+        ria_module, "get_kai_invite_email_service", lambda: _FakeInviteEmailService()
+    )
+    monkeypatch.setattr(ria_module, "get_email_delivery_queue_service", lambda: _FakeQueue())
+    monkeypatch.setattr(
+        ria_module.RIAIAMService,
+        "_update_ria_invite_email_delivery_metadata",
+        _record_update,
+    )
+
+    created_item: dict[str, object] = {}
+    sample_invite_code = "invite-fixture-1"
+    await service._queue_ria_invite_email_delivery(
+        invite_id="invite_1",
+        invite_token=sample_invite_code,
+        invite_path=f"/kai/onboarding?invite={sample_invite_code}",
+        target_email="investor@example.com",
+        target_display_name="Taylor",
+        advisor_name="Advisor Alpha",
+        firm_name="Advisor Alpha LLC",
+        expires_at="2026-05-01T00:00:00Z",
+        reason="Come join Kai",
+        created_item=created_item,
+    )
+
+    assert created_item["delivery_status"] == "queued"
+    assert metadata_updates[0][1]["status"] == "queued"
+    assert captured["enqueue_kwargs"]["kind"] == "invite_email"
+
+    send_result = captured["enqueue_kwargs"]["send_callable"]()
+    await captured["enqueue_kwargs"]["on_success"](send_result)
+
+    assert created_item["delivery_status"] == "sent"
+    assert created_item["delivery_message_id"] == "msg_1"
+    assert metadata_updates[-1][1]["status"] == "sent"
