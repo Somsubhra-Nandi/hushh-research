@@ -20,8 +20,6 @@ from typing import Any, Dict, List, Optional
 from hushh_mcp.agents.base_agent import HushhAgent
 from hushh_mcp.constants import GEMINI_MODEL
 
-from .errors import AgentLLMError
-
 logger = logging.getLogger(__name__)
 
 
