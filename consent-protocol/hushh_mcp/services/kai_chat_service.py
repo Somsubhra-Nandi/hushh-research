@@ -26,6 +26,7 @@ from google.genai import types as genai_types
 
 from hushh_mcp.constants import GEMINI_MODEL
 from hushh_mcp.services.attribute_learner import get_attribute_learner
+from hushh_mcp.services.renaissance_service import get_renaissance_service
 from hushh_mcp.services.chat_db_service import (
     ChatDBService,
     ComponentType,
@@ -315,7 +316,7 @@ class KaiChatService:
             conversation = await self._get_or_create_conversation(user_id, conversation_id)
 
             # 2. Get chat history for context
-            history = await self.chat_db.get_recent_context(conversation.id, max_messages=10)
+            history = await self.chat_db.get_recent_context(conversation.id, max_messages=5)
 
             # 3. Get user's PKM context
             user_context = await self.pkm_service.get_user_metadata(user_id)
@@ -1129,8 +1130,6 @@ class KaiChatService:
             conversation = await self._get_or_create_conversation(user_id, conversation_id)
 
             # Get Renaissance context for the ticker
-            from hushh_mcp.services.renaissance_service import get_renaissance_service
-
             renaissance = get_renaissance_service()
             ren_context = await renaissance.get_analysis_context(ticker)
 
