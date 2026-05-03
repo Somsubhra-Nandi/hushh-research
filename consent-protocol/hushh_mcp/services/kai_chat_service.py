@@ -26,7 +26,6 @@ from google.genai import types as genai_types
 
 from hushh_mcp.constants import GEMINI_MODEL
 from hushh_mcp.services.attribute_learner import get_attribute_learner
-from hushh_mcp.services.renaissance_service import get_renaissance_service
 from hushh_mcp.services.chat_db_service import (
     ChatDBService,
     ComponentType,
@@ -39,6 +38,7 @@ from hushh_mcp.services.personal_knowledge_model_service import (
     UserPersonalKnowledgeModelMetadata,
     get_pkm_service,
 )
+from hushh_mcp.services.renaissance_service import get_renaissance_service
 
 logger = logging.getLogger(__name__)
 
